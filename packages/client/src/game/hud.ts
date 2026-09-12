@@ -1,7 +1,7 @@
 import type Phaser from "phaser";
 import {
   ARSENAL, BALANCE, CHARACTER_LABEL, MODES, TICK, WORLD, roundWinner,
-  type CharacterId, type FighterState, type HeldItem, type ItemId, type MatchState, type PlayerIndex, type Winner,
+  type CharacterId, type FighterState, type HeldItem, type ItemId, type MatchState, type Phase, type PlayerIndex, type Winner,
 } from "@midnight/shared";
 import { CSS_P, P } from "./palette";
 
@@ -114,6 +114,34 @@ export function itemGlyph(item: HeldItem | null): string {
   return item ? GLYPH[item.kind] : "";
 }
 
+/** Whether fighter `i` carries a row of round pips: every fighter in free-for-all, the team's first fighter in 2v2. */
+export function roundPipRow(state: MatchState, i: PlayerIndex): boolean {
+  const f = state.fighters[i];
+  if (!f) return false;
+  if (state.config.teams !== "2v2") return true;
+  return state.fighters.findIndex((o) => o.team === f.team) === i;
+}
+
+/** Pips per row: the rounds a team needs to win in this mode. */
+export function pipCount(state: MatchState): number {
+  return MODES[state.config.mode].roundsToWin;
+}
+
+/** KO'd while the round is still running (free-for-all / 2v2): the bar goes steel with an OUT tag. */
+export function isOut(f: Pick<FighterState, "hp">, phase: Phase): boolean {
+  return f.hp <= 0 && phase === "FIGHTING";
+}
+
+/** Dazzle marker visibility at `clock` seconds: on for the first half of every 1/BLINK_HZ s. */
+export function blinkOn(clock: number): boolean {
+  return Math.floor(clock * BLINK_HZ) % 2 === 0;
+}
+
+/** True on the update where the ring first becomes full again. */
+export function readyEdge(wasReady: boolean, frac: number): boolean {
+  return frac >= 1 && !wasReady;
+}
+
 /** How much of the laser ring is filled: 1 when ready, 0 at a full cooldown. */
 export function cooldownFraction(f: Pick<FighterState, "laserCooldown">): number {
   return clamp01(1 - f.laserCooldown / ARSENAL.LASER_COOLDOWN);
@@ -153,7 +181,7 @@ function accessories(players: number, i: PlayerIndex, bar: BarLayout, h: number)
   return { slot: { x: sx, y: cy - SLOT.SIZE / 2 }, minis: [{ x: m0, y: my }, { x: m1, y: my }], ring: { x: rx, y: cy } };
 }
 
-interface Banner { text: string; size: number }
+export interface Banner { text: string; size: number }
 
 /** Where the name line ended: the next free x along the row, its top y and font size. */
 interface NameRow { cursor: number; y: number; size: number }
@@ -270,7 +298,7 @@ export class Hud {
     const bar = barLayout(players, i);
     const h = barHeight(players, i);
     const anim = this.anim[i]!;
-    const ko = f.hp <= 0 && state.phase === "FIGHTING";
+    const ko = isOut(f, state.phase);
     const color = teamColor(state, i);
 
     this.advanceDrain(anim, f.hp, dt);
@@ -333,8 +361,8 @@ export class Hud {
    * except the three-player side bars, whose inner end sits over the centred bar: theirs follow the name.
    */
   private drawRoundPips(state: MatchState, i: PlayerIndex, bar: BarLayout, h: number, after: NameRow): void {
+    if (!roundPipRow(state, i)) return;
     const f = state.fighters[i]!;
-    if (state.config.teams === "2v2" && state.fighters.findIndex((o) => o.team === f.team) !== i) return;
     const players = state.config.players;
     const sideOfThree = players === 3 && i < 2;
     const small = players > 2 && !sideOfThree;
@@ -350,7 +378,7 @@ export class Hud {
     }
     const won = state.roundsWon[f.team] ?? 0;
     const g = this.g;
-    for (let pip = 0; pip < MODES[state.config.mode].roundsToWin; pip += 1) {
+    for (let pip = 0; pip < pipCount(state); pip += 1) {
       const cx = inner + dir * (r + pip * gap);
       g.lineStyle(2, P.outline, 1);
       g.fillStyle(pip < won ? P.moon : P.steel1, 1);
@@ -386,8 +414,7 @@ export class Hud {
     }
 
     const dazzled = f.dazzle > 0;
-    const blinkOn = Math.floor(this.clock * BLINK_HZ) % 2 === 0;
-    t.dazzle.setText("✦").setOrigin(left ? 0 : 1, 0).setPosition(cursor, y).setVisible(dazzled && blinkOn);
+    t.dazzle.setText("✦").setOrigin(left ? 0 : 1, 0).setPosition(cursor, y).setVisible(dazzled && blinkOn(this.clock));
     if (dazzled) cursor += dir * (t.dazzle.displayWidth + TAG.GAP);
 
     t.out.setText("OUT").setPosition(bar.x + bar.w / 2, bar.y + h / 2).setColor(CSS_P.moon).setVisible(ko);
@@ -452,7 +479,7 @@ export class Hud {
     const g = this.g;
     const frac = cooldownFraction(f);
     const ready = frac >= 1;
-    if (ready && !this.wasReady[i]) this.pulse[i] = 0;
+    if (readyEdge(this.wasReady[i] ?? true, frac)) this.pulse[i] = 0;
     this.wasReady[i] = ready;
 
     g.lineStyle(SLOT.RING_W, P.steel1, 1);
@@ -515,7 +542,8 @@ function hideAll(t: FighterTexts): void {
   for (const text of [t.name, t.tag, t.out, t.dazzle, t.glyph, t.minis[0], t.minis[1]]) text.setVisible(false);
 }
 
-function bannerFor(state: MatchState, fightEdge: boolean): Banner | null {
+/** Banner text and size for the phase; `fightEdge` is the one-second window after entering FIGHTING (deathmatch has no timer to read it from). */
+export function bannerFor(state: MatchState, fightEdge: boolean): Banner | null {
   switch (state.phase) {
     case "COUNTDOWN": {
       const n = Math.max(1, Math.ceil(state.phaseTicks / COUNT_STEP_TICKS));

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { ARSENAL, ITEM_IDS, MODES, WORLD, createMatch, type ItemId, type MatchState, type PlayerIndex } from "@midnight/shared";
-import { HUD_BAND, barHeight, barLayout, cooldownFraction, itemGlyph, teamColor, timerText } from "../src/game/hud";
+import {
+  ARSENAL, CHARACTER_LABEL, ITEM_IDS, MODES, WORLD, createMatch, type ItemId, type MatchState, type PlayerIndex,
+} from "@midnight/shared";
+import {
+  HUD_BAND, bannerFor, barHeight, barLayout, blinkOn, cooldownFraction, isOut, itemGlyph, pipCount, readyEdge, roundPipRow,
+  teamColor, timerText,
+} from "../src/game/hud";
 import { P } from "../src/game/palette";
 
 interface Box { x: number; y: number; w: number; h: number }
@@ -128,5 +133,99 @@ describe("teamColor", () => {
     expect(teamColor(s, 1)).toBe(P.amber1);
     expect(teamColor(s, 2)).toBe(P.moon);
     expect(teamColor(s, 3)).toBe(P.moon);
+  });
+});
+
+describe("roundPipRow (rule 6)", () => {
+  it("draws one row per fighter in free-for-all, roundsToWin pips each", () => {
+    const s = createMatch({ players: 3, teams: "ffa", mode: "rounds", map: "roof", items: true });
+    for (const i of [0, 1, 2] as const) expect(roundPipRow(s, i)).toBe(true);
+    expect(pipCount(s)).toBe(MODES.rounds.roundsToWin);
+  });
+
+  it("draws one row per team in 2v2, on the team's first bar only", () => {
+    const s = createMatch({ players: 4, teams: "2v2", mode: "rounds", map: "roof", items: true });
+    const rows = ([0, 1, 2, 3] as const).filter((i) => roundPipRow(s, i));
+    expect(rows).toHaveLength(2);
+    expect(new Set(rows.map((i) => s.fighters[i]!.team)).size).toBe(2);
+  });
+
+  it("uses a single pip in timed and deathmatch", () => {
+    for (const mode of ["timed", "deathmatch"] as const) {
+      expect(pipCount(createMatch({ players: 2, teams: "ffa", mode, map: "roof", items: true }))).toBe(1);
+    }
+  });
+});
+
+describe("isOut (rule 7)", () => {
+  it("marks a fighter OUT only at 0 hp while the round is still running", () => {
+    expect(isOut({ hp: 0 }, "FIGHTING")).toBe(true);
+    expect(isOut({ hp: -3 }, "FIGHTING")).toBe(true);
+    expect(isOut({ hp: 1 }, "FIGHTING")).toBe(false);
+    expect(isOut({ hp: 0 }, "ROUND_END")).toBe(false);
+    expect(isOut({ hp: 0 }, "COUNTDOWN")).toBe(false);
+  });
+});
+
+describe("blinkOn (rule 8)", () => {
+  it("toggles at 4 Hz", () => {
+    expect(blinkOn(0)).toBe(true);
+    expect(blinkOn(0.24)).toBe(true);
+    expect(blinkOn(0.26)).toBe(false);
+    expect(blinkOn(0.51)).toBe(true);
+  });
+});
+
+describe("readyEdge (rule 4)", () => {
+  it("fires once when the ring fills, never while it stays full or empty", () => {
+    expect(readyEdge(false, 1)).toBe(true);
+    expect(readyEdge(true, 1)).toBe(false);
+    expect(readyEdge(false, 0.99)).toBe(false);
+    expect(readyEdge(true, 0)).toBe(false);
+  });
+});
+
+describe("bannerFor (rule 9)", () => {
+  const cfg = (teams: "ffa" | "2v2", mode: "rounds" | "timed" | "deathmatch", players: 2 | 4 = 2) =>
+    createMatch({ players, teams, mode, map: "roof", items: true });
+
+  it("counts down in whole seconds", () => {
+    const s = cfg("ffa", "rounds");
+    s.phaseTicks = 180;
+    expect(bannerFor(s, false)?.text).toBe("3");
+    s.phaseTicks = 1;
+    expect(bannerFor(s, false)?.text).toBe("1");
+  });
+
+  it("shows FIGHT for the first second of a timed round and on the phase edge in deathmatch", () => {
+    const s = cfg("ffa", "rounds");
+    s.phase = "FIGHTING";
+    expect(bannerFor(s, false)?.text).toBe("FIGHT");
+    s.roundTicks = MODES.rounds.roundTicks! - 60;
+    expect(bannerFor(s, false)).toBeNull();
+    const d = cfg("ffa", "deathmatch");
+    d.phase = "FIGHTING";
+    expect(bannerFor(d, false)).toBeNull();
+    expect(bannerFor(d, true)?.text).toBe("FIGHT");
+  });
+
+  it("names the team in 2v2 and the character otherwise", () => {
+    const t = cfg("2v2", "rounds", 4);
+    t.phase = "ROUND_END";
+    for (const f of t.fighters) if (f.team === 1) f.hp = 0;
+    expect(bannerFor(t, false)?.text).toBe("TEAM A TAKES THE ROUND");
+    t.phase = "MATCH_END";
+    t.winner = 1;
+    expect(bannerFor(t, false)?.text).toBe("TEAM B WINS");
+
+    const f = cfg("ffa", "rounds");
+    f.phase = "ROUND_END";
+    f.fighters[0]!.hp = 0;
+    expect(bannerFor(f, false)?.text).toBe(`ROUND 1: ${CHARACTER_LABEL.conductor.replace(/^THE /, "")}`);
+    f.phase = "MATCH_END";
+    f.winner = "draw";
+    expect(bannerFor(f, false)?.text).toBe("MUTUAL DERAILMENT");
+    f.winner = 0;
+    expect(bannerFor(f, false)?.text).toBe(`${CHARACTER_LABEL.drifter} WINS`);
   });
 });
