@@ -243,7 +243,7 @@ function applyLayout(
   if (compact) {
     Object.assign(root.style, {
       inset: "auto",
-      top: "max(60px, 14vh)",
+      top: "max(120px, 24vh)", // below the HUD band and the .banner--match strip
       left: "16px",
       width: `${width + 36}px`,
       padding: "12px 16px",

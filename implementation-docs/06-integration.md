@@ -25,7 +25,9 @@ Phases 3, 4, 5 complete.
 - The hint touches only the local fighter's pose, never state.
 
 ## Tests
+- Vitest: `selectSource.test.ts` (`?input=` → keyboard / vision / auto), `calibrationOverlay.test.ts` (`overlayModel` phase → prompt, progress, preview, Recalibrate per mode), `inputSender.test.ts` "pause" (pause sends one all-false frame while running, nothing before start, resume sends the live frame).
 - Owner gate on two laptops over LAN HTTPS: one player on webcam, one on keyboard, full best of 3; then swap. Camera denied on one laptop still allows a keyboard match. Cover the camera mid-match → overlay shows lost, fighter idles, uncover → recalibrates and play resumes.
 
 ## Done when
+- [x] rules 1, 2, 3, 5 headless-checked with the fake camera (`tools/shot.mjs`, `fakeCamera: true`): overlay calibrating → lost, "Camera on", camera-vs-keyboard countdown into FIGHTING with keyboard still merged, `?input=keyboard` / `?input=vision`, blur → paused banner → focus clears
 - [ ] two-laptop gate passed
