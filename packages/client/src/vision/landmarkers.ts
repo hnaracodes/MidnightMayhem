@@ -12,10 +12,11 @@
  * (`vision_wasm_internal.js`) only works through importScripts, which module workers do not have.
  * The package's exports map exposes the files at the package root, not under `/wasm/`.
  */
-import { PoseLandmarker } from "@mediapipe/tasks-vision";
+import { ITEMS } from "@midnight/shared";
+import { ObjectDetector, PoseLandmarker } from "@mediapipe/tasks-vision";
 import wasmLoaderPath from "@mediapipe/tasks-vision/vision_wasm_module_internal.js?url";
 import wasmBinaryPath from "@mediapipe/tasks-vision/vision_wasm_module_internal.wasm?url";
-import { MODEL_URL } from "./thresholds";
+import { MODEL_URL, OBJECT_MODEL_URL, OBJECT_SCORE } from "./thresholds";
 
 export type Delegate = "GPU" | "CPU";
 
@@ -25,6 +26,20 @@ export async function createPose(delegate: Delegate): Promise<PoseLandmarker> {
     baseOptions: { modelAssetPath: MODEL_URL, delegate },
     runningMode: "VIDEO",
     numPoses: 1,
+  });
+}
+
+/**
+ * Object Detector (9.04), EfficientDet-Lite0, VIDEO mode, restricted to the five COCO labels behind ITEMS.
+ * Throws if the model fails to load; the worker treats that as non-fatal and plays pose-only.
+ */
+export async function createObjectDetector(delegate: Delegate): Promise<ObjectDetector> {
+  return ObjectDetector.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
+    baseOptions: { modelAssetPath: OBJECT_MODEL_URL, delegate },
+    runningMode: "VIDEO",
+    scoreThreshold: OBJECT_SCORE,
+    categoryAllowlist: Object.values(ITEMS).map((i) => i.cocoLabel),
+    maxResults: 5,
   });
 }
 
