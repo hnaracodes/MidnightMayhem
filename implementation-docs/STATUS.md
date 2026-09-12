@@ -131,3 +131,18 @@ pose), HUD restyle, menus and wipes. Presentation only — no change under `pack
 Merge into `main` after the owner reviews `.shots/before/*` against `.shots/after/*` and approves the proposed
 `DECISIONS_CHANGED.md` row in the branch's final summary. New dev pages: `dev/ambience.html`; new switches:
 `?quality=high|low`.
+
+## In flight: Phase 13 art (`feat/artstyle-rework`)
+
+The art overhaul (`docs/superpowers/specs/2026-09-12-art-overhaul.md`, specs in `implementation-docs/13-art/`)
+lives on `feat/artstyle-rework`, which carries Phase 12 and `main` up to a715f6b (9.10 chop/sweep, use-only
+throwables, retro chrome). Owner decisions taken during the lane: fighters at **70 %** (105 px) as a true shrink
+through sim and pose (13.00: hurtbox 50 × 98, punch 7/49/84/42, chop 7/63/119/98, sweep 7/105/77/49, laser band
+74/25, throw release 70 px); **`SPRITE_SCALE = 1`** with `PIXEL = 2` decoupled for effects and backgrounds (13.01);
+the **car stands still** and only the world scrolls (13.07). Landed: shading engine (13.02), Drifter and Conductor
+art (13.03), roof and body pixel rasters (13.04), rack and gap pixel art (13.05), ambient props (13.06). Deferred by
+owner scope: Stoker / Claude / item art, secondary motion, Claude's screen light, the remaining sky/track layers,
+reactive props (see `13-art/07`). A rack perch is now out of a grounded punch's reach (10.01 rule 6 annotated).
+Merge into `main` after the owner reviews `sprites.html` and `.shots/art/*` and approves the proposed
+`DECISIONS_CHANGED.md` rows in the branch summary. Headless loop: Vite on 5181 and the server on 8081 with
+`MM_HTTP=1` (restart the server after merging protocol changes).
