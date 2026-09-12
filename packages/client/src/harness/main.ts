@@ -1,4 +1,5 @@
 import { VisionInputSource } from "../vision/VisionInputSource";
+import { selectDetector } from "../vision/selectDetector";
 import { VisionInputError, type VisionErrorCode } from "../vision/errors";
 import { createChecklist } from "./checklist";
 import { createOverlay } from "./overlay";
@@ -25,7 +26,7 @@ const promptText = $("prompt-text");
 const progressBar = $("progress").firstElementChild as HTMLElement;
 const calState = $("cal-state");
 
-const source = new VisionInputSource();
+const source = new VisionInputSource({ detector: selectDetector() });
 const overlay = createOverlay(canvas, () => {
   const v = source.video;
   return { w: v?.videoWidth || 640, h: v?.videoHeight || 480 };
@@ -45,7 +46,10 @@ const devHook = {
   stats: () => {
     const s = source.stats();
     const { phase, progress } = source.calibrationState();
-    return { delegate: s.delegate, fps: s.fps, poseMs: s.poseMs, dropped: s.dropped, phase, progress, phases, lastError };
+    return {
+      delegate: s.delegate, fps: s.fps, poseMs: s.poseMs, dropped: s.dropped, phase, progress, phases, lastError,
+      objects: s.objects, backend: s.backend, fallback: s.fallback, objectMs: s.objectMs,
+    };
   },
   dump: () => source.dump(),
 };

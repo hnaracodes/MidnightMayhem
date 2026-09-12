@@ -1,25 +1,42 @@
 /// <reference lib="webworker" />
 /**
- * Web Worker entry. Owns the Pose Landmarker and (9.04) the Object Detector; the main thread only ever
- * sees plain landmark arrays and plain boxes. Protocol: see WorkerInbound / WorkerOutbound in workerClient.ts.
+ * Web Worker entry. Owns the Pose Landmarker and (9.04 / 9.07) one object-detection backend; the main thread
+ * only ever sees plain landmark arrays and plain boxes. Protocol: see WorkerInbound / WorkerOutbound in
+ * workerClient.ts. `init` names the backend; YOLO falls back to MediaPipe when it cannot load (rule 1).
  */
-import type { ObjectDetector, PoseLandmarker } from "@mediapipe/tasks-vision";
-import { createObjectDetector, createPose, type Delegate } from "./landmarkers";
-import { OBJECT_EVERY_N } from "./thresholds";
+import type { PoseLandmarker } from "@mediapipe/tasks-vision";
+import { createPose, type Delegate } from "./landmarkers";
+import { createMediapipeBackend } from "./backends/mediapipe";
+import { GuardedBackend, loadBackend } from "./backends/loader";
+import type { DetectorId } from "./backends/ObjectBackend";
+import { OBJECT_EVERY_N, YOLO_EVERY_N, YOLO_INPUT, YOLO_MODEL_URL } from "./thresholds";
 import type { ObjectBox, PoseResult, WorkerInbound, WorkerOutbound } from "./workerClient";
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 const post = (msg: WorkerOutbound): void => ctx.postMessage(msg);
 
 let pose: PoseLandmarker | null = null;
-let objects: ObjectDetector | null = null;
+let objects = new GuardedBackend(null);
 let delegate: Delegate = "GPU";
 let lastTs = -1;
-/** Pose frames seen so far; the detector runs when this is a multiple of OBJECT_EVERY_N. */
+/** Pose frames seen so far; the detector runs when this is a multiple of its EVERY_N. */
 let poseFrames = 0;
-let objectErrorLogged = false;
 
-async function init(): Promise<void> {
+/** The cadence for the loaded backend: YOLO is heavier, so it runs less often. */
+function everyN(): number {
+  return objects.id === "yolo" ? YOLO_EVERY_N : OBJECT_EVERY_N;
+}
+
+/** Rule 1 lives in backends/loader.ts; this only names the factories (YOLO lazy-imported, never for MediaPipe). */
+const factories = {
+  yolo: async () => {
+    const { createYoloBackend } = await import("./backends/yolo");
+    return createYoloBackend({ modelUrl: YOLO_MODEL_URL, inputSize: YOLO_INPUT });
+  },
+  mediapipe: () => createMediapipeBackend(),
+};
+
+async function init(detector: DetectorId): Promise<void> {
   try {
     pose = await createPose("GPU");
     delegate = "GPU";
@@ -34,53 +51,15 @@ async function init(): Promise<void> {
       return;
     }
   }
-  // The detector is optional: a missing model never blocks calibration or play.
-  try {
-    objects = await createObjectDetector(delegate);
-  } catch (err) {
-    console.warn("[vision] object detector unavailable, playing pose-only", err);
-    objects = null;
-  }
-  post({ type: "ready", delegate, objects: objects !== null });
+  const loaded = await loadBackend(detector, delegate, factories);
+  objects = new GuardedBackend(loaded.backend);
+  post({ type: "ready", delegate, objects: objects.id !== null, backend: objects.id, fallback: loaded.fallback });
 }
 
-/** Runs the detector on the same bitmap the pose just used. Never throws: a failure yields null and logs once. */
-function detectObjects(bitmap: ImageBitmap, ts: number): { boxes: ObjectBox[] | null; ms: number } {
-  if (!objects) return { boxes: null, ms: 0 };
-  try {
-    const t0 = performance.now();
-    const result = objects.detectForVideo(bitmap, ts);
-    const ms = performance.now() - t0;
-    const w = bitmap.width || 1;
-    const h = bitmap.height || 1;
-    const boxes: ObjectBox[] = [];
-    for (const d of result.detections) {
-      const cat = d.categories[0];
-      const bb = d.boundingBox;
-      if (!cat || !bb) continue;
-      boxes.push({
-        label: cat.categoryName,
-        score: cat.score,
-        x: bb.originX / w,
-        y: bb.originY / h,
-        w: bb.width / w,
-        h: bb.height / h,
-      });
-    }
-    return { boxes, ms };
-  } catch (err) {
-    if (!objectErrorLogged) {
-      objectErrorLogged = true;
-      console.error("[vision] object detector failed; this frame reports objects: null", err);
-    }
-    return { boxes: null, ms: 0 };
-  }
-}
-
-function detect(bitmap: ImageBitmap, ts: number): void {
+async function detect(bitmap: ImageBitmap, ts: number): Promise<void> {
   try {
     if (!pose) {
-      post({ type: "result", ts, pose: null, poseMs: 0, delegate, objects: null, objectMs: 0 });
+      post({ type: "result", ts, pose: null, poseMs: 0, delegate, objects: null, objectMs: 0, backend: null });
       return;
     }
     // detectForVideo requires strictly increasing timestamps.
@@ -100,9 +79,9 @@ function detect(bitmap: ImageBitmap, ts: number): void {
     let objectMs = 0;
     if (out) {
       poseFrames++;
-      if (poseFrames % OBJECT_EVERY_N === 0) ({ boxes, ms: objectMs } = detectObjects(bitmap, ts));
+      if (poseFrames % everyN() === 0) ({ boxes, ms: objectMs } = await objects.detect(bitmap, ts));
     }
-    post({ type: "result", ts, pose: out, poseMs, delegate, objects: boxes, objectMs });
+    post({ type: "result", ts, pose: out, poseMs, delegate, objects: boxes, objectMs, backend: objects.id });
   } finally {
     bitmap.close();
   }
@@ -112,10 +91,11 @@ ctx.onmessage = (e: MessageEvent<WorkerInbound>) => {
   const msg = e.data;
   switch (msg.type) {
     case "init":
-      void init();
+      void init(msg.detector);
       return;
     case "frame":
-      detect(msg.bitmap, msg.ts);
+      // One frame in flight at a time (WorkerClient), so the async detect never overlaps itself.
+      void detect(msg.bitmap, msg.ts);
       return;
   }
 };

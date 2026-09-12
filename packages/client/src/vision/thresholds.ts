@@ -1,3 +1,5 @@
+import type { DetectorId } from "./backends/ObjectBackend";
+
 /**
  * Every tunable number and colour in the vision layer. One comment each.
  * Values come from `HackCMU 2026/controls/phases/CLAUDE.md` and implementation-docs/05-vision.
@@ -67,6 +69,15 @@ export const OBJECT_SCORE = 0.4; // detector score threshold; boxes below it are
 export const HOLD_RADIUS = 0.35; // a box whose centre is within this of a wrist counts as held, in S
 export const HOLD_ON = 3; // consecutive equal candidates before an item turns on
 export const HOLD_OFF_MS = 600; // an item stays held until this long passes without a positive
+
+// ---- 9.07 second detector track (YOLO on onnxruntime-web) ----
+export const DETECTOR_DEFAULT: DetectorId = "mediapipe"; // which detector the worker loads without ?detector=; flipped only by the benchmark verdict (docs/superpowers/specs/2026-09-12-detector-benchmark.md)
+export const YOLO_MODEL_URL = "/models/yolo.onnx"; // yolov10n COCO export (Hugging Face onnx-community/yolov10n), downloaded by vision:setup
+export const YOLO_INPUT = 640; // square model input; the shipped yolov10n export has a fixed 640 input (the plan's 320 needs a dynamic-shape export)
+export const YOLO_SCORE = 0.35; // YOLO class score threshold; boxes below it are never reported
+export const YOLO_IOU = 0.5; // NMS IoU threshold for the YOLOv8/11 layout (the yolov10 layout is NMS-free)
+export const YOLO_EVERY_N = 4; // YOLO runs on every Nth pose frame (MediaPipe uses OBJECT_EVERY_N)
+export const BACKEND_MAX_THROWS = 3; // consecutive detect() throws after which the backend is disabled for the session
 
 // ---- 9.04 laser (both arms thrust forward together) ----
 export const LASER_EXT = 0.55; // both extensions must be below this (arms pointing at the camera)

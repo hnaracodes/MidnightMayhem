@@ -1,4 +1,6 @@
+import type { DetectorId } from "./backends/ObjectBackend";
 import { VisionInputError } from "./errors";
+import { DETECTOR_DEFAULT } from "./thresholds";
 
 // ---- worker protocol (type-only for the worker; shared here so the main thread stays MediaPipe-free) ----
 
@@ -19,7 +21,8 @@ export interface PoseResult {
   worldLandmarks: Landmark[];
 }
 
-export type WorkerInbound = { type: "init" } | { type: "frame"; bitmap: ImageBitmap; ts: number };
+/** `init` names the detector backend to load (9.07); a YOLO load failure falls back to MediaPipe inside the worker. */
+export type WorkerInbound = { type: "init"; detector: DetectorId } | { type: "frame"; bitmap: ImageBitmap; ts: number };
 
 /** One detected object (9.04): COCO label, score, and its box in image-normalised, un-mirrored units like the landmarks. */
 export interface ObjectBox {
@@ -41,10 +44,20 @@ export type ResultMessage = {
   objects: ObjectBox[] | null;
   /** Detector inference time for this frame, ms; 0 when it did not run. */
   objectMs: number;
+  /** Which backend produced `objects` (9.07); null when no detector is loaded. */
+  backend: DetectorId | null;
 };
 
+/** What the worker loaded (9.07): `backend` null = objects off; `fallback` = YOLO was requested and failed to load. */
+export interface ReadyInfo {
+  delegate: Delegate;
+  objects: boolean;
+  backend: DetectorId | null;
+  fallback: boolean;
+}
+
 export type WorkerOutbound =
-  | { type: "ready"; delegate: Delegate; objects: boolean }
+  | ({ type: "ready" } & ReadyInfo)
   | ResultMessage
   | { type: "error"; code: "model-load" };
 
@@ -66,8 +79,12 @@ export interface WorkerStats {
   /** Frames rejected by sendFrame because one was already in flight. */
   dropped: number;
   delegate: Delegate | null;
-  /** Whether the worker loaded the object detector (false = pose-only play). */
+  /** Whether the worker loaded an object detector (false = pose-only play). */
   objects: boolean;
+  /** The loaded detector backend (9.07); null before ready and when objects are off. */
+  backend: DetectorId | null;
+  /** True when YOLO was requested and failed to load, so MediaPipe (or nothing) took over. */
+  fallback: boolean;
 }
 
 export interface WorkerClientOptions {
@@ -83,7 +100,9 @@ const defaultNow = () => performance.now();
 
 /** Main-thread side of the pose worker. Never more than one frame in flight. */
 export class WorkerClient {
-  readonly stats: WorkerStats = { fps: 0, poseMs: 0, objectMs: 0, dropped: 0, delegate: null, objects: false };
+  readonly stats: WorkerStats = {
+    fps: 0, poseMs: 0, objectMs: 0, dropped: 0, delegate: null, objects: false, backend: null, fallback: false,
+  };
 
   private readonly createWorker: () => WorkerLike;
   private readonly createBitmap: (video: HTMLVideoElement) => Promise<ImageBitmap>;
@@ -102,8 +121,8 @@ export class WorkerClient {
     this.now = opts.now ?? defaultNow;
   }
 
-  /** Spawns the worker and resolves once the model is loaded. */
-  start(): Promise<{ delegate: Delegate; objects: boolean }> {
+  /** Spawns the worker and resolves once the model is loaded. `detector` picks the object backend (9.07). */
+  start(detector: DetectorId = DETECTOR_DEFAULT): Promise<ReadyInfo> {
     return new Promise((resolve, reject) => {
       let worker: WorkerLike;
       try {
@@ -124,7 +143,7 @@ export class WorkerClient {
           console.error("[vision] worker error", e.message ?? e);
         }
       };
-      worker.postMessage({ type: "init" }, []);
+      worker.postMessage({ type: "init", detector }, []);
     });
   }
 
@@ -171,14 +190,16 @@ export class WorkerClient {
     reject?.(err);
   }
 
-  private handleMessage(msg: WorkerOutbound, resolve: (v: { delegate: Delegate; objects: boolean }) => void): void {
+  private handleMessage(msg: WorkerOutbound, resolve: (v: ReadyInfo) => void): void {
     switch (msg.type) {
       case "ready":
         this.ready = true;
         this.rejectStart = null;
         this.stats.delegate = msg.delegate;
         this.stats.objects = msg.objects;
-        resolve({ delegate: msg.delegate, objects: msg.objects });
+        this.stats.backend = msg.backend;
+        this.stats.fallback = msg.fallback;
+        resolve({ delegate: msg.delegate, objects: msg.objects, backend: msg.backend, fallback: msg.fallback });
         return;
       case "error":
         this.failStart(new VisionInputError(msg.code));
@@ -187,6 +208,11 @@ export class WorkerClient {
         this.inFlight = false;
         this.stats.poseMs = msg.poseMs;
         if (msg.objects !== null) this.stats.objectMs = msg.objectMs;
+        if (msg.backend === null && this.stats.objects) {
+          // The worker disabled the backend after BACKEND_MAX_THROWS consecutive throws (9.07 invariant).
+          this.stats.objects = false;
+          this.stats.backend = null;
+        }
         this.stats.delegate = msg.delegate;
         const t = this.now();
         this.resultTimes.push(t);

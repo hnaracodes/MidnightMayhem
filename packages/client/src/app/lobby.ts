@@ -46,6 +46,7 @@ export class Lobby {
     localIndex: PlayerIndex,
     visionAvailable: boolean,
     cameraButton: CameraButton = "button",
+    detector: string | null = null,
   ): void {
     // Every LOBBY rebuilds the DOM; remember which control had the keyboard focus so it comes back (rule 9).
     const focused = focusKey(document.activeElement);
@@ -81,7 +82,9 @@ export class Lobby {
     ready.addEventListener("click", () => this.handlers.onReady(!(local?.ready ?? false)));
 
     const camera = button(
-      visionAvailable ? "Camera on" : cameraButton === "starting" ? "Starting camera…" : "Enable camera",
+      visionAvailable
+        ? `Camera on${detector ? ` · ${detector}` : ""}`
+        : cameraButton === "starting" ? "Starting camera…" : "Enable camera",
     );
     camera.disabled = visionAvailable || cameraButton === "starting";
     camera.addEventListener("click", () => this.handlers.onEnableCamera());

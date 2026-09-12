@@ -18,6 +18,17 @@ const readyButton = (): HTMLButtonElement => root().querySelector<HTMLButtonElem
 
 describe("Lobby.renderRoom", () => {
   beforeEach(() => { document.body.innerHTML = '<div id="lobby" class="overlay" hidden></div>'; });
+
+  it("9.07: the camera button names the active detector once the camera is on", () => {
+    const l = lobby();
+    l.renderRoom("K7QX", [player("Ana"), null], DEFAULT_CONFIG, 0, 0, false, "button", "yolo");
+    const buttons = () => Array.from(root().querySelectorAll("button")).map((b) => b.textContent);
+    expect(buttons()).toContain("Enable camera");
+    l.renderRoom("K7QX", [player("Ana"), null], DEFAULT_CONFIG, 0, 0, true, "button", "yolo");
+    expect(buttons()).toContain("Camera on · yolo");
+    l.renderRoom("K7QX", [player("Ana"), null], DEFAULT_CONFIG, 0, 0, true, "button");
+    expect(buttons()).toContain("Camera on");
+  });
   afterEach(() => { document.body.innerHTML = ""; });
 
   it("keeps keyboard focus on the same control across a re-render (rule 9)", () => {

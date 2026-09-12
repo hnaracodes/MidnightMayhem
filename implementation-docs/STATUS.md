@@ -52,12 +52,31 @@ Integration notes carried over from the 13-lane merge:
   `hold [key, 60]`. Real key presses are never that short.
 - `efficientdet_lite0.tflite` is gitignored; run `pnpm --filter @midnight/client vision:setup` on a fresh checkout.
 
+### What 9.07 landed (commits `vision:`, branch `feat/yolo`)
+
+- Second detector track behind one interface: `src/vision/backends/ObjectBackend.ts`, `mediapipe.ts` (wraps
+  9.04's detector), `yolo.ts` (yolov10n on `onnxruntime-web`, lazy `import()`, webgpu → wasm fallback), `nms.ts`
+  (pure IoU / NMS / letterbox), `loader.ts` (rule 1 `loadBackend` and the `GuardedBackend` throw guard, both
+  unit-tested). The worker loads the backend named in `init { detector }`; a YOLO load failure falls back to
+  MediaPipe with one warning (`fallback: true` only for a YOLO request); a backend that throws on three
+  consecutive frames is disposed and the client marks objects off; `ready` and every result carry `backend`.
+- `?detector=yolo|mediapipe` → `session.detector` → the worker; the lobby camera button reads "Camera on · yolo";
+  the harness objects line reads "yolo · 30.0 ms" / "mediapipe (yolo failed) · 12.3 ms" / "off".
+- `bench.html` runs both backends on CPU and GPU over the same frames (fake camera, 40 procedural fixtures, any
+  photos in `public/bench/`) and reports load, median / p90, effective fps, detections per frame, hit rate per
+  label and per set. Numbers and verdict: `docs/superpowers/specs/2026-09-12-detector-benchmark.md`.
+- **Verdict: MediaPipe stays the default.** On wasm/CPU YOLO meets the latency bar (42 ms median) and the
+  no-page-errors bar, but misses the fixture hit-rate bar (0/40 vs 8/40 on the cartoon set). On the 20 real
+  photos YOLO leads 9/20 vs 7/20; on WebGPU it runs at ~10 ms. The owner's real-object check below decides.
+- `vision:setup` also downloads `public/models/yolo.onnx` (gitignored, 9.4 MB; provenance in the benchmark doc).
+  `YOLO_INPUT` is 640 because that export has a fixed input.
+
 ## What is next
 
 1. **Review** — parallel reviewers per area against the feature files (`09-arsenal`, `10-arenas`, `11-look`),
    fixes, final verification. Candidates seen during integration: `rig/pose.ts` could grow real throw and laser
    poses (11.05 adapts them through `posedFighter`); `KeyboardInputSource` could latch edges until sampled.
-2. **9.07** per the phase plan, then the human gates below.
+2. **9.07** is built on `feat/yolo` (benchmark verdict above); merge it, then the human gates below.
 
 ## Running the game today
 
@@ -76,8 +95,12 @@ show zero page errors.
 
 ## Human gates that remain
 
-- Real objects on camera: bottle, umbrella, backpack, banana, phone held up at 1–2.5 m — does `item` light up in the
+- Real objects on camera: bottle, tennis racket, backpack, banana, phone held up at 1–2.5 m — does `item` light up in the
   preview within a second and clear within a second of putting it down? Tune `HOLD_*` and `OBJECT_SCORE`.
+- Detector choice (9.07): hold the same five objects up under `harness.html?detector=mediapipe` and
+  `harness.html?detector=yolo` and compare which lights `item` more reliably and how the `objects` ms line reads on
+  the demo laptops. If YOLO wins, flip `DETECTOR_DEFAULT` in `thresholds.ts` and record it under decision 34.
+  Benchmark numbers so far: `docs/superpowers/specs/2026-09-12-detector-benchmark.md`.
 - Laser gesture on a real body; tune `LASER_EXT`, `LASER_GAP`.
 - Four laptops over LAN HTTPS, 2v2 on `chaos`, `timed`.
 - Rig look approval of the pixel sprites on `sprites.html`, and of the arena screenshots in `.shots/integration-*.png`.

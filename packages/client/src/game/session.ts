@@ -3,6 +3,8 @@ import {
   type CharacterId, type InputFrame, type InputSource, type MatchConfig, type PlayerIndex, type RosterEntry, type SimEvent,
 } from "@midnight/shared";
 import { SnapshotBuffer } from "../net/snapshotBuffer";
+import type { DetectorId } from "../vision/backends/ObjectBackend";
+import { selectDetector } from "../vision/selectDetector";
 import type { Sfx } from "./sfx";
 
 export const DEFAULT_PLAYER_NAMES: readonly string[] = CHARACTERS.map((c) => CHARACTER_LABEL[c]);
@@ -34,6 +36,10 @@ export const session: {
   /** Smoothed round-trip time in ms from the debug PING loop; null until the first PONG (or when not debugging). */
   rtt: number | null;
   visionAvailable: boolean;
+  /** `?detector=yolo|mediapipe`: the object-detection backend the camera worker loads (9.07). */
+  detector: DetectorId;
+  /** The backend the worker actually loaded once the camera is on (9.07); null before then or when objects are off. */
+  detectorActive: DetectorId | null;
 } = {
   buffer: new SnapshotBuffer(),
   events: [],
@@ -51,4 +57,6 @@ export const session: {
   debug: typeof location !== "undefined" && new URLSearchParams(location.search).get("debug") === "1",
   rtt: null,
   visionAvailable: false,
+  detector: typeof location !== "undefined" ? selectDetector(location.search) : "mediapipe",
+  detectorActive: null,
 };

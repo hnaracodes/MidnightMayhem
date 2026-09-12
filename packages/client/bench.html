@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Midnight Mayhem — Detector Benchmark</title>
+  <link rel="icon" href="data:," />
+  <style>
+    :root {
+      color-scheme: dark;
+      --night-0: #070B18; --night-1: #101A33; --night-2: #1E2B4D;
+      --steel-0: #232733; --steel-1: #3A404F; --steel-2: #5B6375;
+      --moon: #E8F0FF; --amber-1: #F2A03D; --danger: #E8434F; --pose: #4FE3F5;
+      font-family: system-ui, sans-serif; background: var(--night-0); color: var(--moon);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { padding: 12px 16px 24px; font-size: 14px; line-height: 1.4; }
+    h1 { font-size: 16px; margin: 0 0 8px; letter-spacing: .08em; text-transform: uppercase; color: var(--amber-1); }
+    h2 { font-size: 13px; margin: 16px 0 6px; text-transform: uppercase; letter-spacing: .08em; color: var(--steel-2); }
+    p { margin: 4px 0; color: var(--steel-2); }
+    button { background: var(--night-2); color: var(--moon); border: 2px solid var(--steel-2); border-radius: 6px; padding: 8px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+    button:hover { border-color: var(--amber-1); }
+    button:disabled { opacity: .5; cursor: default; }
+    #controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 8px 0 12px; }
+    #status { font-variant-numeric: tabular-nums; }
+    #status[data-error] { color: var(--danger); }
+    table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13px; }
+    th, td { text-align: right; padding: 5px 8px; border-bottom: 1px solid var(--steel-0); white-space: nowrap; }
+    th:first-child, td:first-child { text-align: left; }
+    th { color: var(--steel-2); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: .06em; }
+    td.pass { color: var(--pose); } td.fail { color: var(--danger); } td.err { color: var(--danger); text-align: left; white-space: normal; }
+    #wrap { overflow-x: auto; }
+    #frames { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    #frames canvas { width: 128px; height: 96px; border: 1px solid var(--steel-1); border-radius: 4px; }
+    pre { background: var(--night-1); border: 1px solid var(--steel-1); border-radius: 6px; padding: 10px; overflow: auto; max-height: 260px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <h1>Detector benchmark — MediaPipe EfficientDet-Lite0 vs YOLO (onnxruntime-web)</h1>
+  <p>Both backends run in this tab on the same frames: the fake/real camera pattern (sanity), 40 procedural silhouettes (a smoke set, not ground truth), and any photos in <code>public/bench/</code> named <code>&lt;label&gt;-NN.jpg|png</code>.</p>
+  <div id="controls">
+    <button id="run">Run again</button>
+    <button id="copy">Copy JSON</button>
+    <span id="status">idle</span>
+  </div>
+  <div id="wrap"><table id="results"><thead><tr>
+    <th>backend</th><th>delegate</th><th>provider</th><th>load ms</th><th>median ms</th><th>p90 ms</th><th>inference fps</th><th>game cadence</th><th>effective fps</th><th>det / frame</th><th>hit rate</th><th>per label</th>
+  </tr></thead><tbody></tbody></table></div>
+  <h2>Frames</h2>
+  <div id="frames"></div>
+  <h2>JSON (also at <code>window.__bench.results</code> and on the console)</h2>
+  <pre id="json">—</pre>
+  <script type="module" src="/src/bench/main.ts"></script>
+</body>
+</html>

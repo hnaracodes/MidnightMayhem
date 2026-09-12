@@ -633,7 +633,7 @@ describe("vision pipeline: recorder and debug frame (9.04 rule 8)", () => {
   const feed = (src: VisionInputSource, r: ResultMessage) =>
     (src as unknown as { handleResult(r: ResultMessage): void }).handleResult(r);
   const result = (ts: number, pose: PoseResult | null, objects: ObjectBox[] | null = null): ResultMessage => ({
-    type: "result", ts, pose, poseMs: 5, delegate: "GPU", objects, objectMs: objects ? 12 : 0,
+    type: "result", ts, pose, poseMs: 5, delegate: "GPU", objects, objectMs: objects ? 12 : 0, backend: "mediapipe",
   });
 
   it("samples and debug frames carry item and special", () => {

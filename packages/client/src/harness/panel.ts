@@ -17,9 +17,15 @@ export interface PanelOptions {
   dump?: () => RecorderSample[];
 }
 
-/** The "objects" performance line (9.04): "on · 12.3 ms" while the detector runs, "off" when it did not load. Exported for tests. */
-export function objectsText(stats: Pick<WorkerStats, "objects" | "objectMs">): string {
-  return stats.objects ? `on · ${stats.objectMs.toFixed(1)} ms` : "off";
+/**
+ * The "objects" performance line (9.04, 9.07): the backend name and its last inference time while a detector
+ * runs ("yolo · 30.0 ms"), "off" when none loaded; "(yolo failed)" marks the fallback after a YOLO load failure.
+ * Exported for tests.
+ */
+export function objectsText(stats: Pick<WorkerStats, "objects" | "objectMs" | "backend" | "fallback">): string {
+  const failed = stats.fallback ? " (yolo failed)" : "";
+  if (!stats.objects) return `off${failed}`;
+  return `${stats.backend ?? "on"}${failed} · ${stats.objectMs.toFixed(1)} ms`;
 }
 
 /** One punch gate row: its label, live value text and whether it passes. Exported for tests. */
