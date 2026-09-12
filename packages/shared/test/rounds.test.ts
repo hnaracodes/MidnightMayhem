@@ -46,11 +46,11 @@ describe("rounds", () => {
     const ww = run(wf, MATCH.ROUND_TICKS + MATCH.ROUND_END_TICKS).s;
     expect(ww.winner).toBe(0);
   });
-  it("out of bounds: 3 hp per 30 ticks", () => {
+  it("out of bounds does not damage or emit a damage event", () => {
     const s = run(createMatch(), MATCH.COUNTDOWN_TICKS).s; s.fighters[0]!.x = 0;
     const { s: e, events } = run(s, 60);
-    expect(e.fighters[0]!.hp).toBe(BALANCE.MAX_HP - 6);
-    expect(events.filter((ev) => ev.type === "OOB_DAMAGE")).toHaveLength(2);
+    expect(e.fighters[0]!.hp).toBe(BALANCE.MAX_HP);
+    expect(events.filter((ev) => ev.type === "OOB_DAMAGE")).toHaveLength(0);
   });
   it("inputs ignored in MATCH_END", () => {
     const s = createMatch(); s.phase = "MATCH_END"; s.winner = 0;

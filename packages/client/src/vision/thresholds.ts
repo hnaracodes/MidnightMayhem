@@ -83,7 +83,6 @@ export const BACKEND_MAX_THROWS = 3; // consecutive detect() throws after which 
 
 // ---- 9.04 laser (right wrist swept outward) ----
 export const LASER_SIDE_OFFSET = 0.6; // right wrist must be this far outward from its shoulder, in S
-export const LASER_SIDE_RISE = 0.3; // right wrist must have moved this far outward within the jab window, in S
 export const LASER_HEIGHT = 1.0; // the right hand may aim up or down by this many shoulder-widths
 export const LASER_DEBOUNCE_ON = 2; // frames before special turns on
 export const LASER_DEBOUNCE_OFF = 3; // frames before special turns off

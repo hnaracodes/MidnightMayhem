@@ -32,8 +32,6 @@ const FRAMES = {
   KO_SLOW: 30,
   TRAIL: 2,
   SHAKE: 6,
-  /** Pulse hold after an OOB_DAMAGE event: longer than the 30-tick gap between events, so the pulse never gaps. */
-  OOB_PULSE: 40,
   /** 12.04 rule 7: spark burst and shockwave ring on a clean hit; rule 6: the flash beat; the camera nudge. */
   SPARKS: 6,
   RING: 6,
@@ -69,9 +67,7 @@ const IMPACT_OFFSET = 20;
 const TRAIL_WIDTH = 10;
 const WALK_DUST_EVERY_TICKS = 10;
 const NO_LANDING = 1_000_000;
-const VIGNETTE_STRIPS = 18;
-const OOB_PULSE_HZ = 2;
-const DEPTH = { FX: 4.6, VIGNETTE: 5 } as const; // above the item FX (4–4.5), under the debug layer
+const DEPTH = { FX: 4.6 } as const; // above the item FX (4–4.5), under the debug layer
 const IMPACT_LENGTHS = [26, 16, 22, 14, 26, 18, 20, 14] as const;
 const DUST_PUFFS = [
   { dx: -10, dy: -2, r: 6 },
@@ -101,9 +97,6 @@ const PLAYERS: readonly PlayerIndex[] = [0, 1, 2, 3];
 export class Effects {
   private readonly timed: Timed[] = [];
   private readonly trails: Per<Trail | null> = per(null);
-  private vignette: Graphics | null = null;
-  private readonly vignetteAlpha: [number, number] = [0, 0]; // left edge, right edge
-
   private freezeFrames = 0;
   private frozenSnap: FighterState[] | null = null;
   private readonly flashFrames: Per<number> = per(0);
@@ -116,7 +109,6 @@ export class Effects {
   private readonly koCount: Per<number> = per(0);
   /** Displayed phase from the last consume(): the slowdown only plays over ROUND_END / MATCH_END. */
   private koPhase: MatchState["phase"] = "COUNTDOWN";
-  private readonly oobPulseFrames: Per<number> = per(0);
   private clockSec = 0;
 
   private readonly rng = new Lcg(SPARK.seed);
@@ -149,7 +141,6 @@ export class Effects {
     this.readLandings(state);
     this.readWalking(state);
     this.readKo(state);
-    this.readEdges(state);
   }
 
   /** The fighter snapshot captured at a clean HIT while hit-stop holds, else null. */
@@ -212,7 +203,7 @@ export class Effects {
     drawArc(trail.g, shoulder, fist);
   }
 
-  /** Advance every timer by one render frame; `dtSec` only drives the 2 Hz vignette pulse. */
+  /** Advance every timer by one render frame. */
   update(dtSec: number): void {
     for (const i of PLAYERS) if (this.flashBeatFrames[i] > 0) this.flashBeatFrames[i] -= 1;
     this.stepNudge();
@@ -225,7 +216,6 @@ export class Effects {
       if (this.squashFrames[i] > 0) this.squashFrames[i] -= 1;
       if (this.landCount[i] < NO_LANDING) this.landCount[i] += 1;
       if (this.koActive[i]) this.koCount[i] += koStep;
-      if (this.oobPulseFrames[i] > 0) this.oobPulseFrames[i] -= 1;
     }
 
     for (let k = this.timed.length - 1; k >= 0; k -= 1) {
@@ -251,7 +241,6 @@ export class Effects {
       }
     }
 
-    this.drawVignette();
   }
 
   // ---- events ----
@@ -308,9 +297,6 @@ export class Effects {
         this.flashBlocked[event.target] = false;
         break;
       }
-      case "OOB_DAMAGE":
-        this.oobPulseFrames[event.player] = FRAMES.OOB_PULSE;
-        break;
       default:
         break;
     }
@@ -406,26 +392,6 @@ export class Effects {
     }
   }
 
-  private readEdges(state: MatchState): void {
-    const marginL = WORLD.SOFT_EDGE_L;
-    const marginR = WORLD.WIDTH - WORLD.SOFT_EDGE_R;
-    let left = 0;
-    let right = 0;
-    for (const i of PLAYERS) {
-      const f = state.fighters[i];
-      if (!f) continue;
-      const pulse = this.oobPulseFrames[i] > 0
-        ? 0.75 + 0.25 * Math.sin(2 * Math.PI * OOB_PULSE_HZ * this.clockSec)
-        : 1;
-      const depthL = clamp(WORLD.SOFT_EDGE_L - f.x, 0, marginL);
-      const depthR = clamp(f.x - WORLD.SOFT_EDGE_R, 0, marginR);
-      left = Math.max(left, 0.5 * (depthL / marginL) * pulse);
-      right = Math.max(right, 0.5 * (depthR / marginR) * pulse);
-    }
-    this.vignetteAlpha[0] = left;
-    this.vignetteAlpha[1] = right;
-  }
-
   // ---- drawing ----
 
   private spawn(total: number, draw: (g: Graphics, t: number) => void): void {
@@ -438,20 +404,6 @@ export class Effects {
     this.spawn(FRAMES.DUST, (g, t) => drawDust(g, snapPt({ x, y }), t, scale));
   }
 
-  private drawVignette(): void {
-    const [left, right] = this.vignetteAlpha;
-    if (left <= 0 && right <= 0) {
-      if (this.vignette) {
-        this.vignette.destroy();
-        this.vignette = null;
-      }
-      return;
-    }
-    const g = (this.vignette ??= this.scene.add.graphics().setDepth(DEPTH.VIGNETTE));
-    g.clear();
-    if (left > 0) drawEdgeGradient(g, left, WORLD.SOFT_EDGE_L, false);
-    if (right > 0) drawEdgeGradient(g, right, WORLD.WIDTH - WORLD.SOFT_EDGE_R, true);
-  }
 }
 
 // ---- pure drawing helpers (world coordinates) ----
@@ -558,18 +510,4 @@ function drawArc(g: Graphics, shoulder: Pt, fist: Pt): void {
   g.clear();
   g.fillStyle(P.moon, 0.3);
   g.fillPoints([...outer, ...inner.reverse()], true);
-}
-
-/** A `danger` gradient `width` px deep on one screen edge, alpha `peak` at the edge fading to 0 inward. */
-function drawEdgeGradient(g: Graphics, peak: number, width: number, rightEdge: boolean): void {
-  const w = width / VIGNETTE_STRIPS;
-  for (let k = 0; k < VIGNETTE_STRIPS; k += 1) {
-    const x = rightEdge ? WORLD.WIDTH - (k + 1) * w : k * w;
-    g.fillStyle(P.danger, peak * (1 - k / VIGNETTE_STRIPS));
-    g.fillRect(x, 0, w, WORLD.HEIGHT); // 72 / 18 = 4 px strips; no overlap, or the seams double up
-  }
-}
-
-function clamp(v: number, lo: number, hi: number): number {
-  return v < lo ? lo : v > hi ? hi : v;
 }

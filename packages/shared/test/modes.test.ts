@@ -182,10 +182,10 @@ describe("rule 6: a KO'd fighter stays down", () => {
     expect(e.fighters[2]!.oobTicks).toBe(0);
   });
   it("his punches never resolve, even a punch in flight when the KO lands", () => {
-    // P2 is mid-startup on a punch aimed at P0 and takes the KO from OOB damage before it goes active.
+    // P2 is already KO'd while holding a punch aimed at P0; the stale action must never resolve.
     const s = fighting({ players: 3 });
     const p2 = s.fighters[2]!;
-    p2.hp = BALANCE.OOB_DAMAGE; p2.x = WORLD.WIDTH; p2.facing = -1; p2.oobTicks = BALANCE.OOB_EVERY_TICKS - 1;
+    p2.hp = 0; p2.x = WORLD.WIDTH; p2.facing = -1;
     p2.action = { kind: "punch", arm: "L", elapsed: 0, landed: false, sword: false };
     s.fighters[0]!.x = WORLD.WIDTH - 50;
     s.fighters[1]!.x = 100;

@@ -371,41 +371,16 @@ describe("Effects KO slowdown", () => {
   });
 });
 
-describe("Effects danger vignette", () => {
-  it("draws with alpha 0.5 * depth / 72 while a fighter is inside the soft edge and destroys it after", () => {
+describe("Effects edge treatment", () => {
+  it("does not draw a border vignette near or beyond the world edge", () => {
     const { scene, created } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
     state.fighters[0]!.x = WORLD.SOFT_EDGE_L / 2; // depth 36
-    fx.consume([], state);
-    fx.update(DT);
-    expect(created.length).toBe(1);
-    const peak = Math.max(...created[0]!.fills.map((f) => f.alpha));
-    expect(peak).toBeCloseTo(0.25, 5);
-    expect(created[0]!.fills.every((f) => f.color === P.danger)).toBe(true);
-
-    state.fighters[0]!.x = WORLD.PLAYER_START_X[0];
-    fx.consume([], state);
-    fx.update(DT);
-    expect(created[0]!.destroyed).toBe(true);
-  });
-
-  it("pulses at 2 Hz after OOB_DAMAGE without leaving [0, 0.5]", () => {
-    const { scene, created } = stubScene();
-    const fx = new Effects(scene);
-    const state = fighting();
     state.fighters[1]!.x = WORLD.WIDTH;
-    fx.consume([{ type: "OOB_DAMAGE", player: 1, damage: BALANCE.OOB_DAMAGE }], state);
+    fx.consume([], state);
     fx.update(DT);
-    const peaks: number[] = [];
-    for (let k = 0; k < 30; k += 1) {
-      fx.consume([], state);
-      fx.update(DT);
-      peaks.push(Math.max(...created[0]!.fills.map((f) => f.alpha)));
-    }
-    expect(Math.max(...peaks)).toBeLessThanOrEqual(0.5);
-    expect(Math.min(...peaks)).toBeGreaterThan(0);
-    expect(new Set(peaks.map((p) => p.toFixed(3))).size).toBeGreaterThan(1);
+    expect(created).toHaveLength(0);
   });
 });
 

@@ -37,10 +37,10 @@ describe("Laser gesture", () => {
     expect(LASER_DEBOUNCE_ON).toBe(2);
   });
 
-  it("the special pulse turns off after the rightward motion ends", () => {
+  it("the special turns off after the right hand returns inward", () => {
     const laser = new Laser();
     run(laser, RIGHT_SPECIAL, LASER_DEBOUNCE_ON);
-    const off = run(laser, metrics({ sideR: 0.8, jabRiseR: 0 }), LASER_DEBOUNCE_OFF + 1, 1000);
+    const off = run(laser, metrics({ sideR: 0, jabRiseR: 0 }), LASER_DEBOUNCE_OFF + 1, 1000);
     expect(off.slice(0, LASER_DEBOUNCE_OFF - 1).every((v) => v === true)).toBe(true);
     expect(off[LASER_DEBOUNCE_OFF - 1]).toBe(false);
     expect(off[LASER_DEBOUNCE_OFF]).toBe(false);
@@ -53,10 +53,14 @@ describe("Laser gesture", () => {
     expect(run(laser, forwardPunch, 10).some(Boolean)).toBe(false);
   });
 
-  it("the left hand and a slow or held-out right hand never set special", () => {
+  it("the left hand never sets special", () => {
     expect(run(new Laser(), metrics({ sideL: 0.8, jabRiseL: 0.4 }), 10).some(Boolean)).toBe(false);
-    expect(run(new Laser(), metrics({ sideR: 0.8, jabRiseR: 0.2 }), 10).some(Boolean)).toBe(false);
-    expect(run(new Laser(), metrics({ sideR: 0.8, jabRiseR: 0 }), 10).some(Boolean)).toBe(false);
+  });
+
+  it("a right hand held out sideways turns special on after debounce", () => {
+    const held = run(new Laser(), metrics({ sideR: 0.8, jabRiseR: 0 }), LASER_DEBOUNCE_ON + 1);
+    expect(held.slice(0, LASER_DEBOUNCE_ON - 1).every((v) => !v)).toBe(true);
+    expect(held[LASER_DEBOUNCE_ON - 1]).toBe(true);
   });
 
   it("allows the rightward motion one shoulder-width above or below shoulder level", () => {

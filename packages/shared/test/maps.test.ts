@@ -297,7 +297,7 @@ describe("rule 8: a fighter in a pit is out of play", () => {
     const p0 = s0.fighters[0]!;
     p0.x = 0; p0.oobTicks = BALANCE.OOB_EVERY_TICKS - 1; // on ground at the edge: OOB counts, no pit fall
     const { s, events } = run(s0, 1);
-    expect(ofType(events, "OOB_DAMAGE")).toHaveLength(1);
+    expect(ofType(events, "OOB_DAMAGE")).toHaveLength(0);
     expect(ofType(events, "PIT_FALL")).toHaveLength(0);
     expect(f0(s).grounded).toBe(true);
   });

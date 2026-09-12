@@ -315,11 +315,11 @@ describe("items: shield", () => {
     expect(types(r4.events, "HIT")[0]).toMatchObject({ damage: BALANCE.PUNCH_DAMAGE });
     expect(r4.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP - BALANCE.PUNCH_DAMAGE);
 
-    // OOB damage goes straight to hp
+    // OOB never damages, even while a shield is held
     let o = equip(match(), 1, "shield");
     o.fighters[1]!.x = WORLD.WIDTH;
     o = stepN(o, BALANCE.OOB_EVERY_TICKS, [EMPTY_FRAME, F({ right: true })]).s;
-    expect(o.fighters[1]!.hp).toBe(BALANCE.MAX_HP - BALANCE.OOB_DAMAGE);
+    expect(o.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
     expect(o.fighters[1]!.item).toEqual({ kind: "shield", uses: 3, ticksLeft: null });
 
     // applyDamage routes laser and hazard through the shield, never pit

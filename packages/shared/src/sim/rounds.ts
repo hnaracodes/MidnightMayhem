@@ -1,5 +1,4 @@
-import { BALANCE, MATCH, MODES, WORLD } from "../constants";
-import { applyDamage } from "./combat";
+import { MATCH, MODES } from "../constants";
 import { playerIndices, resetForRound } from "./create";
 import { hasTimer } from "./modes";
 import type { MatchState, SimEvent, Winner } from "./types";
@@ -7,16 +6,8 @@ import type { MatchState, SimEvent, Winner } from "./types";
 export function applyOutOfBounds(s: MatchState, events: SimEvent[]): void {
   for (const i of playerIndices(s)) {
     const f = s.fighters[i]!;
-    if (f.hp <= 0) continue;
-    if (f.x <= 0 || f.x >= WORLD.WIDTH) {
-      f.oobTicks++;
-      if (f.oobTicks % BALANCE.OOB_EVERY_TICKS === 0) {
-        applyDamage(s, i, BALANCE.OOB_DAMAGE, "oob", null, events);
-        events.push({ type: "OOB_DAMAGE", player: i, damage: BALANCE.OOB_DAMAGE });
-      }
-    } else {
-      f.oobTicks = 0;
-    }
+    // World edges are harmless boundaries; keep the counter clear for compatibility with saved state.
+    f.oobTicks = 0;
   }
 }
 
