@@ -16,8 +16,13 @@ class FakeGraphics {
       },
     });
   }
+  circles: Array<{ x: number; y: number; r: number }> = [];
   fillStyle(color: number, alpha = 1): this {
     this.fills.push({ color, alpha });
+    return this;
+  }
+  fillCircle(x: number, y: number, r: number): this {
+    this.circles.push({ x, y, r });
     return this;
   }
   clear(): this {
@@ -76,6 +81,25 @@ describe("Effects hit-stop and flashes", () => {
       fx.consume([], state);
     }
     expect(seen).toEqual([500, 500, 500, 500, null, null]);
+  });
+
+  it("freezes the newest snapshot at HIT time, not the 50 ms-delayed sampled one", () => {
+    const { scene } = stubScene();
+    const fx = new Effects(scene);
+    const sampled = fighting();
+    sampled.fighters[0].action = { kind: "punch", arm: "L", elapsed: 1, landed: false }; // still in startup
+    const newest = fighting();
+    newest.tick = sampled.tick + 3;
+    newest.fighters[0].action = { kind: "punch", arm: "L", elapsed: BALANCE.PUNCH_STARTUP, landed: true };
+    newest.fighters[1].hitstun = BALANCE.HITSTUN_TICKS;
+    newest.fighters[1].x = 520;
+
+    fx.consume([hit(1, false)], sampled, newest);
+    expect(fx.frozen(0)?.action?.elapsed).toBe(BALANCE.PUNCH_STARTUP);
+    expect(fx.frozen(1)?.hitstun).toBe(BALANCE.HITSTUN_TICKS);
+    expect(fx.frozen(1)?.x).toBe(520);
+    newest.fighters[1].x = 999; // a copy, not a reference
+    expect(fx.frozen(1)?.x).toBe(520);
   });
 
   it("flashes the target white 70 % for 2 frames then danger 30 % for 4, attacker untouched", () => {
@@ -141,6 +165,25 @@ describe("Effects hit-stop and flashes", () => {
   });
 });
 
+describe("Effects impact position", () => {
+  it("4.06 rule 1: the spark sits on the newest snapshot's target chest, 20 px toward the attacker", () => {
+    const { scene, created } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    state.fighters[0].x = 300;
+    state.fighters[1].x = 400;
+    // the snapshot that carried the event: the target has already taken a knockback step
+    const newest = structuredClone(state);
+    newest.fighters[1].x = 460;
+    fx.consume([hit(1, false)], state, newest);
+    const spark = created.at(-1)!;
+    const core = spark.circles.at(-1)!;
+    expect(core.x).toBe(460 - 20);
+    expect(core.y).toBe(WORLD.ROOF_Y - 90);
+    expect(fx.frozen(1)?.x).toBe(460);
+  });
+});
+
 describe("Effects landing and squash", () => {
   it("landFrames is large before any landing and counts from 0 after one; squash lasts 4 frames", () => {
     const { scene, created } = stubScene();
@@ -193,7 +236,7 @@ describe("Effects landing and squash", () => {
 });
 
 describe("Effects KO slowdown", () => {
-  it("runs 0.25x for 30 frames and counts koFrames only for the fighter at 0 hp", () => {
+  it("advances koFrames by timeScale: the 30-frame collapse spans 120 render frames at 0.25x", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
@@ -202,21 +245,41 @@ describe("Effects KO slowdown", () => {
     fx.consume([{ type: "ROUND_END", round: 1, winner: 0 }], state);
     const scales: number[] = [];
     const ko: number[] = [];
-    for (let k = 0; k < 32; k += 1) {
+    for (let k = 0; k < 124; k += 1) {
       scales.push(fx.timeScale());
       ko.push(fx.koFrames(1));
       expect(fx.koFrames(0)).toBe(0);
       fx.update(DT);
       fx.consume([], state);
     }
-    expect(scales.slice(0, 30).every((s) => s === 0.25)).toBe(true);
-    expect(scales.slice(30)).toEqual([1, 1]);
-    expect(ko).toEqual(Array.from({ length: 32 }, (_, k) => k));
+    // slow while the collapse plays (koFrames < 30), i.e. for exactly 120 render frames
+    expect(scales.slice(0, 120).every((s) => s === 0.25)).toBe(true);
+    expect(scales.slice(120)).toEqual([1, 1, 1, 1]);
+    // the counter climbs by 0.25 per render frame during the slowdown, then by 1
+    expect(ko.slice(0, 120)).toEqual(Array.from({ length: 120 }, (_, k) => k * 0.25));
+    expect(ko.slice(120)).toEqual([30, 31, 32, 33]);
 
     state.phase = "COUNTDOWN";
     state.fighters[1].hp = BALANCE.MAX_HP;
     fx.consume([], state);
     expect(fx.koFrames(1)).toBe(0);
+    expect(fx.timeScale()).toBe(1);
+  });
+
+  it("a mutual KO slows once and both counters climb together", () => {
+    const { scene } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    state.fighters[0].hp = 0;
+    state.fighters[1].hp = 0;
+    state.phase = "ROUND_END";
+    frames(fx, state, 60, [{ type: "ROUND_END", round: 1, winner: "draw" }]);
+    expect(fx.koFrames(0)).toBe(15);
+    expect(fx.koFrames(1)).toBe(15);
+    expect(fx.timeScale()).toBe(0.25);
+    frames(fx, state, 60);
+    expect(fx.koFrames(0)).toBe(30);
+    expect(fx.timeScale()).toBe(1);
   });
 
   it("waits for the displayed state to reach ROUND_END with a 0 hp fighter", () => {

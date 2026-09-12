@@ -45,7 +45,14 @@ const ANKLE_LIFT = RIG.footW / 2 + 3;
 /** The fist disc centre sits this far beyond the wrist along the forearm. */
 const FIST_OFF = 4;
 const ARM_REACH = RIG.upper + RIG.fore + FIST_OFF;
-const LEG_LEN = RIG.thigh + RIG.shin;
+/** 4.01 rule 2: the rest hip sits here above the sole for both characters; the leg IK absorbs the stance. */
+const HIP_HEIGHT = 66;
+/** Walk stride (4.01 rule 5): a ±28° swing of the 66 px leg moves the foot about ±31 px. */
+const WALK_STRIDE = 31;
+/** Opposite-arm counter-swing of ±12° on the 62 px arm, as a fist offset. */
+const WALK_ARM_SWING = 13;
+/** Block (design/02): fist offsets from the hip line, forearms vertical below them. */
+const BLOCK_FIST = { B: { x: 14, dy: -4 }, F: { x: 26, dy: 4 } } as const;
 /** Active punch fist target in local space. Must sit inside the sim punch hitbox with the fist radius to spare. */
 const PUNCH_FIST: Pt = { x: 63, y: -104 };
 
@@ -112,6 +119,13 @@ function armAngles(shoulder: Pt, upperDeg: number, foreDeg: number): Arm {
   return { shoulder, elbow, wrist, fist };
 }
 
+/** Forearm straight up to `fist` with the elbow directly below it; the upper arm reaches from the shoulder (elbow tucked). */
+function armVertical(shoulder: Pt, fist: Pt): Arm {
+  const wrist = { x: fist.x, y: fist.y + FIST_OFF };
+  const elbow = { x: fist.x, y: wrist.y + RIG.fore };
+  return { shoulder, elbow, wrist, fist };
+}
+
 /** Fully straight arm whose fist lands exactly on `target`; the shoulder slides along the line (shoulder thrust). */
 function armStraightTo(restShoulder: Pt, target: Pt): Arm {
   const dx = target.x - restShoulder.x;
@@ -151,10 +165,9 @@ const hunch = (rig: CharacterRig): number => (rig.signature === "drifter" ? 10 :
 /** Half the distance between the soles at rest. */
 const halfStance = (rig: CharacterRig): number => rig.stanceSpread + 3;
 
-/** Resting hip height above the sole, from the stance width and knee bend, so both feet reach the ground. */
-function hipHeight(rig: CharacterRig): number {
-  const half = halfStance(rig);
-  return ANKLE_LIFT + Math.sqrt(LEG_LEN * LEG_LEN - half * half) * Math.cos(rad(rig.kneeBend));
+/** Rest hip: pinned at (0, -66) per 4.01 rule 2; `rig.kneeBend` is the bend the leg IK produces from the stance. */
+function hipHeight(_rig: CharacterRig): number {
+  return HIP_HEIGHT;
 }
 
 /** Guard fist targets from the character's guard chain; the front fist sits 4 px further forward. */
@@ -206,18 +219,28 @@ function walkPose(rig: CharacterRig, f: FighterState): LocalPose {
   const phase = (f.x / 40) * Math.PI;
   const s = Math.sin(phase);
   const backward = f.vx * f.facing < 0;
-  const p = standing(rig, Math.abs(Math.sin(2 * phase)) * -2 + 1, { F: 14 * s, B: -14 * s }, rig.torsoLean + 3, 0, backward ? 10 : 0);
+  const half = halfStance(rig);
+  // Feet swing ±WALK_STRIDE about the hip (±28° of leg); the rest stance fades out toward the extremes so the
+  // legs cross mid-stride and never reach past their length. Hip bob 2 px at double frequency, lowest at the
+  // extremes (double support), highest as the legs pass.
+  const stride = { F: WALK_STRIDE * s - half * s * s, B: -WALK_STRIDE * s + half * s * s };
+  const p = standing(rig, 2 * s * s - 1, stride, rig.torsoLean + 3, 0, backward ? 10 : 0);
   // opposite arm swings with the leg: front leg forward -> back arm forward
   const g = guardTargets(rig, p.t.shoulder, backward ? 10 : 0);
-  p.arms.F = armTo(p.t.shoulder, add(g.F, { x: -8 * s, y: 2 * Math.abs(s) }));
-  p.arms.B = armTo(p.t.shoulder, add(g.B, { x: 8 * s, y: 2 * Math.abs(s) }));
+  p.arms.F = armTo(p.t.shoulder, add(g.F, { x: -WALK_ARM_SWING * s, y: 2 * Math.abs(s) }));
+  p.arms.B = armTo(p.t.shoulder, add(g.B, { x: WALK_ARM_SWING * s, y: 2 * Math.abs(s) }));
   return p;
 }
 
 interface AirSub { thighF: number; shinF: number; thighB: number; shinB: number; armF: number; armB: number; reach: number; lean: number }
-const RISING: AirSub = { thighF: 78, shinF: -30, thighB: 60, shinB: -20, armF: 128, armB: 145, reach: 0.72, lean: 8 };
-const APEX: AirSub = { thighF: 48, shinF: -8, thighB: 34, shinB: 0, armF: 105, armB: 125, reach: 0.78, lean: 4 };
-const FALLING: AirSub = { thighF: 18, shinF: 6, thighB: 6, shinB: -4, armF: 72, armB: 100, reach: 0.85, lean: 0 };
+// design/02 jump row. Arm angles use this file's convention (90 = forward, 180 = up): "arms up 30°" is 30° above
+// forward = 120; "arms out 20°" is 20° below forward = 70. Rising: knees tucked to 70°.
+const RISING: AirSub = { thighF: 70, shinF: -30, thighB: 64, shinB: -20, armF: 120, armB: 132, reach: 0.72, lean: 8 };
+const APEX: AirSub = { thighF: 48, shinF: -8, thighB: 34, shinB: 0, armF: 105, armB: 118, reach: 0.78, lean: 4 };
+const FALLING: AirSub = { thighF: 18, shinF: 6, thighB: 6, shinB: -4, armF: 70, armB: 84, reach: 0.85, lean: 0 };
+/** Sub-pose thresholds: apex while |vy| ≤ 2, fully rising / falling once |vy| passes the threshold by the blend width. */
+const AIR_THRESHOLD = 2;
+const AIR_BLEND = 1.5;
 function lerpSub(a: AirSub, b: AirSub, t: number): AirSub {
   const out = {} as AirSub;
   for (const k of Object.keys(a) as (keyof AirSub)[]) out[k] = lerp(a[k], b[k], t);
@@ -225,8 +248,8 @@ function lerpSub(a: AirSub, b: AirSub, t: number): AirSub {
 }
 
 function jumpPose(rig: CharacterRig, f: FighterState): LocalPose {
-  const k = clamp(f.vy / 6, -1, 1);
-  const sub = k < 0 ? lerpSub(APEX, RISING, -k) : lerpSub(APEX, FALLING, k);
+  const k = clamp((Math.abs(f.vy) - AIR_THRESHOLD) / AIR_BLEND, 0, 1);
+  const sub = f.vy < 0 ? lerpSub(APEX, RISING, k) : lerpSub(APEX, FALLING, k);
   const hip = { x: 0, y: -hipHeight(rig) };
   const t = torso(hip, rig.torsoLean + sub.lean);
   return {
@@ -276,8 +299,10 @@ function blockPose(rig: CharacterRig, ms: number): LocalPose {
   const shudder = Math.sin((ms * 2 * Math.PI * 12) / 1000) >= 0 ? 0.5 : -0.5;
   const p = standing(rig, 0, { F: 0, B: 0 }, rig.torsoLean - 4);
   const sh = add(p.t.shoulder, { x: shudder, y: 0 });
-  p.arms.F = armAngles(sh, 80, 180);
-  p.arms.B = armAngles(sh, 62, 180);
+  // both forearms vertical in front of the face, fists at eye height, offset so both gloves read
+  const eye = p.t.head.y - 2;
+  p.arms.B = armVertical(sh, { x: BLOCK_FIST.B.x + shudder, y: eye + BLOCK_FIST.B.dy });
+  p.arms.F = armVertical(sh, { x: BLOCK_FIST.F.x + shudder, y: eye + BLOCK_FIST.F.dy });
   return p;
 }
 

@@ -13,9 +13,18 @@ export class SnapshotBuffer {
 
   push(state: MatchState, at: number): void {
     const newest = this.snapshots.at(-1);
-    if (newest && state.tick <= newest.state.tick) return;
+    // A rematch restarts the sim at tick 0 while the buffer still holds the old MATCH_END; start over so
+    // the new match is not dropped as "older". Only MATCH_END can be followed by a restart (server rule).
+    if (newest && newest.state.phase === "MATCH_END" && state.tick < newest.state.tick) this.reset();
+    else if (newest && state.tick <= newest.state.tick) return;
     this.snapshots.push({ state, at });
     if (this.snapshots.length > 6) this.snapshots.splice(0, this.snapshots.length - 6);
+  }
+
+  /** Forget every snapshot and the render-time floor (a new match starts from tick 0). */
+  reset(): void {
+    this.snapshots.length = 0;
+    this.lastRenderTime = Number.NEGATIVE_INFINITY;
   }
 
   latest(): MatchState | null {

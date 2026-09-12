@@ -31,3 +31,7 @@ Modify: `packages/client/index.html` (stylesheet), `src/app/lobby.ts`, `result.t
 
 ## Done when
 - [ ] owner approves
+- Rule 1 is now true for every overlay: `main.ts` calls `startGame()` on page load, so the roof scrolls behind the
+  join and room screens too; the scene draws only the stage until the first snapshot. (review fix)
+- Match end: the DOM result overlay is shown 1 s after the MATCH_END event (`design/04` § Banners), so the KO
+  collapse and the 64 px canvas banner play first; a new COUNTDOWN cancels a pending show. (review fix)

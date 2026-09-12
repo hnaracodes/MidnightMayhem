@@ -13,6 +13,8 @@ export const session: {
   /** Names shown under the health bars; set from the LOBBY message, defaults to the character names. */
   playerNames: [string, string];
   debug: boolean;
+  /** Smoothed round-trip time in ms from the debug PING loop; null until the first PONG (or when not debugging). */
+  rtt: number | null;
   visionAvailable: boolean;
 } = {
   buffer: new SnapshotBuffer(),
@@ -22,5 +24,6 @@ export const session: {
   localEdge: { ...EMPTY_FRAME },
   playerNames: [DEFAULT_PLAYER_NAMES[0], DEFAULT_PLAYER_NAMES[1]],
   debug: typeof location !== "undefined" && new URLSearchParams(location.search).get("debug") === "1",
+  rtt: null,
   visionAvailable: false,
 };

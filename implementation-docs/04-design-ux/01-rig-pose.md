@@ -48,3 +48,16 @@ Create: `packages/client/src/game/palette.ts`, `src/game/rig/characters.ts`, `sr
 
 ## Done when
 - [ ] tests pass
+
+## Polish amendments
+
+- Rule 2 is now literal: the rest hip sits at `(0, -66)` for both characters; the leg IK bends the knees to reach
+  the stance (`kneeBend` describes the result, it no longer lowers the hip). (review fix)
+- Rule 5 walk: feet swing `±31 px` about the hip (a ±28° swing of the 66 px leg), with the rest stance fading out
+  toward the extremes so the legs cross mid-stride and never stretch; arms counter-swing ±13 px (±12°). (review fix)
+- Rule 5 jump: sub-pose chosen by the `design/02` thresholds (apex while `|vy| ≤ 2`, rising below, falling above)
+  with a 1.5 px/tick blend past the threshold so the switch is not a pop; rising knees at 70°, arms up 30° (120 in
+  this file's convention), falling arms out 20° below forward (70). (review fix)
+- Rule 5 block: both forearms vertical in front of the face, fists at eye height, the back fist 14 px and the front
+  fist 26 px ahead of the hip line and 8 px apart vertically so both gloves read; the draw order puts the back arm
+  over the torso and head in this state only. (review fix)

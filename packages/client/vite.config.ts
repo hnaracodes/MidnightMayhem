@@ -24,4 +24,11 @@ export default defineConfig({
     },
   },
   worker: { format: "es" },
+  // Pre-bundle the lazily imported pose runtime at server start. Without this the first "Enable camera" click
+  // on a fresh dev server makes Vite optimise @mediapipe/tasks-vision on the fly and force a full page reload,
+  // which drops the player back to the Join screen and out of the room.
+  optimizeDeps: {
+    include: ["@mediapipe/tasks-vision"],
+    entries: ["index.html", "harness.html", "rig.html", "src/vision/worker.ts"],
+  },
 });

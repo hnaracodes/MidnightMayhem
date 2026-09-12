@@ -14,6 +14,9 @@ Create: `packages/client/src/net/wsClient.ts`.
 - `defaultUrl(): string` — `wss:` or `ws:` matching `location.protocol`, same host, `/ws`
 - `class WsClient { status; onStatus: (s) => void; connect(url?): Promise<void>; send(m: ClientMessage): void; on<T>(type: T, handler): () => void }`
 
+- `startPing(onRtt: (rttMs) => void, now?: () => number): () => void` — debug RTT probe: sends `PING{t: now()}` on open and every `PING_INTERVAL_MS` (2000) while open, reports `smoothRtt(prev, now() - t)` on each `PONG`; returns a stop function. Started only by `main.ts` under `?debug=1`. (polish amendment)
+- `smoothRtt(prev: number | null, sampleMs: number): number` — pure EMA over `RTT_EMA_WINDOW` (4) samples, seeded by the first (polish amendment)
+
 ## Behaviour
 1. `connect` resolves on `open`, rejects on `error` before open.
 2. `send` is a no-op unless the socket is open.

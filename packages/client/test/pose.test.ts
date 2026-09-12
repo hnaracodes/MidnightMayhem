@@ -150,3 +150,75 @@ describe("skeleton sanity", () => {
     expect(computePose(fighter(), clock).alpha).toBe(1);
   });
 });
+
+describe("4.01 rule 2: rest hip at (0, -66) for both characters", () => {
+  for (const index of [0, 1] as const) {
+    it(`character ${index} idle hip sits 66 px above the feet`, () => {
+      const f = fighter({}, index);
+      const j = computePose(f, clock); // renderMs 0: no bob
+      expect(j.hip.x).toBeCloseTo(f.x, 6);
+      expect(j.hip.y).toBeCloseTo(f.y - 66, 6);
+      // the legs still reach the ground: knees bend rather than the hip dropping
+      for (const y of feetOf(j)) expect(y).toBeCloseTo(f.y, 6);
+    });
+  }
+});
+
+describe("4.01 rule 5: walk legs swing ±28° with phase x / 40", () => {
+  const swing = (x: number) => {
+    const j = computePose(fighter({ vx: 3, x }), clock);
+    const leg = j.legs.F;
+    const ankle = { x: leg.foot.x, y: leg.foot.y - 7 };
+    return (Math.atan2(ankle.x - leg.hip.x, leg.hip.y - ankle.y) * 180) / Math.PI;
+  };
+  it("front leg reaches about +28° at the forward extreme and -28° at the back", () => {
+    expect(swing(20)).toBeGreaterThan(24); // sin(π/2) = 1
+    expect(swing(60)).toBeLessThan(-24); // sin(3π/2) = -1
+  });
+  it("legs never stretch past their length", () => {
+    for (let x = 0; x < 80; x += 4) {
+      const j = computePose(fighter({ vx: 3, x }), clock);
+      for (const leg of [j.legs.F, j.legs.B]) {
+        const ankle = { x: leg.foot.x, y: leg.foot.y - 7 };
+        expect(Math.hypot(ankle.x - leg.hip.x, ankle.y - leg.hip.y)).toBeLessThanOrEqual(RIG.thigh + RIG.shin + 2.5);
+      }
+    }
+  });
+});
+
+describe("4.01 rule 5: jump sub-poses by vy", () => {
+  const air = (vy: number) => computePose(fighter({ grounded: false, vy, y: 380 }), clock);
+  const thigh = (j: Joints) => (Math.atan2(j.legs.F.knee.x - j.legs.F.hip.x, j.legs.F.knee.y - j.legs.F.hip.y) * 180) / Math.PI;
+  it("apex holds one pose across |vy| ≤ 2", () => {
+    const a = air(-2);
+    const b = air(0);
+    const c = air(2);
+    expect(thigh(a)).toBeCloseTo(thigh(b), 6);
+    expect(thigh(c)).toBeCloseTo(thigh(b), 6);
+  });
+  it("rising tucks the knees to 70° and raises the arms; falling extends the legs", () => {
+    expect(thigh(air(-6))).toBeCloseTo(70, 6);
+    expect(thigh(air(6))).toBeLessThan(25);
+    expect(air(-6).arms.F.fist.y).toBeLessThan(air(6).arms.F.fist.y);
+    // the blend past the threshold is short: fully rising by |vy| = 3.5
+    expect(thigh(air(-3.5))).toBeCloseTo(70, 6);
+    expect(thigh(air(-2.5))).toBeGreaterThan(thigh(air(-2)));
+  });
+});
+
+describe("design/02 block: both fists in front of the face", () => {
+  for (const index of [0, 1] as const) {
+    it(`character ${index}: fists at eye height, forearms vertical, gloves not stacked`, () => {
+      const f = fighter({ blocking: true }, index);
+      const j = computePose(f, { ...clock, renderMs: 10 });
+      expect(j.state).toBe("block");
+      for (const arm of [j.arms.F, j.arms.B]) {
+        expect(Math.abs(arm.fist.y - j.head.y)).toBeLessThan(10);
+        expect(Math.abs(arm.elbow.x - arm.fist.x)).toBeLessThan(0.01);
+        expect(arm.elbow.y).toBeGreaterThan(arm.fist.y);
+        expect((arm.fist.x - j.hip.x) * f.facing).toBeGreaterThan(8);
+      }
+      expect(Math.abs(j.arms.F.fist.x - j.arms.B.fist.x)).toBeGreaterThan(10);
+    });
+  }
+});

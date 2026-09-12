@@ -5,7 +5,7 @@ import { P } from "./palette";
 /**
  * 4.06 — Effects and feel. Reacts to `SimEvent`s and state reads; never predicts and never mutates the state.
  *
- * Per render frame the scene calls, in this order: `consume(events, state)`, then the readers
+ * Per render frame the scene calls, in this order: `consume(events, state, newest)`, then the readers
  * (`frozen`, `fillFor`, `squashFor`, `koFrames`, `landFrames`, `timeScale`, `drawTrail`), then `update(dtSec)`.
  * Every timer counts render frames; hit-stop is a display freeze (the scene draws `frozen(i)`), never a Phaser pause.
  *
@@ -25,6 +25,7 @@ const FRAMES = {
   BLOCK_RING: 5,
   DUST: 8,
   SQUASH: 4,
+  /** Length of the KO collapse in ko-frames (koPose spans 0 → 30); the slowdown holds while it plays. */
   KO_SLOW: 30,
   TRAIL: 2,
   SHAKE: 6,
@@ -86,15 +87,18 @@ export class Effects {
   private readonly koCount: [number, number] = [0, 0];
   private koPending = false;
   private koPendingFrames = 0;
-  private slowFrames = 0;
   private readonly oobPulseFrames: [number, number] = [0, 0];
   private clockSec = 0;
 
   constructor(private readonly scene: Phaser.Scene) {}
 
-  /** Drain this frame's events and read the sampled state. Call once per render frame before the readers. */
-  consume(events: SimEvent[], state: MatchState): void {
-    for (const event of events) this.onEvent(event, state);
+  /**
+   * Drain this frame's events and read the sampled state. Call once per render frame before the readers.
+   * `newest` is the latest snapshot in the buffer (the one that carried the events): hit-stop freezes it, not the
+   * 50 ms-delayed `state`, so the held pose is the contact pose (arm extended, target in hitstun).
+   */
+  consume(events: SimEvent[], state: MatchState, newest: MatchState = state): void {
+    for (const event of events) this.onEvent(event, state, newest);
     this.readLandings(state);
     this.readWalking(state);
     this.readKo(state);
@@ -121,7 +125,10 @@ export class Effects {
     return this.squashFrames[i] > 0 ? SQUASH_Y : 1;
   }
 
-  /** (integrator amendment) Frames since this fighter's KO ROUND_END; 0 when not KO'd. */
+  /**
+   * (integrator amendment) Ko-frames since this fighter's KO ROUND_END; 0 when not KO'd. Advances by `timeScale()`
+   * per render frame, so the 30-frame collapse spans ~120 render frames (2 s) while the slowdown holds.
+   */
   koFrames(i: PlayerIndex): number {
     return this.koActive[i] ? this.koCount[i] : 0;
   }
@@ -131,9 +138,15 @@ export class Effects {
     return this.landCount[i];
   }
 
-  /** (integrator amendment) 0.25 during the 30-frame KO slowdown, else 1. Scales the scene's render clock only. */
+  /**
+   * (integrator amendment) 0.25 while a KO collapse is playing (some `koFrames(i)` below 30), else 1. Scales the
+   * scene's render clock only; the collapse counter advances by the same factor so both end together.
+   */
   timeScale(): number {
-    return this.slowFrames > 0 ? KO_TIME_SCALE : 1;
+    for (const i of [0, 1] as const) {
+      if (this.koActive[i] && this.koCount[i] < FRAMES.KO_SLOW) return KO_TIME_SCALE;
+    }
+    return 1;
   }
 
   /** (integrator amendment) Punch trail: a 2-frame moon 30 % arc from the shoulder to the fist. Call on active ticks. */
@@ -153,14 +166,14 @@ export class Effects {
     this.clockSec += dtSec;
 
     if (this.freezeFrames > 0 && --this.freezeFrames === 0) this.frozenSnap = null;
+    const koStep = this.timeScale(); // read before advancing so the last slow frame lands exactly on KO_SLOW
     for (const i of [0, 1] as const) {
       if (this.flashFrames[i] > 0) this.flashFrames[i] -= 1;
       if (this.squashFrames[i] > 0) this.squashFrames[i] -= 1;
       if (this.landCount[i] < NO_LANDING) this.landCount[i] += 1;
-      if (this.koActive[i]) this.koCount[i] += 1;
+      if (this.koActive[i]) this.koCount[i] += koStep;
       if (this.oobPulseFrames[i] > 0) this.oobPulseFrames[i] -= 1;
     }
-    if (this.slowFrames > 0) this.slowFrames -= 1;
     if (this.koPending && ++this.koPendingFrames > FRAMES.KO_PENDING_MAX) this.koPending = false;
 
     for (let k = this.timed.length - 1; k >= 0; k -= 1) {
@@ -191,11 +204,13 @@ export class Effects {
 
   // ---- events ----
 
-  private onEvent(event: SimEvent, state: MatchState): void {
+  private onEvent(event: SimEvent, state: MatchState, newest: MatchState): void {
     switch (event.type) {
       case "HIT": {
-        const target = state.fighters[event.target];
-        const attacker = state.fighters[event.attacker];
+        // Positions from `newest`, the snapshot that carried the event: an unblocked hit freezes that snapshot,
+        // so the spark must sit on the frozen target's chest, not on the 50 ms-delayed sample.
+        const target = newest.fighters[event.target];
+        const attacker = newest.fighters[event.attacker];
         const toward = attacker.x !== target.x ? Math.sign(attacker.x - target.x) : target.facing;
         const at = { x: target.x + toward * IMPACT_OFFSET, y: target.y - CHEST_ABOVE_FEET };
         if (event.blocked) {
@@ -204,7 +219,7 @@ export class Effects {
           this.spawn(FRAMES.BLOCK_RING, (g, t) => drawBlockRing(g, at, t));
         } else {
           this.freezeFrames = FRAMES.HIT_STOP;
-          this.frozenSnap = structuredClone(state.fighters);
+          this.frozenSnap = structuredClone(newest.fighters);
           this.flashFrames[event.target] = FRAMES.FLASH_WHITE + FRAMES.FLASH_DANGER;
           this.flashBlocked[event.target] = false;
           this.spawn(FRAMES.IMPACT, (g, t) => drawImpact(g, at, t));
@@ -286,14 +301,11 @@ export class Effects {
     if (!this.koPending) return;
     if (state.phase !== "ROUND_END" && state.phase !== "MATCH_END") return; // displayed state still catching up
     this.koPending = false;
-    let started = false;
     for (const i of [0, 1] as const) {
       if (state.fighters[i].hp > 0 || this.koActive[i]) continue;
       this.koActive[i] = true;
-      this.koCount[i] = 0;
-      started = true;
+      this.koCount[i] = 0; // timeScale() drops to 0.25 until this reaches KO_SLOW
     }
-    if (started) this.slowFrames = FRAMES.KO_SLOW;
   }
 
   private readEdges(state: MatchState): void {

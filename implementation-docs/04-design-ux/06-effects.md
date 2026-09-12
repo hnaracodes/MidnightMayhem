@@ -10,10 +10,11 @@ Create: `packages/client/src/game/effects.ts`.
 4.01, 4.02.
 
 ## Exposes
-- `class Effects { constructor(scene); consume(events: SimEvent[], state: MatchState): void; frozen(i): FighterState | null; fillFor(i): { fillOverride?, fillAlpha? }; squashFor(i): number; update(dtSec): void }`
-- `koFrames(i): number` — render frames since the KO `ROUND_END` for that fighter, 0 when none (integrator amendment)
+- `class Effects { constructor(scene); consume(events: SimEvent[], state: MatchState, newest?: MatchState): void; frozen(i): FighterState | null; fillFor(i): { fillOverride?, fillAlpha? }; squashFor(i): number; update(dtSec): void }`
+- `consume`'s third argument is the newest snapshot in the buffer (`session.buffer.latest()`, the snapshot that carried the events; defaults to `state`). Hit-stop freezes `newest`, not the 50 ms-delayed sampled `state`, so the held pose is the contact pose: attacker's arm extended, target in hitstun, and with `?debug=1` the active hitbox stays drawn through the freeze. (polish amendment)
+- `koFrames(i): number` — ko-frames since the KO `ROUND_END` for that fighter, 0 when none. Advances by `timeScale()` per render frame, so the 30-frame collapse in `koPose` spans ~120 render frames (2 s) at 0.25× (polish amendment; was render frames, which let the collapse play at full speed while only the knockback tail was slowed)
 - `landFrames(i): number` — render frames since that fighter's last landing, large when none yet (integrator amendment)
-- `timeScale(): number` — 0.25 during the 30-frame KO slowdown, else 1; the scene multiplies its render clock by it (integrator amendment)
+- `timeScale(): number` — 0.25 while a KO collapse is playing (`koFrames(i) < 30` for a KO'd fighter), else 1; the scene multiplies its render clock by it (integrator amendment; polish amendment ties the window to the collapse instead of a fixed 30 render frames). The `RenderClock` catch-up at 2× therefore starts when the collapse ends and takes ~1.5 s to close the lag; the six-entry snapshot buffer caps the visible lag at ~200 ms meanwhile. The HUD round banner still appears when the sampled state reaches `ROUND_END` (at the start of the collapse, not after it as `design/04` describes) — owner decision, unchanged.
 - `drawTrail(i, shoulder: {x,y}, fist: {x,y}): void` — the scene calls this during active punch ticks with the joints from `computePose`; draws the rule 7 arc (integrator amendment)
 - Effects imports nothing from `rig/`; joints cross the boundary as structural `{x, y}` points. Hit-stop is a display freeze through `frozen(i)`, never a Phaser pause; shake goes through `scene.cameras.main.shake` (integrator amendment)
 - Dev-only preview: `packages/client/dev/fx.html` + `src/dev/fxPreview.ts`, not a build input, exposes `window.__fx` for the screenshot driver (integrator amendment)
@@ -38,3 +39,5 @@ Create: `packages/client/src/game/effects.ts`.
 
 ## Done when
 - [ ] all effects visible in a keyboard match
+- Rule 1 `fx_impact` position (and the blocked ring) is computed from `newest`, the snapshot that carried the HIT,
+  so the spark sits on the frozen target's chest rather than up to a knockback step away from it. (review fix)

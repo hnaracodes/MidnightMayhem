@@ -15,6 +15,8 @@ import { VisionInputError, type VisionErrorCode } from "./vision/errors";
 import { VisionInputSource } from "./vision/VisionInputSource";
 
 const client = new WsClient();
+// Debug-only RTT probe (the arena overlay shows it); the demo build sends nothing extra.
+if (session.debug) client.startPing((rtt) => { session.rtt = rtt; });
 const keyboard = new KeyboardInputSource();
 const inputSource = new MergedInputSource([keyboard]);
 const inputSender = new InputSender(client, inputSource);
@@ -28,8 +30,12 @@ const CAMERA_MESSAGES: Record<VisionErrorCode, string> = {
   "worker-failed": "The camera tracker crashed before it was ready. Keyboard still works.",
 };
 
+/** design/04 § Banners: the 64 px canvas banner and the KO collapse play for 1 s before the DOM result takes over. */
+const RESULT_DELAY_MS = 1000;
+
 let connected = false;
 let hasSnapshot = false;
+let resultTimer: ReturnType<typeof setTimeout> | null = null;
 let matchRunning = false;
 let lastLobby: { roomId: string; players: [LobbyPlayer | null, LobbyPlayer | null] } | null = null;
 
@@ -118,6 +124,8 @@ const lobby = new Lobby({
 
 void inputSource.start();
 lobby.renderJoin();
+// 4.08 rule 1: the arena boots under the lobby so the roof scrolls behind every overlay from the first frame.
+startGame();
 
 // ---- Pause only while the tab is hidden (Phase 6 rule 5) ----
 // Window blur must NOT pause: two windows on one laptop blur each other on every click, which froze the
@@ -194,7 +202,6 @@ client.on("SNAPSHOT", (message) => {
 
   if (!hasSnapshot) {
     hasSnapshot = true;
-    startGame();
     inputSender.start();
     overlay.setMode("compact");
   }
@@ -205,12 +212,19 @@ client.on("SNAPSHOT", (message) => {
   if (matchRunning) lobby.hide();
   // Rule 6: the preview comes up with every match on a camera player and goes away with the result screen.
   if (matchRunning && !wasRunning && session.visionAvailable) preview.show();
-  if (message.state.phase === "COUNTDOWN") result.hide();
+  if (message.state.phase === "COUNTDOWN") {
+    result.hide();
+    if (resultTimer !== null) { clearTimeout(resultTimer); resultTimer = null; }
+  }
 
   const matchEnd = message.events.find((event) => event.type === "MATCH_END");
   if (matchEnd?.type === "MATCH_END") {
     preview.hide();
-    result.show(matchEnd.winner, session.localIndex);
+    if (resultTimer !== null) clearTimeout(resultTimer);
+    resultTimer = setTimeout(() => {
+      resultTimer = null;
+      result.show(matchEnd.winner, session.localIndex);
+    }, RESULT_DELAY_MS);
   }
 });
 

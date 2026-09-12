@@ -39,8 +39,14 @@ Modify: `packages/client/src/game/ArenaScene.ts`.
 - `window.__arena = { updateMs(), hint(), latest() }` dev hook for the headless driver: rolling `update()` cost,
   the current punch hint, the newest snapshot. (integrator amendment)
 - Debug text (`?debug=1`): tick, snapshot age (render frames since the newest tick changed; the buffer does not
-  expose arrival times), render-clock lag, rolling `update()` cost. RTT reads `n/a`: nothing in the client sends
-  `PING`, so no RTT exists to show. (integrator amendment)
+  expose arrival times), render-clock lag, rolling `update()` cost, RTT. RTT comes from `session.rtt`, fed by
+  `WsClient.startPing` (a PING every 2 s while the socket is open, `now - t` on each PONG, EMA over 4), which
+  `main.ts` starts only when `session.debug` is true; without `?debug=1` nothing is sent and the readout stays
+  `n/a`. (integrator amendment; polish amendment)
 - Owner screenshot gate script: `tools/e2e/arena-states.json` (server on 8087, client on 5187, captures into
   `.shots/arena/`), a full keyboard match through all three cars. Taps are 80 ms holds because the headless
   input pump samples at 16 ms and a zero-length press can fall between samples. (integrator amendment)
+- Rule 2 rim per car: the scene passes `rimBoth: true` to `drawFighter` while `trainCar === "TUNNEL"` (amber on
+  both edges; design/03). (review fix)
+- Win pose only during `MATCH_END` for `state.winner` (design/02 countdown/win row); round winners stay in idle
+  through `ROUND_END`. (review fix)
