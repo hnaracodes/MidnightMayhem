@@ -47,8 +47,8 @@ describe("classify priority", () => {
     expect(classify(g({ block: true, special: true }))).toEqual(frame({ block: true }));
   });
 
-  it("9.04: jump cancels special", () => {
-    expect(classify(g({ jump: true, special: true }))).toEqual(frame({ jump: true }));
+  it("special beats jump without changing the existing jump-over-block rule", () => {
+    expect(classify(g({ jump: true, special: true }))).toEqual(frame({ special: true }));
     expect(classify(g({ jump: true, special: true, block: true, punchL: true }))).toEqual(frame({ jump: true }));
   });
 

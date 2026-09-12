@@ -16,13 +16,14 @@ export interface GestureFlags {
 let last: Readonly<InputFrame> | null = null;
 
 /**
- * Priority: jump cancels everything but walk; block cancels special and punches; special cancels punches;
+ * Priority: jump cancels block and punches unless the specific right-hand side special is active; block cancels
+ * special and punches otherwise; special cancels punches;
  * walk and item pass through. Returns a frozen frame that is reused (same object) until a field changes.
  */
 export function classify(g: GestureFlags): Readonly<InputFrame> {
-  const jump = g.jump;
+  const special = !g.block && g.special;
+  const jump = !special && g.jump;
   const block = !jump && g.block;
-  const special = !jump && !block && g.special;
   const punch = !jump && !block && !special;
   const next: InputFrame = {
     left: g.left,
