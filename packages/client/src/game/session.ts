@@ -19,12 +19,9 @@ export const session: {
   config: MatchConfig;
   /** Character and loadout per seated player, from the last LOBBY message (11.03). */
   roster: RosterEntry[];
-  /**
-   * Landing attract mode: the characters idling on the roof while no match runs; null once the landing hides.
-   * INTEGRATOR: collapse after merge — 11.05 declares this field and reads it in the arena scene.
-   */
+  /** Landing attract mode: the characters idling on the roof while no match runs; null once the landing hides. Set by 11.03, read by the arena (11.05). */
   attract: readonly CharacterId[] | null;
-  /** From `prefers-reduced-motion`; the stage stops scrolling. INTEGRATOR: collapse after merge — 11.05 declares it too. */
+  /** From `prefers-reduced-motion`; the stage stops scrolling. Set by 11.03, read by the arena (11.05). */
   reducedMotion: boolean;
   debug: boolean;
   /** Smoothed round-trip time in ms from the debug PING loop; null until the first PONG (or when not debugging). */

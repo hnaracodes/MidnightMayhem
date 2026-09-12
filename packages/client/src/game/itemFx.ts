@@ -1,6 +1,6 @@
 import type Phaser from "phaser";
 import {
-  ARSENAL, ITEMS, WORLD,
+  ARSENAL, ITEMS, WORLD, laserHitbox,
   type Facing, type FighterState, type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile,
   type SimEvent,
 } from "@midnight/shared";
@@ -94,7 +94,7 @@ const ACCENT: Record<ItemId, number> = {
 };
 
 /** What an anchored effect re-reads every frame: the hand and, for the beam, where the fighter faces. */
-interface Anchor { at: Pt; facing: Facing; feetY: number }
+interface Anchor { at: Pt; facing: Facing; band: { top: number; bottom: number } }
 
 interface Timed {
   g: Graphics;
@@ -297,7 +297,7 @@ export class ItemFx {
     draw(g, 0);
     this.timed.push({
       g, frame: 0, total, draw, fresh: true, player: null, tag: null,
-      anchor: { at: { x: 0, y: 0 }, facing: 1, feetY: WORLD.ROOF_Y },
+      anchor: { at: { x: 0, y: 0 }, facing: 1, band: laserBand(undefined) },
     });
   }
 
@@ -391,18 +391,18 @@ export class ItemFx {
   }
 }
 
-// ---- 9.03 shim ----
-
 /**
- * INTEGRATOR: collapse after merge — 9.03 exposes `laserHitbox(f)`; until it lands the beam band is computed here
- * from the same constants so the drawn beam sits inside the hit band.
+ * The beam's y band for a fighter, from 9.03's `laserHitbox`. The fighter is forced into the beam phase so the band
+ * is defined during the drawn fade (recover phase) too; only its y/h are used, the drawn beam starts at the hand.
  */
-function laserBand(feetY: number): { top: number; bottom: number } {
-  return { top: feetY - ARSENAL.LASER_BAND_TOP, bottom: feetY - ARSENAL.LASER_BAND_BOTTOM };
+function laserBand(f: FighterState | undefined): { top: number; bottom: number } {
+  const rect = f ? laserHitbox({ ...f, action: { kind: "laser", elapsed: ARSENAL.LASER_CHARGE, hit: [] } }) : null;
+  if (!rect) return { top: WORLD.ROOF_Y - ARSENAL.LASER_BAND_TOP, bottom: WORLD.ROOF_Y - ARSENAL.LASER_BAND_BOTTOM };
+  return { top: rect.y, bottom: rect.y + rect.h };
 }
 
 function anchorFor(hand: HandPoint, f: FighterState | undefined): Anchor {
-  return { at: { x: hand.x, y: hand.y }, facing: f?.facing ?? 1, feetY: f?.y ?? WORLD.ROOF_Y };
+  return { at: { x: hand.x, y: hand.y }, facing: f?.facing ?? 1, band: laserBand(f) };
 }
 
 function holdsSword(f: FighterState): boolean {
@@ -447,7 +447,7 @@ function drawChargeRing(g: Graphics, hand: Pt, t: number): void {
 
 /** Rule 2: beam from the hand to the world edge; 12 full frames then a 10-frame fade. Y stays inside the band. */
 function drawBeam(g: Graphics, a: Anchor, frame: number): void {
-  const band = laserBand(a.feetY);
+  const band = a.band;
   const y = clamp(a.at.y, band.top, band.bottom);
   const x = a.facing === 1 ? a.at.x : 0;
   const w = a.facing === 1 ? WORLD.WIDTH - a.at.x : a.at.x;

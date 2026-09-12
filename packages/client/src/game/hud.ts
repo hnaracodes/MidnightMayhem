@@ -1,9 +1,10 @@
 import type Phaser from "phaser";
 import {
-  ARSENAL, BALANCE, CHARACTER_LABEL, MODES, TICK, WORLD, roundWinner,
+  ARSENAL, BALANCE, CHARACTER_LABEL, MODES, TICK, WORLD, roundWinner, timerSeconds,
   type CharacterId, type FighterState, type HeldItem, type ItemId, type MatchState, type Phase, type PlayerIndex, type Winner,
 } from "@midnight/shared";
 import { CSS_P, P } from "./palette";
+import { CHARACTER_RIG } from "./rig/characters";
 
 /**
  * HUD for two to four fighters (11.04). Presentation only: every number here is a pixel of layout; the only sim
@@ -51,19 +52,9 @@ const CAR_LABEL: Record<MatchState["trainCar"], string> = {
 
 const GLYPH: Record<ItemId, string> = { molotov: "▲", sword: "/", shield: "▣", banana: "◗", flash: "✦" };
 
-// INTEGRATOR: collapse after merge — 11.01 (sprites) owns `palette.ts` / `rig/characters.ts` and adds the stoker and
-// claude key colours there; until then the HUD carries its own copy of the four key colours.
-const KEY_COLOR: Record<CharacterId, number> = {
-  drifter: P.drifterKey,
-  conductor: P.conductorKey,
-  stoker: 0x4A4A52,
-  claude: 0xE8873A,
-};
-
-// INTEGRATOR: collapse after merge — 10.02 (sim-modes) exports `timerSeconds` from `@midnight/shared` with this
-// exact shape; replace this local copy with the import.
-function timerSeconds(s: MatchState): number | null {
-  return MODES[s.config.mode].roundTicks === null ? null : Math.ceil(s.roundTicks / TICK.HZ);
+/** Character key colours for the team outline, from the rig data (11.01 owns the tokens). */
+function keyColor(id: CharacterId): number {
+  return CHARACTER_RIG[id].key;
 }
 
 // ---- Pure layout helpers (tested) ----
@@ -97,7 +88,7 @@ export function barHeight(players: number, i: PlayerIndex): number {
 export function teamColor(state: MatchState, i: PlayerIndex): number {
   const fighter = state.fighters[i];
   if (state.config.teams === "2v2") return (fighter?.team ?? i) === 0 ? P.amber1 : P.moon;
-  return KEY_COLOR[fighter?.character ?? "drifter"];
+  return keyColor(fighter?.character ?? "drifter");
 }
 
 /** "∞" without a timer, MM:SS from a minute up, plain seconds below. */
