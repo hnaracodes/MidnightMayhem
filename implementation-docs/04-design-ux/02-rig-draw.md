@@ -34,3 +34,18 @@ Create: `packages/client/src/game/rig/draw.ts`.
 
 ## Done when
 - [ ] both characters render in every state on the preview page without console errors
+
+## Polish amendments
+
+- `DrawOpts.rimBoth?: boolean`: the rim stroke goes on both edges of every capsule, the torso quad, the head and
+  the cap (design/03 TUNNEL row); 4.07 passes it while `trainCar === "TUNNEL"`. (review fix)
+- Rule 7 flash: `fillOverride` is mixed into every fill (`fillAlpha` is the mix weight, e.g. white at 0.7) and the
+  rig stays opaque with its 3 px outline and rim; it no longer draws a translucent single-colour ghost that lost
+  the silhouette (design/00 rule 1). Without `fillOverride`, `fillAlpha` still multiplies alpha. (review fix)
+- Rule 7 squash scales the torso, head and arms only; knees and feet keep their world positions, the thigh's hip
+  end follows the torso. (review fix)
+- Drifter hair: a hair cap (key darkened 25 %, outlined) over the top of the head with four 10 px-base wedges of
+  18 / 24 / 30 / 22 px growing out of its screen-left edge, the longest flapping ±3 px at 6 Hz; the beard hangs
+  from the chin in the same colour so it separates from the coat. (review fix)
+- Block draw order: the back arm is drawn over the torso and head in the block state only, so both raised fists
+  are visible. (review fix)

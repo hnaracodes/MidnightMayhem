@@ -5,7 +5,7 @@
  */
 import Phaser from "phaser";
 import {
-  WORLD, EMPTY_FRAME, hurtbox, isActivePunch, punchHitbox, risingEdges, roundWinner,
+  WORLD, EMPTY_FRAME, hurtbox, isActivePunch, punchHitbox, risingEdges,
   type FighterState, type InputFrame, type MatchState, type PlayerIndex, type TrainCar,
 } from "@midnight/shared";
 import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
@@ -115,6 +115,7 @@ export class ArenaScene extends Phaser.Scene {
       drawFighter(g, joints, fighter.character, {
         facing: fighter.facing,
         rim: P.amber1,
+        rimBoth: this.car === "TUNNEL", // design/03: tunnel lamps light both edges
         squash: this.effects.squashFor(i),
         windSpeed: this.layers.roofSpeed,
         ...this.effects.fillFor(i),
@@ -163,9 +164,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 }
 
-/** True during ROUND_END / MATCH_END for the fighter that won it; drives the win pose. */
+/** True during MATCH_END for the match winner (design/02: both fists raised); round winners stay in idle. */
 function isWinner(state: MatchState, i: PlayerIndex): boolean {
-  if (state.phase === "MATCH_END") return state.winner === i;
-  if (state.phase === "ROUND_END") return roundWinner(state) === i;
-  return false;
+  return state.phase === "MATCH_END" && state.winner === i;
 }

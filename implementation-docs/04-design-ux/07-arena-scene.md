@@ -46,3 +46,7 @@ Modify: `packages/client/src/game/ArenaScene.ts`.
 - Owner screenshot gate script: `tools/e2e/arena-states.json` (server on 8087, client on 5187, captures into
   `.shots/arena/`), a full keyboard match through all three cars. Taps are 80 ms holds because the headless
   input pump samples at 16 ms and a zero-length press can fall between samples. (integrator amendment)
+- Rule 2 rim per car: the scene passes `rimBoth: true` to `drawFighter` while `trainCar === "TUNNEL"` (amber on
+  both edges; design/03). (review fix)
+- Win pose only during `MATCH_END` for `state.winner` (design/02 countdown/win row); round winners stay in idle
+  through `ROUND_END`. (review fix)

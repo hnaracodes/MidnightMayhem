@@ -15,11 +15,13 @@ export interface DrawOpts {
   facing: 1 | -1;
   /** Rim stroke colour (0xRRGGBB), normally `P.amber1`. */
   rim: number;
-  /** Replaces every fill colour (damage flash). Outlines and rim stay. */
+  /** Rim on both edges of every shape (tunnel: wall lamps on both sides); default screen-right only. */
+  rimBoth?: boolean;
+  /** Flash colour mixed into every fill (damage / chip flash). Outlines and rim stay; the rig stays opaque. */
   fillOverride?: number;
-  /** Multiplies every alpha. */
+  /** With `fillOverride`: the mix weight toward it (0.7 = mostly flash colour). Without it: multiplies every alpha. */
   fillAlpha?: number;
-  /** Vertical scale about the feet (1 = none); width scales by the inverse. */
+  /** Vertical scale of the torso, head and arms about the feet (1 = none); width scales by the inverse. Legs stay put. */
   squash?: number;
   /** Roof scroll speed in px/s; loose shapes lean screen-left by 2 + windSpeed / 120 px. */
   windSpeed: number;
@@ -27,13 +29,20 @@ export interface DrawOpts {
 
 const OUTLINE_W = 3;
 const ANKLE_LIFT = RIG.footW / 2 + 3;
-const HAIR_LEN = [30, 24, 18, 22] as const;
+/** Drifter hair wedges, crown to nape: length, angle from straight up toward screen-left, base width. */
+const HAIR_LEN = [18, 24, 30, 22] as const;
+const HAIR_ANGLE = [10, 34, 58, 80] as const;
+const HAIR_BASE = 10;
+const HAIR_LONGEST = 2;
+const rad = (deg: number): number => (deg * Math.PI) / 180;
 
 interface Style {
   fill: (c: number) => number;
   alpha: number;
   outline: number;
   rim: number | null;
+  /** Rim on both edges (tunnel) instead of screen-right only. */
+  rimBoth: boolean;
 }
 
 /** One capsule pass: a thick line with round caps. Exported for the preview page. */
@@ -54,7 +63,9 @@ export function drawShadow(g: G, x: number, groundY: number, heightAboveGround: 
 
 export function drawFighter(g: G, joints: Joints, characterId: CharacterId, opts: DrawOpts): void {
   const rig = CHARACTER_RIG[characterId];
-  const alpha = joints.alpha * (opts.fillAlpha ?? 1);
+  const override = opts.fillOverride;
+  // A flash substitutes fill colours; it never makes the rig translucent (design/00 rule 1: silhouette first).
+  const alpha = joints.alpha * (override === undefined ? (opts.fillAlpha ?? 1) : 1);
   const squash = opts.squash ?? 1;
   const j = squash === 1 ? joints : squashJoints(joints, squash);
   const wind = 2 + opts.windSpeed / 120;
@@ -64,15 +75,16 @@ export function drawFighter(g: G, joints: Joints, characterId: CharacterId, opts
   for (const [i, ghost] of j.ghosts.entries()) {
     const gj = translateJoints(j, ghost.x - j.hip.x, ghost.y - j.hip.y);
     const ga = (i === 0 ? 0.35 : 0.18) * alpha;
-    drawBody(g, gj, rig, opts, { fill: () => P.moon, alpha: ga, outline: P.moon, rim: null }, wind, flap);
+    drawBody(g, gj, rig, opts, { fill: () => P.moon, alpha: ga, outline: P.moon, rim: null, rimBoth: false }, wind, flap);
   }
 
-  const override = opts.fillOverride;
+  const mixWeight = opts.fillAlpha ?? 1;
   const style: Style = {
-    fill: override === undefined ? (c) => c : () => override,
+    fill: override === undefined ? (c) => c : (c) => mix(c, override, mixWeight),
     alpha,
     outline: P.outline,
     rim: opts.rim,
+    rimBoth: opts.rimBoth ?? false,
   };
   drawBody(g, j, rig, opts, style, wind, flap);
 }
@@ -84,10 +96,13 @@ function drawBody(g: G, j: Joints, rig: CharacterRig, opts: DrawOpts, st: Style,
   const c = colours(rig);
   const back = { coat: darken(c.coat, 0.25), trouser: darken(c.trouser, 0.25), hand: darken(c.hand, 0.25), skin: darken(c.skin, 0.25) };
 
+  // block: both forearms are up in front of the face, so the back arm goes over the torso and head (design/02)
+  const backArmInFront = j.state === "block";
   drawLeg(g, j.legs.B, rig, back.trouser, back.skin, st, opts.facing, rig.signature === "drifter");
-  drawArm(g, j.arms.B, rig, back.coat, back.hand, st);
+  if (!backArmInFront) drawArm(g, j.arms.B, rig, back.coat, back.hand, st);
   drawTorso(g, j, rig, c, st, wind, opts.facing);
   drawHead(g, j, rig, c, st, wind, flap, opts.facing);
+  if (backArmInFront) drawArm(g, j.arms.B, rig, back.coat, back.hand, st);
   drawLeg(g, j.legs.F, rig, c.trouser, c.skin, st, opts.facing, false);
   drawArm(g, j.arms.F, rig, c.coat, c.hand, st);
 }
@@ -96,7 +111,7 @@ interface Colours { coat: number; trouser: number; skin: number; hand: number; h
 
 function colours(rig: CharacterRig): Colours {
   if (rig.signature === "drifter") {
-    return { coat: rig.key, trouser: mix(rig.key, P.steel1, 0.55), skin: rig.skin, hand: rig.hand, hair: darken(rig.key, 0.22), cap: rig.key };
+    return { coat: rig.key, trouser: mix(rig.key, P.steel1, 0.55), skin: rig.skin, hand: rig.hand, hair: darken(rig.key, 0.25), cap: darken(rig.key, 0.25) };
   }
   return { coat: rig.key, trouser: darken(rig.key, 0.2), skin: rig.skin, hand: rig.hand, hair: darken(rig.key, 0.3), cap: darken(rig.key, 0.28) };
 }
@@ -107,7 +122,7 @@ interface Seg { a: Pt; b: Pt; w: number; color: number }
 function limbGroup(g: G, segs: Seg[], st: Style): void {
   for (const s of segs) capsule(g, s.a, s.b, s.w + OUTLINE_W * 2, st.outline, st.alpha);
   for (const s of segs) capsule(g, s.a, s.b, s.w, st.fill(s.color), st.alpha);
-  if (st.rim !== null) for (const s of segs) rimCapsule(g, s.a, s.b, s.w, st.rim, st.alpha);
+  if (st.rim !== null) for (const s of segs) rimCapsule(g, s.a, s.b, s.w, st.rim, st.alpha, st.rimBoth);
 }
 
 function drawLeg(g: G, leg: Leg, rig: CharacterRig, trouser: number, skin: number, st: Style, facing: 1 | -1, tornCuff: boolean): void {
@@ -203,9 +218,15 @@ function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wi
 
   outlinedPoly(g, quad, c.coat, st);
   if (st.rim !== null) {
-    const right = p.x > 0 ? { top: neckR, bottom: hipR, s: 1 } : { top: neckL, bottom: hipL, s: -1 };
+    const rightS = p.x > 0 ? 1 : -1;
+    const edges = [rightS];
+    if (st.rimBoth) edges.push(-rightS);
     g.lineStyle(3, st.rim, st.alpha);
-    g.lineBetween(right.top.x - p.x * right.s * 1.5, right.top.y - p.y * right.s * 1.5, right.bottom.x - p.x * right.s * 1.5, right.bottom.y - p.y * right.s * 1.5);
+    for (const s of edges) {
+      const top = s === 1 ? neckR : neckL;
+      const bottom = s === 1 ? hipR : hipL;
+      g.lineBetween(top.x - p.x * s * 1.5, top.y - p.y * s * 1.5, bottom.x - p.x * s * 1.5, bottom.y - p.y * s * 1.5);
+    }
   }
 
   if (rig.signature === "drifter") {
@@ -254,24 +275,52 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
 
   if (rig.signature === "drifter") {
     // beard: rounded jagged triangle hanging from the chin, tip toward facing, streaming screen-left
-    const beardPts: [number, number][] = [[-14, 6], [14, 6], [14, 14], [11, 22], [8, 16], [5, 30], [2, 20], [-1, 36], [-5, 24], [-9, 28], [-13, 16]];
+    // hangs from the chin (14 px below the head centre) so the face stays clear between hair cap and beard
+    const beardPts: [number, number][] = [[-12, 14], [12, 14], [14, 20], [11, 27], [8, 21], [5, 34], [2, 25], [-1, 38], [-5, 28], [-9, 31], [-13, 22]];
     const beard: Pt[] = beardPts.map(([x, y]) => {
         const q = at(-y, x * facing);
-        return { x: q.x - (y > 14 ? wind * ((y - 14) / 22) : 0), y: q.y };
+        return { x: q.x - (y > 18 ? wind * ((y - 18) / 20) : 0), y: q.y };
       });
     outlinedPoly(g, beard, c.hair, st);
-    // hair: four wind-blown wedges trailing screen-left from the crown
+    // hair: four wind-blown wedges (8 px base, 18 to 30 px long) growing out of the screen-left edge of a hair
+    // cap that covers the top of the head; wedge roots go first so the cap hides them
     const leftSign = p.x >= 0 ? -1 : 1; // `across` sign that points screen-left
-    const bases = [[8, 11], [13, 7], [15, 0], [3, 14]] as const; // [across toward screen-left, along] on the crown
+    const r = RIG.head;
     for (let i = 0; i < 4; i++) {
-      const [across, along] = bases[i]!;
+      const theta = rad(HAIR_ANGLE[i]!); // from straight up, toward screen-left
       const len = HAIR_LEN[i]!;
-      const a = at(along, leftSign * across);
-      const b = at(along - 5, leftSign * (across + 3));
-      const osc = i === 0 ? flap : 0;
-      // streams back and sags: shaggy, not spiky
-      const tip = { x: a.x - len - wind * 1.5, y: a.y + len * (i === 2 ? -0.1 : 0.25) + osc };
+      const along = (r - 2) * Math.cos(theta);
+      const across = (r - 2) * Math.sin(theta) * leftSign;
+      // base of 8 px along the cap edge (tangent direction), tip trailing screen-left and sagging
+      const tx = -Math.sin(theta);
+      const ty = Math.cos(theta) * leftSign;
+      const a = at(along + tx * HAIR_BASE / 2, across + ty * HAIR_BASE / 2);
+      const b = at(along - tx * HAIR_BASE / 2, across - ty * HAIR_BASE / 2);
+      const osc = i === HAIR_LONGEST ? flap : 0;
+      const root = at(along, across);
+      const tip = { x: root.x - len - wind * 1.5, y: root.y + len * 0.35 + osc };
       outlinedPoly(g, [a, b, tip], c.hair, st);
+    }
+    // hair cap: a half-disc over the top of the head, chord just above the centre line (its 3 px outline is the
+    // hairline; lower and the outlines of cap and beard would leave no face)
+    const capPts: Pt[] = [];
+    const chord = 0.1 * r; // along: positive is up
+    const capR = r + 1;
+    const phi = Math.acos(chord / capR); // half-angle of the arc above the chord
+    const steps = 12;
+    for (let i = 0; i <= steps; i++) {
+      const ang = -phi + (2 * phi * i) / steps;
+      capPts.push(at(capR * Math.cos(ang), capR * Math.sin(ang)));
+    }
+    outlinedPoly(g, capPts, c.cap, st);
+    if (st.rim !== null) {
+      // the rim arc continues over the cap on the screen-right edge (both edges in the tunnel)
+      g.lineStyle(3, st.rim, st.alpha);
+      for (const side of st.rimBoth ? [1, -1] : [1]) {
+        g.beginPath();
+        g.arc(j.head.x, j.head.y, r - 1.5, side === 1 ? -0.95 : Math.PI + 0.05, side === 1 ? -0.05 : Math.PI + 0.95, false);
+        g.strokePath();
+      }
     }
   } else {
     // cap: band on the crown, brim toward facing, badge dot; rotates with the head so it never detaches
@@ -285,11 +334,11 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
     const badge = at(18, 7 * facing);
     g.fillCircle(badge.x, badge.y, 2);
     if (st.rim !== null) {
-      const r = band[5]!;
-      const rr = band[4]!;
       g.lineStyle(3, st.rim, st.alpha);
-      const edge = facing === 1 ? [r, rr] : [band[0]!, band[1]!];
-      g.lineBetween(edge[0]!.x - 1.5 * facing, edge[0]!.y, edge[1]!.x - 1.5 * facing, edge[1]!.y);
+      const rightEdge = facing === 1 ? [band[5]!, band[4]!] : [band[0]!, band[1]!];
+      const leftEdge = facing === 1 ? [band[0]!, band[1]!] : [band[5]!, band[4]!];
+      g.lineBetween(rightEdge[0]!.x - 1.5, rightEdge[0]!.y, rightEdge[1]!.x - 1.5, rightEdge[1]!.y);
+      if (st.rimBoth) g.lineBetween(leftEdge[0]!.x + 1.5, leftEdge[0]!.y, leftEdge[1]!.x + 1.5, leftEdge[1]!.y);
     }
   }
 }
@@ -307,6 +356,11 @@ function outlinedCircle(g: G, c: Pt, r: number, color: number, st: Style): void 
     g.beginPath();
     g.arc(c.x, c.y, r - 1.5, -0.95, 0.95, false);
     g.strokePath();
+    if (st.rimBoth) {
+      g.beginPath();
+      g.arc(c.x, c.y, r - 1.5, Math.PI - 0.95, Math.PI + 0.95, false);
+      g.strokePath();
+    }
   }
 }
 
@@ -317,8 +371,11 @@ function outlinedPoly(g: G, pts: Pt[], color: number, st: Style): void {
   g.fillPoints(pts, true);
 }
 
-/** Warm rim along the screen-right edge of a capsule, plus a cap arc on the right-most end of horizontal limbs. */
-function rimCapsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha: number): void {
+/**
+ * Warm rim along the screen-right edge of a capsule, plus a cap arc on the right-most end of horizontal limbs.
+ * With `both` the screen-left edge and left-most end get the same stroke (tunnel: lamps on both walls).
+ */
+function rimCapsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha: number, both = false): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy);
@@ -330,12 +387,14 @@ function rimCapsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha: num
     let nx = -uy;
     let ny = ux;
     if (nx < 0) { nx = -nx; ny = -ny; }
-    if (nx > 0.35) g.lineBetween(a.x + nx * r, a.y + ny * r, b.x + nx * r, b.y + ny * r);
-    if (Math.abs(ux) > 0.5) {
-      const e = b.x > a.x ? b : a;
-      g.beginPath();
-      g.arc(e.x, e.y, r, -0.9, 0.9, false);
-      g.strokePath();
+    for (const side of both ? [1, -1] : [1]) {
+      if (nx > 0.35) g.lineBetween(a.x + side * nx * r, a.y + side * ny * r, b.x + side * nx * r, b.y + side * ny * r);
+      if (Math.abs(ux) > 0.5) {
+        const e = (b.x > a.x) === (side === 1) ? b : a;
+        g.beginPath();
+        g.arc(e.x, e.y, r, side === 1 ? -0.9 : Math.PI - 0.9, side === 1 ? 0.9 : Math.PI + 0.9, false);
+        g.strokePath();
+      }
     }
   }
 }
@@ -415,11 +474,20 @@ function translateJoints(j: Joints, dx: number, dy: number): Joints {
   return mapJoints(j, (p) => ({ x: p.x + dx, y: p.y + dy }));
 }
 
-/** Vertical scale about the feet, width by the inverse: landing squash. */
+/**
+ * Landing squash (4.02 rule 7): the torso, head and arms scale vertically about the feet, width by the inverse.
+ * The legs keep their world positions (feet and knees stay put); only the thigh's hip end follows the torso.
+ */
 function squashJoints(j: Joints, s: number): Joints {
   const gy = Math.max(j.legs.F.foot.y, j.legs.B.foot.y);
   const cx = j.hip.x;
-  const out = mapJoints(j, (p) => ({ x: cx + (p.x - cx) / s, y: gy + (p.y - gy) * s }));
-  out.ghosts = j.ghosts;
-  return out;
+  const f = (p: Pt): Pt => ({ x: cx + (p.x - cx) / s, y: gy + (p.y - gy) * s });
+  const arm = (a: Arm): Arm => ({ shoulder: f(a.shoulder), elbow: f(a.elbow), wrist: f(a.wrist), fist: f(a.fist) });
+  const leg = (l: Leg): Leg => ({ hip: f(l.hip), knee: l.knee, foot: l.foot });
+  return {
+    ...j,
+    hip: f(j.hip), neck: f(j.neck), head: f(j.head),
+    arms: { F: arm(j.arms.F), B: arm(j.arms.B) },
+    legs: { F: leg(j.legs.F), B: leg(j.legs.B) },
+  };
 }
