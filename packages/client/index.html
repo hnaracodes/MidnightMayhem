@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Midnight Mayhem</title>
   <style>
+    /* Palette: design/00-art-direction.md. Mirrors packages/client/src/game/palette.ts. */
     :root {
       color-scheme: dark;
       --night-0: #070B18;
@@ -17,8 +18,10 @@
       --amber-1: #F2A03D;
       --amber-2: #C2601B;
       --danger: #E8434F;
+      --drifter-key: #8A6B4A;
+      --conductor-key: #1B2A5C;
       --outline: #05070F;
-      font-family: system-ui, sans-serif;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
       background: var(--night-0);
       color: var(--moon);
     }
@@ -27,59 +30,218 @@
     [hidden] { display: none !important; }
     #game { width: 100%; min-height: 100dvh; }
     #game canvas { display: block; max-width: 100%; }
-    #lobby, #calibration, #result {
+
+    /* Overlays: night-0 at 92 % so the moving roof stays faintly visible behind every menu. */
+    .overlay {
       position: fixed;
       inset: 0;
+      z-index: 10;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 1rem;
-      padding: 2rem;
+      gap: 20px;
+      padding: 32px 16px;
       overflow-y: auto;
-      background: var(--night-0);
+      text-align: center;
+      background: rgba(7, 11, 24, 0.92);
     }
-    h1, h2, h3 { font-weight: 800; }
-    button, input {
-      font: inherit;
-      padding: 0.75rem 1rem;
-      border: 2px solid var(--steel-2);
-      border-radius: 0.375rem;
+    .overlay > p { margin: 0; font-size: 16px; color: var(--steel-2); letter-spacing: 0.04em; }
+
+    /* Title block. The subtitle rides inside the h1 as <small>. */
+    .title {
+      margin: 0;
+      font-size: 64px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0.04em;
+      color: var(--moon);
+      text-shadow: 6px 6px 0 var(--outline);
     }
-    input { background: var(--night-1); color: var(--moon); max-width: 100%; }
-    button {
-      background: var(--amber-1);
-      color: var(--night-0);
-      border-color: var(--amber-2);
+    .title small {
+      display: block;
+      margin-top: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--steel-2);
+      text-shadow: none;
+    }
+
+    /* Room code */
+    .room-code {
+      margin: 8px 0 0;
+      font-size: 56px;
+      font-weight: 800;
+      line-height: 1;
+      letter-spacing: 0.3em;
+      text-indent: 0.3em;
+      color: var(--amber-1);
+      text-shadow: 4px 4px 0 var(--outline);
+    }
+    .room-code::before {
+      content: "ROOM CODE";
+      display: block;
+      margin-bottom: 10px;
+      font-size: 14px;
       font-weight: 700;
+      letter-spacing: 0.3em;
+      color: var(--steel-2);
+      text-shadow: none;
+    }
+
+    /* Player rows: dot | character + status | ready check */
+    .roster { display: flex; flex-direction: column; gap: 10px; width: 440px; max-width: 100%; }
+    .player-row {
+      --dot: var(--steel-2);
+      display: grid;
+      grid-template-columns: 16px 1fr 28px;
+      align-items: center;
+      gap: 14px;
+      padding: 10px 18px;
+      font-size: 20px;
+      text-align: left;
+      background: var(--night-1);
+      border: 2px solid var(--steel-0);
+      border-radius: 8px;
+    }
+    .player-row[data-character="drifter"] { --dot: var(--drifter-key); }
+    .player-row[data-character="conductor"] { --dot: var(--conductor-key); }
+    .player-row::before {
+      content: "";
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--dot);
+      border: 2px solid var(--outline);
+      box-shadow: 0 0 0 2px var(--steel-2);
+    }
+    .player-row::after {
+      content: "\2713";
+      font-size: 26px;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--amber-1);
+      opacity: 0;
+    }
+    .player-row[data-ready="true"]::after { opacity: 1; }
+    .player-row h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.08em; }
+    .player-row p { margin: 2px 0 0; font-size: 20px; color: var(--steel-2); }
+    .player-row[data-ready="true"] p { color: var(--moon); }
+
+    /* Inputs */
+    .overlay input {
+      font: inherit;
+      font-size: 20px;
+      width: 380px;
+      max-width: 100%;
+      padding: 12px 16px;
+      text-align: center;
+      letter-spacing: 0.04em;
+      color: var(--moon);
+      background: var(--night-1);
+      border: 2px solid var(--steel-2);
+      border-radius: 6px;
+    }
+    .overlay input::placeholder { color: var(--steel-2); }
+    .overlay input:focus-visible { outline: none; border-color: var(--amber-1); }
+
+    /* Buttons */
+    .actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 16px; }
+    .btn {
+      font: inherit;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      padding: 12px 24px;
+      color: var(--moon);
+      background: var(--night-1);
+      border: 2px solid var(--amber-1);
+      border-radius: 6px;
       cursor: pointer;
+      transition: background-color 0.12s, color 0.12s, transform 0.08s;
     }
-    button:hover:not(:disabled) { background: var(--moon); }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    button:focus-visible, input:focus-visible {
-      outline: 3px solid var(--moon);
-      outline-offset: 3px;
+    .btn:hover:not(:disabled), .btn[aria-pressed="true"] { background: var(--amber-1); color: var(--night-0); }
+    .btn:active:not(:disabled) { transform: translateY(2px); }
+    .btn:disabled { cursor: default; color: var(--steel-2); border-color: var(--steel-2); }
+    .btn:focus-visible { outline: 3px solid var(--moon); outline-offset: 3px; }
+    .btn-primary { font-size: 24px; padding: 16px 48px; box-shadow: 0 4px 0 var(--outline); }
+    .btn-primary:active:not(:disabled) { box-shadow: 0 2px 0 var(--outline); }
+
+    /* Result: h1 is the verdict coloured by outcome, h2 the winner name at 72 px */
+    #result h1 {
+      margin: 0;
+      font-size: 40px;
+      font-weight: 800;
+      letter-spacing: 0.2em;
+      text-indent: 0.2em;
+      color: var(--moon);
     }
-    #banner {
+    #result[data-verdict="win"] h1 { color: var(--amber-1); }
+    #result[data-verdict="lose"] h1 { color: var(--danger); }
+    #result[data-verdict="draw"] h1 { font-size: 72px; letter-spacing: 0.06em; text-indent: 0.06em; color: var(--moon); text-shadow: 6px 6px 0 var(--outline); }
+    #result h2 {
+      margin: 0;
+      font-size: 72px;
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: 0.04em;
+      color: var(--moon);
+      text-shadow: 6px 6px 0 var(--outline);
+    }
+    #result .btn-primary { margin-top: 12px; }
+
+    /* Error banner: danger strip at the top; .banner--match drops it under the HUD band during a match. */
+    .banner {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
       z-index: 100;
-      padding: 0.75rem 1rem;
-      background: var(--danger);
-      color: var(--night-0);
+      padding: 10px 16px;
+      font-size: 16px;
       font-weight: 700;
+      letter-spacing: 0.04em;
       text-align: center;
+      color: var(--night-0);
+      background: var(--danger);
+      box-shadow: 0 3px 0 var(--outline);
+    }
+    .banner--match { top: max(60px, 14vh); }
+
+    /* Calibration (markup arrives in Phase 6): centred prompt, 360 px amber progress, 320 px camera preview
+       pinned bottom-left. Fill the progress by setting the inner element's width. */
+    .calib { font-size: 28px; font-weight: 700; letter-spacing: 0.04em; }
+    .calib p { margin: 0; font-size: 28px; color: var(--moon); }
+    .progress {
+      width: 360px;
+      max-width: 90vw;
+      height: 16px;
+      overflow: hidden;
+      background: var(--night-1);
+      border: 2px solid var(--amber-1);
+      border-radius: 999px;
+    }
+    .progress > * { display: block; height: 100%; width: 0; background: var(--amber-1); transition: width 0.1s linear; }
+    .calib video, .calib canvas {
+      position: fixed;
+      left: 16px;
+      bottom: 16px;
+      width: 320px;
+      max-width: 40vw;
+      border: 2px solid var(--steel-2);
+      border-radius: 6px;
+      background: var(--night-0);
     }
   </style>
 </head>
 <body>
   <div id="game"></div>
-  <div id="lobby" hidden></div>
-  <div id="calibration" hidden></div>
-  <div id="result" hidden></div>
-  <div id="banner" role="alert" hidden></div>
+  <div id="lobby" class="overlay" hidden></div>
+  <div id="calibration" class="overlay calib" hidden></div>
+  <div id="result" class="overlay" hidden></div>
+  <div id="banner" class="banner" role="alert" hidden></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

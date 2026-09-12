@@ -11,6 +11,7 @@ Create: `packages/client/src/game/hud.ts`.
 
 ## Exposes
 - `class Hud { constructor(scene); update(state: MatchState, dtSec: number): void }`
+- `Hud.setNames(names: [string, string]): void` — player names shown under the bars; defaults `THE DRIFTER` / `THE CONDUCTOR`. Names are not in `MatchState`, so 4.07 wires them from the LOBBY message. (integrator amendment)
 
 ## Behaviour
 1. Bars: at y 24, 380 × 22, from each screen edge inward (P1 grows right from x 20, P2 grows left from x 940). Fill `amber-1` above 50 %, `moon` 25–50 %, `danger` below. Border `outline` 3 px. A `danger` ghost segment behind the fill drains from the previous hp to the current over 400 ms.
