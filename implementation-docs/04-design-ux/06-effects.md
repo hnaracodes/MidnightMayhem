@@ -11,6 +11,12 @@ Create: `packages/client/src/game/effects.ts`.
 
 ## Exposes
 - `class Effects { constructor(scene); consume(events: SimEvent[], state: MatchState): void; frozen(i): FighterState | null; fillFor(i): { fillOverride?, fillAlpha? }; squashFor(i): number; update(dtSec): void }`
+- `koFrames(i): number` — render frames since the KO `ROUND_END` for that fighter, 0 when none (integrator amendment)
+- `landFrames(i): number` — render frames since that fighter's last landing, large when none yet (integrator amendment)
+- `timeScale(): number` — 0.25 during the 30-frame KO slowdown, else 1; the scene multiplies its render clock by it (integrator amendment)
+- `drawTrail(i, shoulder: {x,y}, fist: {x,y}): void` — the scene calls this during active punch ticks with the joints from `computePose`; draws the rule 7 arc (integrator amendment)
+- Effects imports nothing from `rig/`; joints cross the boundary as structural `{x, y}` points. Hit-stop is a display freeze through `frozen(i)`, never a Phaser pause; shake goes through `scene.cameras.main.shake` (integrator amendment)
+- Dev-only preview: `packages/client/dev/fx.html` + `src/dev/fxPreview.ts`, not a build input, exposes `window.__fx` for the screenshot driver (integrator amendment)
 
 ## Behaviour
 1. HIT not blocked: freeze both fighters' displayed state for 4 render frames (`frozen(i)` returns the snapshot at the hit); target `fillOverride` white 70 % for 2 frames then `danger` 30 % for 4; `fx_impact` spark at the target's chest offset 20 px toward the attacker (8 radial `amber-1` lines plus a `moon` core, scale 0.6→1.3 over 6 frames, fading); camera shake 3 px for 6 frames when damage ≥ 12.
@@ -27,6 +33,7 @@ Create: `packages/client/src/game/effects.ts`.
 - Effects fire once per event id (events arrive exactly once from the server; the scene drains them once).
 
 ## Tests
+- `packages/client/test/effects.test.ts` (integrator amendment): frame counters, flashes, freeze, KO `timeScale`, vignette alpha and Graphics destruction against a stub scene.
 - Visual in the arena: a clean hit stops, flashes, sparks and shakes; a blocked hit only rings; jumping and landing puff dust; the edge glows red and pulses while draining hp.
 
 ## Done when
