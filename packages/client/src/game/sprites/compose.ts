@@ -266,8 +266,10 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
   let torso = parts.torso;
   if (state === "block" && parts.torsoBlock) torso = parts.torsoBlock;
   else if (parts.torsoBlink && isBlinkOn(opts.blinkMs ?? 0)) torso = parts.torsoBlink;
-  const segDeg = (Math.atan2(neck.x - hip.x, hip.y - neck.y) * 180) / Math.PI;
-  const lean = Math.abs(joints.lean) < LEAN_AUTHORED ? 0 : quantise(segDeg);
+  // The angle comes from the rig's analytic lean (positive toward facing, the same sign as neck.x - hip.x here), not
+  // from the rounded hip/neck pixels: over an 18 px spine a 1 px rounding step is ~3°, so a torso resting near the
+  // threshold (the Stoker's 8°) would flicker between upright and a 15° shear with every idle bob.
+  const lean = Math.abs(joints.lean) < LEAN_AUTHORED ? 0 : quantise(joints.lean);
   if (lean === 0) canvas.blit(torso, hip.x, hip.y, false);
   else if (Math.abs(lean) <= LEAN_SHEAR_MAX) canvas.blitSheared(torso, hip.x, hip.y, false, Math.tan((lean * Math.PI) / 180));
   else canvas.blitRotated(torso, hip.x, hip.y, false, lean);
