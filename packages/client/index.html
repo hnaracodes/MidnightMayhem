@@ -212,7 +212,7 @@
 
     /* Calibration (markup arrives in Phase 6): centred prompt, 360 px amber progress, 320 px camera preview
        pinned bottom-left. Fill the progress by setting the inner element's width. */
-    .calib { font-size: 28px; font-weight: 700; letter-spacing: 0.04em; }
+    .calib { z-index: 12; font-size: 28px; font-weight: 700; letter-spacing: 0.04em; } /* above .campreview (11) */
     .calib p { margin: 0; font-size: 28px; color: var(--moon); }
     .progress {
       width: 360px;
@@ -234,6 +234,65 @@
       border-radius: 6px;
       background: var(--night-0);
     }
+
+    /* In-match camera preview (Phase 6 amendment): 240 px box pinned bottom-left, above the arena canvas and
+       the lobby (z 11) but under the calibration overlay (12) and the banner (100). Pointer events pass
+       through. #campreview is written by src/app/cameraPreview.ts; V toggles it. */
+    .campreview {
+      position: fixed;
+      left: 8px;
+      bottom: 8px;
+      z-index: 11;
+      width: 240px;
+      max-width: calc(100vw - 16px);
+      padding: 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--moon);
+      background: rgba(7, 11, 24, 0.85);
+      border: 2px solid var(--steel-1);
+      border-radius: 8px;
+      pointer-events: none;
+      user-select: none;
+      --ok: #4ADE80; /* gate passed; the palette has no green, so it lives only here */
+    }
+    /* While the big preview is up, the compact calibration box drops its own 160 px preview (same picture)
+       so the two never overlap even at 540 px tall. */
+    body:has(.campreview:not([hidden])) #calibration[data-mode="compact"] .calib-preview { display: none !important; }
+    .campreview-view {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      overflow: hidden;
+      background: var(--night-0);
+      border: 1px solid var(--steel-2);
+      border-radius: 4px;
+    }
+    .campreview-view canvas { display: block; width: 100%; height: 100%; }
+    .campreview-dots { display: flex; gap: 4px; }
+    .campreview-dots > span {
+      flex: 1;
+      padding: 2px 0;
+      text-align: center;
+      color: var(--steel-2);
+      background: var(--night-1);
+      border: 1px solid var(--steel-1);
+      border-radius: 3px;
+      transition: background-color 0.05s, color 0.05s;
+    }
+    .campreview-dots > span.on { color: var(--night-0); background: var(--amber-1); border-color: var(--amber-1); }
+    .campreview-status { color: var(--steel-2); font-weight: 600; text-transform: lowercase; }
+    .campreview-gates { display: flex; flex-direction: column; gap: 2px; font-family: ui-monospace, Menlo, monospace; font-size: 10px; }
+    .campreview-gates > div { display: flex; gap: 6px; align-items: baseline; }
+    .campreview-hand { width: 10px; color: var(--steel-2); }
+    .campreview-hand.on { color: var(--amber-1); }
+    .campreview-gate { color: var(--steel-2); }
+    .campreview-gate > b { margin-left: 2px; }
+    .campreview-gate > b.ok { color: var(--ok); }
+    .campreview-gate > b.no { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -241,6 +300,7 @@
   <div id="lobby" class="overlay" hidden></div>
   <div id="calibration" class="overlay calib" hidden></div>
   <div id="result" class="overlay" hidden></div>
+  <div id="campreview" class="campreview" aria-label="Camera preview" hidden></div>
   <div id="banner" class="banner" role="alert" hidden></div>
   <script type="module" src="/src/main.ts"></script>
 </body>

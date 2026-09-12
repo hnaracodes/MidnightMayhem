@@ -1,6 +1,7 @@
 import { PROTOCOL_VERSION, type LobbyPlayer } from "@midnight/shared";
 import { PAUSED_BANNER, pausedByVisibility, showBanner } from "./app/banner";
 import { CalibrationOverlay } from "./app/calibrationOverlay";
+import { CameraPreview, debugFanOut } from "./app/cameraPreview";
 import { type CameraButton, Lobby } from "./app/lobby";
 import { ResultOverlay } from "./app/result";
 import { startGame } from "./game/config";
@@ -34,6 +35,7 @@ let lastLobby: { roomId: string; players: [LobbyPlayer | null, LobbyPlayer | nul
 
 // ---- Camera (Phase 6 rules 1–3) ----
 const overlay = new CalibrationOverlay();
+const preview = new CameraPreview();
 let vision: VisionInputSource | null = null;
 let cameraStarting = false;
 let autoCameraDone = false;
@@ -56,6 +58,8 @@ function cameraLive(source: VisionInputSource): void {
   session.visionAvailable = true;
   cameraStarting = false;
   renderRoom();
+  // Room screen (rule 6): the player sees themselves before Ready. V toggles it at any time.
+  preview.show();
 }
 
 async function enableCamera(): Promise<void> {
@@ -65,7 +69,9 @@ async function enableCamera(): Promise<void> {
   renderRoom();
 
   const source = new VisionInputSource();
-  overlay.bind(source);
+  const debug = debugFanOut(source); // onDebug holds one callback; both consumers share it
+  overlay.bind(source, debug);
+  preview.bind(source, debug);
   overlay.setMode(hasSnapshot ? "compact" : "full");
   overlay.show();
   // start() resolves only when calibration is ready, which needs a person in frame; the camera itself is
@@ -130,6 +136,23 @@ function setPaused(paused: boolean): void {
 }
 document.addEventListener("visibilitychange", () => setPaused(pausedByVisibility(document.visibilityState)));
 
+// ---- Testing keys (Phase 6 rule 6): V toggles the camera preview, R dumps the last seconds of vision samples ----
+window.addEventListener("keydown", (event) => {
+  if (event.repeat || event.target instanceof HTMLInputElement) return;
+  if (event.code === "KeyV") preview.toggle();
+  if (event.code === "KeyR") dumpVision();
+});
+
+/** Logs the recorder ring (added by the vision lane as `dump()`; optional so this compiles before it lands). */
+function dumpVision(): void {
+  const source = vision as (VisionInputSource & { dump?(): unknown[] }) | null;
+  const json = JSON.stringify(source?.dump?.() ?? []);
+  console.log("[vision dump]", json);
+  if (typeof navigator !== "undefined" && navigator.clipboard) {
+    navigator.clipboard.writeText(json).catch((err: unknown) => console.warn("[vision dump] clipboard", err));
+  }
+}
+
 // ---- Network ----
 client.onStatus = (status) => {
   if (status === "closed" && connected) {
@@ -176,13 +199,17 @@ client.on("SNAPSHOT", (message) => {
     overlay.setMode("compact");
   }
 
+  const wasRunning = matchRunning;
   matchRunning = message.state.phase !== "MATCH_END";
   setMatchBanner(matchRunning);
   if (matchRunning) lobby.hide();
+  // Rule 6: the preview comes up with every match on a camera player and goes away with the result screen.
+  if (matchRunning && !wasRunning && session.visionAvailable) preview.show();
   if (message.state.phase === "COUNTDOWN") result.hide();
 
   const matchEnd = message.events.find((event) => event.type === "MATCH_END");
   if (matchEnd?.type === "MATCH_END") {
+    preview.hide();
     result.show(matchEnd.winner, session.localIndex);
   }
 });
@@ -198,5 +225,6 @@ if (session.debug) {
     latest: () => session.buffer.latest(),
     sender: inputSender,
     calibration: () => vision?.calibrationState() ?? null,
+    preview,
   };
 }
