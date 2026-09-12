@@ -82,6 +82,9 @@ export const ARSENAL = {
  * ARSENAL.THROW_STARTUP + THROW_RECOVERY, the total `combat.ts` clears the action at.
  */
 export const THROW = {
+  // CHARGE_ENABLED false (owner, 2026-09-12 13:40): every throw is a single use at VISION_CHARGE range; the
+  // hold-to-charge path stays in the code behind this flag.
+  CHARGE_ENABLED: false,
   CHARGE_MAX: 90, MIN_RANGE: 120, MAX_RANGE: 640, ANGLE_DEG: 45, VISION_CHARGE: 0.7, RELEASE_TICKS: 6, RECOVERY: 12,
 } as const;
 

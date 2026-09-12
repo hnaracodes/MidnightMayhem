@@ -1,7 +1,8 @@
 import type { ItemId } from "@midnight/shared";
 import type { Metrics } from "../metrics";
 import {
-  WINDUP_DROP, WINDUP_ELBOW_DEG, WINDUP_EXTEND, WINDUP_OFF, WINDUP_ON, WINDUP_RAISE,
+  WINDUP_DROP, WINDUP_ENABLED,
+  WINDUP_ELBOW_DEG, WINDUP_EXTEND, WINDUP_OFF, WINDUP_ON, WINDUP_RAISE,
 } from "../thresholds";
 
 /** Items a wind-up can throw (9.10). Mirrors the sim's throwables; the sim stays the truth. */
@@ -43,7 +44,7 @@ export class Windup {
     const bent = elbow <= WINDUP_ELBOW_DEG && raise >= WINDUP_RAISE;
     const released = elbow >= WINDUP_ELBOW_DEG + WINDUP_EXTEND || raise < WINDUP_DROP;
 
-    if (!isThrowable(held)) {
+    if (!WINDUP_ENABLED || !isThrowable(held)) {
       this.active = false;
       this.onCount = this.offCount = 0;
     } else if (this.active) {

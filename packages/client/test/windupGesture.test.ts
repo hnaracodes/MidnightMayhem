@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { classify } from "../src/vision/classify";
 import { Slash } from "../src/vision/gestures/slash";
 import { Windup } from "../src/vision/gestures/windup";
@@ -7,6 +7,9 @@ import {
   CHOP_DROP, CHOP_EXT, SLASH_EXCLUSIVE_MS, SWEEP_TRAVEL, WINDUP_DROP, WINDUP_ELBOW_DEG, WINDUP_EXTEND, WINDUP_OFF,
   WINDUP_ON, WINDUP_RAISE,
 } from "../src/vision/thresholds";
+
+// The wind-up ships disabled (owner: throwables are use-only); these tests exercise it with the flag on.
+vi.mock("../src/vision/thresholds", async (importOriginal) => ({ ...(await importOriginal<object>()), WINDUP_ENABLED: true }));
 
 const FRAME = 33;
 

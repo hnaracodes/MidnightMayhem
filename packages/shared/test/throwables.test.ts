@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ARSENAL, BALANCE, EMPTY_FRAME, ITEMS, THROW, WORLD,
   type InputFrame, type ItemId, type MatchState, type SimEvent,
@@ -9,6 +9,31 @@ import { advanceProjectiles, chargeToRange, startThrow, throwVelocity, THROW_REL
 import { advanceHazards, hazardRect, spawnHazard } from "../src/sim/hazards";
 
 const NONE: [InputFrame, InputFrame] = [EMPTY_FRAME, EMPTY_FRAME];
+
+// The hold-to-charge path (9.08) is off by default since the owner made throwables use-only (2026-09-12); every
+// rule below that holds a key still runs with the flag on, so the path stays verified for when it is turned back on.
+const throwFlags = THROW as { CHARGE_ENABLED: boolean };
+const DEFAULT_CHARGE_ENABLED = THROW.CHARGE_ENABLED;
+beforeAll(() => { throwFlags.CHARGE_ENABLED = true; });
+afterAll(() => { throwFlags.CHARGE_ENABLED = DEFAULT_CHARGE_ENABLED; });
+
+describe("0. use-only throws (CHARGE_ENABLED false, the shipped default)", () => {
+  beforeAll(() => { throwFlags.CHARGE_ENABLED = false; });
+  afterAll(() => { throwFlags.CHARGE_ENABLED = true; });
+  it("the shipped default is use-only", () => {
+    expect(DEFAULT_CHARGE_ENABLED).toBe(false);
+  });
+  it("a tap, a 30-tick hold and a 90-tick hold all land at the same VISION_CHARGE range", () => {
+    const tap = landed("molotov");
+    const d1 = tap.h.x - (280 + HAND_X);
+    expect(d1).toBeGreaterThanOrEqual(MEDIUM_RANGE - 15);
+    expect(d1).toBeLessThanOrEqual(MEDIUM_RANGE + 15);
+    // the key never comes up: with charging off the throw still leaves at once and lands at the same spot
+    const held = runUntil(fighting("molotov"), 300, [P_L, EMPTY_FRAME], (e) => e.type === "HAZARD_SPAWN");
+    expect(held.tick).toBeGreaterThan(0);
+    expect(Math.abs(held.s.hazards[0]!.x - tap.h.x)).toBeLessThan(1);
+  });
+});
 const P_L: InputFrame = { ...EMPTY_FRAME, punchL: true };
 /** Ticks from the release (key up or CHARGE_MAX) until the action clears; combat.ts owns the clear. */
 const THROW_TOTAL = THROW.RELEASE_TICKS + THROW.RECOVERY;

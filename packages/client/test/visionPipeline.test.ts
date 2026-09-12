@@ -1,5 +1,5 @@
 import { EMPTY_FRAME, framesEqual, type InputFrame, type InputKey } from "@midnight/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   VisionInputSource, createPipeline, processLandmarks, type DebugFrame, type Pipeline,
 } from "../src/vision/VisionInputSource";
@@ -22,6 +22,9 @@ import {
   WINDUP_RAISE,
 } from "../src/vision/thresholds";
 import type { Landmark, ObjectBox, PoseResult, ResultMessage } from "../src/vision/workerClient";
+
+// The wind-up ships disabled (owner: throwables are use-only); these tests exercise it with the flag on.
+vi.mock("../src/vision/thresholds", async (importOriginal) => ({ ...(await importOriginal<object>()), WINDUP_ENABLED: true }));
 
 /**
  * End-to-end pipeline tests: synthetic 33-landmark frames (image + world) go through the exact

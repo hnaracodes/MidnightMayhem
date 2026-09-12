@@ -71,9 +71,11 @@ export function advanceThrowCharge(s: MatchState, inputs: readonly InputFrame[])
     a.elapsed = 0;
     const input = inputs[i];
     const held = input ? (a.arm === "L" ? input.punchL : input.punchR) : false;
-    if (held) a.charge = Math.min(THROW.CHARGE_MAX, a.charge + 1);
-    if (held && a.charge < THROW.CHARGE_MAX) continue;
-    if (a.charge < TAP_TICKS) a.charge = THROW.VISION_CHARGE * THROW.CHARGE_MAX;
+    if (THROW.CHARGE_ENABLED) {
+      if (held) a.charge = Math.min(THROW.CHARGE_MAX, a.charge + 1);
+      if (held && a.charge < THROW.CHARGE_MAX) continue;
+    }
+    if (!THROW.CHARGE_ENABLED || a.charge < TAP_TICKS) a.charge = THROW.VISION_CHARGE * THROW.CHARGE_MAX;
     a.phase = "release";
     a.elapsed = 0;
   }

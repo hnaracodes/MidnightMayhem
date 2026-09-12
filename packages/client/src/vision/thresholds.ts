@@ -99,6 +99,7 @@ export const WINDUP_ELBOW_DEG = 110; // shoulder–elbow–wrist angle at or bel
 export const WINDUP_RAISE = 0.1; // wrist must be at least this far above the shoulder, in S
 export const WINDUP_EXTEND = 40; // elbow opening past WINDUP_ELBOW_DEG + this releases (the throw)
 export const WINDUP_DROP = -0.2; // raise below this (hand dropped) also releases
+export const WINDUP_ENABLED = false; // owner 2026-09-12 13:40: throwables are use-only (a thrust throws); the wind-up stays behind this flag
 export const WINDUP_ON = 3; // frames of the bent pose before the wind-up starts
 export const WINDUP_OFF = 2; // frames of the release pose before the throw fires
 
