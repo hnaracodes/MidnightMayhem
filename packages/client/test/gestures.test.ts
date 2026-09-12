@@ -27,6 +27,8 @@ function metrics(o: Partial<Metrics> = {}): Metrics {
     depthR: 0,
     atHeightL: false,
     atHeightR: false,
+    wristHeightL: 0,
+    wristHeightR: 0,
     thrustL: false,
     thrustR: false,
     dropL: 0,

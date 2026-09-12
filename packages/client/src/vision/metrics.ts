@@ -26,6 +26,9 @@ export interface Metrics {
   /** Wrist within AT_HEIGHT of shoulder height. */
   atHeightL: boolean;
   atHeightR: boolean;
+  /** Signed wrist height relative to its shoulder, in S; negative is above. */
+  wristHeightL: number;
+  wristHeightR: number;
   /** Extension fell by at least THRUST_DROP within THRUST_WINDOW_MS. */
   thrustL: boolean;
   thrustR: boolean;
@@ -108,14 +111,15 @@ function arm(
   ts: number,
   extBuffer: RingBuffer<number>,
   sideBuffer: RingBuffer<number>,
-): { ext: number; depth: number; atHeight: boolean; thrust: boolean; drop: number; side: number; jabRise: number } {
+): { ext: number; depth: number; atHeight: boolean; wristHeight: number; thrust: boolean; drop: number; side: number; jabRise: number } {
   const shoulder = landmarks[shoulderIdx] as Landmark;
   const wrist = landmarks[wristIdx] as Landmark;
   const ext = dist2D(wrist, shoulder) / baseline.armLen;
   const ws = world[shoulderIdx];
   const ww = world[wristIdx];
   const depth = ws && ww ? ws.z - ww.z : 0;
-  const atHeight = Math.abs(wrist.y - shoulder.y) < AT_HEIGHT * baseline.S;
+  const wristHeight = (wrist.y - shoulder.y) / baseline.S;
+  const atHeight = Math.abs(wristHeight) < AT_HEIGHT;
   const side = ((xm(wrist) - xm(shoulder)) * outward) / baseline.armLen;
   // Velocity gates run on the unsmoothed landmarks so the EMA cannot blunt a fast move.
   const rawShoulder = raw[shoulderIdx] ?? shoulder;
@@ -124,7 +128,7 @@ function arm(
   sideBuffer.push(ts, ((xm(rawWrist) - xm(rawShoulder)) * outward) / baseline.armLen);
   const drop = extBuffer.maxDropWithin(THRUST_WINDOW_MS);
   const jabRise = sideBuffer.maxRiseWithin(JAB_WINDOW_MS);
-  return { ext, depth, atHeight, thrust: drop >= THRUST_DROP, drop, side, jabRise };
+  return { ext, depth, atHeight, wristHeight, thrust: drop >= THRUST_DROP, drop, side, jabRise };
 }
 
 /**
@@ -179,6 +183,8 @@ export function computeMetrics(
     depthR: R.depth,
     atHeightL: L.atHeight,
     atHeightR: R.atHeight,
+    wristHeightL: L.wristHeight,
+    wristHeightR: R.wristHeight,
     thrustL: L.thrust,
     thrustR: R.thrust,
     dropL: L.drop,

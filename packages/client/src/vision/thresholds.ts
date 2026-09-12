@@ -81,9 +81,10 @@ export const YOLO_IOU = 0.5; // NMS IoU threshold for the YOLOv8/11 layout (the 
 export const YOLO_EVERY_N = 4; // YOLO runs on every Nth pose frame (MediaPipe uses OBJECT_EVERY_N)
 export const BACKEND_MAX_THROWS = 3; // consecutive detect() throws after which the backend is disabled for the session
 
-// ---- 9.04 laser (both arms thrust forward together) ----
-export const LASER_EXT = 0.55; // both extensions must be below this (arms pointing at the camera)
-export const LASER_GAP = 0.5; // wrists must be within this of each other, in S
+// ---- 9.04 laser (right wrist swept outward) ----
+export const LASER_SIDE_OFFSET = 0.6; // right wrist must be this far outward from its shoulder, in S
+export const LASER_SIDE_RISE = 0.3; // right wrist must have moved this far outward within the jab window, in S
+export const LASER_HEIGHT = 1.0; // the right hand may aim up or down by this many shoulder-widths
 export const LASER_DEBOUNCE_ON = 2; // frames before special turns on
 export const LASER_DEBOUNCE_OFF = 3; // frames before special turns off
 

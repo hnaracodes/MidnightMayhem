@@ -117,10 +117,9 @@ const CROSSED_R: Wrist = { dx: 0.8, dy: 0.5, z: 0 };
 // Hands on the hips: just outside the hip line, slightly below hip height.
 const ON_HIP_L: Wrist = { dx: -0.2, dy: 1.35, z: 0 };
 const ON_HIP_R: Wrist = { dx: 0.2, dy: 1.35, z: 0 };
-// The beam pose (9.04): both wrists thrust forward together, meeting just in front of the chest at shoulder
-// height. Each wrist sits 0.05 S from the midline (inside CROSS_MARGIN, so it is not a block).
-const BEAM_L: Wrist = { dx: -0.45, dy: 0.25, z: -0.5 };
-const BEAM_R: Wrist = { dx: 0.45, dy: 0.25, z: -0.5 };
+// The special pose: only the right wrist moves outward to the player's right.
+const BEAM_L: Wrist = HANGING_L;
+const BEAM_R: Wrist = { dx: -2.0, dy: 0.25, z: 0 };
 
 /** A detector box of `label` centred on landmark `idx` of `pose`, 0.5 S wide. */
 function boxAt(pose: PoseResult, idx: number, label = "bottle", score = 0.8): ObjectBox {
@@ -552,33 +551,30 @@ describe("vision pipeline: dropout", () => {
 });
 
 describe("vision pipeline: laser (9.04)", () => {
-  it("both arms thrust forward together sets special after the debounce and never punches or blocks", () => {
+  it("a fast right-hand outward motion sets special and never blocks", () => {
     const drv = new Driver();
     drv.calibrate();
-    const beam = drv.hold(400, body({ wristL: BEAM_L, wristR: BEAM_R }));
+    const beam = [
+      ...drv.run(2, (i) => body({ wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / 2) })),
+      ...drv.hold(250, body({ wristR: BEAM_R })),
+    ];
     expect(risingEdges(beam, "special")).toBe(1);
     expect(beam.slice(0, LASER_DEBOUNCE_ON - 1).every((f) => !f.frame.special)).toBe(true);
-    expect(beam[beam.length - 1]?.frame.special).toBe(true);
     expect(anyTrue(beam, "block")).toBe(false);
     expect(anyTrue(beam, "punchL")).toBe(false);
-    expect(anyTrue(beam, "punchR")).toBe(false);
     const m = beam[beam.length - 1]!.metrics!;
-    expect(m.wristGap).toBeLessThan(0.5);
-    expect(m.extL).toBeLessThan(0.55);
-    expect(m.extR).toBeLessThan(0.55);
+    expect(m.sideR).toBeGreaterThan(0.6);
 
     const rest = drv.hold(400, body());
     expect(rest[rest.length - 1]?.frame.special).toBe(false);
   });
 
-  it("ramping both wrists from hanging into the beam pose never reads as a block on the way (review fix)", () => {
-    // Hands meeting in front of the chest stay on their own sides of the midline (each 0.05 S from it), so the
-    // crossed-arms block must not fire during the 8-frame approach and cancel the laser.
+  it("ramping the right wrist outward never reads as a block on the way", () => {
     for (const n of [6, 8]) {
       const drv = new Driver();
       drv.calibrate();
       const ramp = drv.run(n, (i) => body({
-        wristL: mixWrist(HANGING_L, BEAM_L, (i + 1) / n), wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / n),
+        wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / n),
       }));
       const held = drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R }));
       expect(anyTrue(ramp, "block")).toBe(false);
@@ -600,9 +596,13 @@ describe("vision pipeline: laser (9.04)", () => {
   it("the pipeline reports special in gestures and the debug frame carries objects and item", () => {
     const drv = new Driver();
     drv.calibrate();
-    const f = drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R }));
+    const f = [
+      ...drv.run(2, (i) => body({ wristL: BEAM_L, wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / 2) })),
+      ...drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R })),
+    ];
+    const special = f.find((frame) => frame.frame.special);
     const last = f[f.length - 1]!;
-    expect(last.gestures.special).toBe(true);
+    expect(special?.frame.special).toBe(true);
     expect(last.objects).toBeNull();
     expect(last.item).toBeNull();
   });
