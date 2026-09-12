@@ -14,6 +14,8 @@ import { VisionInputError, type VisionErrorCode } from "./vision/errors";
 import { VisionInputSource } from "./vision/VisionInputSource";
 
 const client = new WsClient();
+// Debug-only RTT probe (the arena overlay shows it); the demo build sends nothing extra.
+if (session.debug) client.startPing((rtt) => { session.rtt = rtt; });
 const keyboard = new KeyboardInputSource();
 const inputSource = new MergedInputSource([keyboard]);
 const inputSender = new InputSender(client, inputSource);

@@ -156,8 +156,9 @@ export class ArenaScene extends Phaser.Scene {
   private updateDebugText(state: MatchState, now: number): void {
     const age = Math.max(0, now - this.newestAt).toFixed(0);
     const lag = this.clock.lagMs(now).toFixed(0);
+    const rtt = session.rtt === null ? "n/a" : `${session.rtt.toFixed(1)} ms`;
     this.debugText!.setText(
-      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt n/a  ${state.phase}`,
+      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  ${state.phase}`,
     );
   }
 }
