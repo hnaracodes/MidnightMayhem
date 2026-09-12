@@ -235,7 +235,7 @@ describe("map drawing", () => {
   it("13.05 bob moves the mask, glow, slices and images together", () => {
     const { scene } = stubScene();
     const layers = createBackgrounds(scene, "chaos");
-    expect(layers.map.images).toHaveLength(4);
+    expect(layers.map.images).toHaveLength(5); // 2 gap edges + 3 racks (the centre rack is Battlefield's top platform)
     const before = layers.map.images.map((i) => (i as unknown as FakeObject).y);
     layers.map.bob(3);
     layers.map.images.forEach((i, k) => expect((i as unknown as FakeObject).y).toBe(before[k]! + 3));
@@ -247,7 +247,8 @@ describe("map drawing", () => {
     const { scene } = stubScene();
     const layers = createBackgrounds(scene, "chaos");
     expect(layers.map.spans.gaps).toHaveLength(2);
-    expect(layers.map.spans.platforms).toHaveLength(2);
+    expect(layers.map.spans.platforms).toHaveLength(3);
+    expect(layers.map.spans.platforms[2]).toEqual({ x0: 390, x1: 570, y: 230 });
     layers.map.setMap("roof");
     expect(layers.map.spans).toEqual({ gaps: [], platforms: [] });
     const plain = createBackgrounds(stubScene().scene);

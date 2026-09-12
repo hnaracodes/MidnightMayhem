@@ -99,11 +99,14 @@ export const MAP_IDS = ["roof", "gaps", "platforms", "chaos"] as const;
 export type MapId = (typeof MAP_IDS)[number];
 const GAPS_GROUND = [{ x0: 0, x1: 300 }, { x0: 380, x1: 580 }, { x0: 660, x1: 960 }];
 const RACK_PLATFORMS = [{ x0: 150, x1: 330, y: 330 }, { x0: 630, x1: 810, y: 330 }];
+// Owner 2026-09-12: chaos adds a third rack, same 180 px span, centred over the middle ground segment and 100 px above
+// the side racks (reachable from either rack with a jump, apex ~151 px; not straight from the roof).
+const CHAOS_PLATFORMS = [...RACK_PLATFORMS, { x0: 390, x1: 570, y: 230 }];
 export const MAPS: Record<MapId, { label: string; ground: { x0: number; x1: number }[]; platforms: { x0: number; x1: number; y: number }[] }> = {
   roof: { label: "Roof", ground: [{ x0: 0, x1: 960 }], platforms: [] },
   gaps: { label: "Gaps", ground: GAPS_GROUND, platforms: [] },
   platforms: { label: "Platforms", ground: [{ x0: 0, x1: 960 }], platforms: RACK_PLATFORMS },
-  chaos: { label: "Chaos", ground: GAPS_GROUND, platforms: RACK_PLATFORMS },
+  chaos: { label: "Chaos", ground: GAPS_GROUND, platforms: CHAOS_PLATFORMS },
 };
 export const PIT = { Y: 520, DAMAGE: 8, TICKS: 40, RESPAWN_INSET: 40, INVULN: 30 } as const;
 
