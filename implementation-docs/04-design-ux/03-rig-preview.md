@@ -11,6 +11,7 @@ Create: `packages/client/rig.html`, `packages/client/src/rigPreview.ts`.
 
 ## Exposes
 - URL `/rig.html` in dev and build.
+- `window.__rig = { setState(state, tick), setFacing(f), setCar(car), setWind(px), flash(), overlays(bool) }` dev hook so the headless driver can pose the page without clicking (integrator amendment). `setState` pins a per-state tick: punch elapsed, ko frames, hit hitstun, walk x, idle/block/win render ms.
 
 ## Behaviour
 1. A Phaser scene at 960 × 540 rendered at 2× CSS scale. Background per 4.04 scrolling at the standard speed.

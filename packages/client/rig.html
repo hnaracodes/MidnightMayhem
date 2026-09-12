@@ -4,6 +4,84 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Midnight Mayhem — Rig Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --night-0: #070B18;
+      --night-1: #101A33;
+      --night-2: #1E2B4D;
+      --steel-1: #3A404F;
+      --steel-2: #5B6375;
+      --moon: #E8F0FF;
+      --amber-1: #F2A03D;
+      --amber-2: #C2601B;
+      --danger: #E8434F;
+      font-family: system-ui, sans-serif;
+      background: var(--night-0);
+      color: var(--moon);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { padding: 12px 16px 24px; }
+    h1 { font-size: 16px; margin: 0 0 8px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber-1); }
+    #controls {
+      display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+      padding: 8px 12px; margin-bottom: 10px;
+      background: var(--night-1); border: 1px solid var(--night-2); border-radius: 6px; font-size: 13px;
+    }
+    #controls label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    #controls input[type="range"] { width: 120px; accent-color: var(--amber-1); }
+    #controls select, #controls button {
+      font: inherit; color: var(--moon); background: var(--night-0);
+      border: 1px solid var(--steel-2); border-radius: 4px; padding: 3px 8px;
+    }
+    #controls button { background: var(--amber-1); color: var(--night-0); font-weight: 700; cursor: pointer; }
+    #controls output { min-width: 2ch; color: var(--amber-1); font-variant-numeric: tabular-nums; }
+    #game { width: 100%; max-width: 1920px; aspect-ratio: 16 / 9; margin: 0 auto; }
+    #game canvas { display: block; }
+    #checklist {
+      max-width: 1920px; margin: 12px auto 0; padding: 10px 14px; font-size: 13px;
+      background: var(--night-1); border: 1px solid var(--night-2); border-radius: 6px;
+    }
+    #checklist h2 { font-size: 13px; margin: 0 0 6px; color: var(--steel-2); text-transform: uppercase; letter-spacing: 0.06em; }
+    #checklist ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 4px 20px; }
+    #checklist label { display: flex; gap: 8px; align-items: baseline; }
+    #checklist input { accent-color: var(--amber-1); }
+    #checklist p { margin: 8px 0 0; color: var(--steel-2); font-size: 12px; }
+  </style>
 </head>
-<body></body>
+<body>
+  <h1>Rig preview · owner gate 4.03</h1>
+  <div id="controls">
+    <label>Punch tick <input id="punchTick" type="range" min="0" max="14" value="4" /> <output id="punchTickOut">4</output></label>
+    <label><input id="facing" type="checkbox" /> Flip facing</label>
+    <label>Car
+      <select id="car">
+        <option value="STANDARD">STANDARD</option>
+        <option value="TUNNEL">TUNNEL</option>
+        <option value="FINAL_CAR">FINAL_CAR</option>
+      </select>
+    </label>
+    <label>Wind <input id="wind" type="range" min="0" max="600" value="240" /> <output id="windOut">240</output> px/s</label>
+    <button id="flash" type="button">Flash</button>
+    <label><input id="overlays" type="checkbox" /> Hurtbox / hitbox overlays</label>
+  </div>
+  <div id="game"></div>
+  <section id="checklist">
+    <h2>Readability checklist (design/00) — nothing here is stored</h2>
+    <ul>
+      <li><label><input type="checkbox" /> Silhouette reads at 150 px against night-1</label></li>
+      <li><label><input type="checkbox" /> Warm rim stroke present on the edge away from the moon</label></li>
+      <li><label><input type="checkbox" /> Feet land on ROOF_Y, not a curve</label></li>
+      <li><label><input type="checkbox" /> Authored facing screen-right; left is a sign flip</label></li>
+      <li><label><input type="checkbox" /> No shape thinner than 6 px; limbs are 14 to 18 px capsules</label></li>
+      <li><label><input type="checkbox" /> Drifter reads shaggy, bearded, ragged, wide and low</label></li>
+      <li><label><input type="checkbox" /> Conductor reads sharp, narrow, vertical, capped, uniformed</label></li>
+      <li><label><input type="checkbox" /> Punch contact pose is obvious at tick 4; ghosts read as a dodge</label></li>
+      <li><label><input type="checkbox" /> Wind direction is visible (hair, rags, tails trail screen-left)</label></li>
+    </ul>
+    <p>Reply "rig approved" or list corrections. Corrections go back into 4.01 / 4.02 before 4.05–4.08 start.</p>
+  </section>
+  <script type="module" src="/src/rigPreview.ts"></script>
+</body>
 </html>
