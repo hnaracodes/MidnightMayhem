@@ -81,6 +81,9 @@ export class SpriteFighter {
 
   setVisible(v: boolean): void { this.image.setVisible(v); }
 
+  /** Draw depth (11.05 orders fighters back-to-front every frame). */
+  setDepth(depth: number): void { this.image.setDepth(depth); }
+
   /** Extra display scale on top of SPRITE_SCALE (the preview's 6× row). */
   setScaleMultiplier(k: number): void { this.scaleMultiplier = k; }
 

@@ -296,6 +296,39 @@ describe("Effects KO slowdown", () => {
     expect(fx.koFrames(0)).toBe(0);
   });
 
+  it("(11.05) a fighter KO'd mid-round in a four-player match collapses at once and stays collapsed", () => {
+    const { scene } = stubScene();
+    const fx = new Effects(scene);
+    const state = createMatch({ players: 4, teams: "2v2", mode: "rounds", map: "roof", items: true });
+    state.phase = "FIGHTING";
+    frames(fx, state, 3);
+    expect(fx.timeScale()).toBe(1);
+    state.fighters[2]!.hp = 0;
+    frames(fx, state, 1);
+    expect(fx.timeScale()).toBe(0.25);
+    expect(fx.koFrames(2)).toBe(0.25);
+    frames(fx, state, 200);
+    expect(fx.timeScale()).toBe(1);
+    expect(fx.koFrames(2)).toBeGreaterThan(30); // still collapsed while the round goes on
+    expect(fx.koFrames(0)).toBe(0);
+    state.phase = "COUNTDOWN";
+    frames(fx, state, 1);
+    expect(fx.koFrames(2)).toBe(0);
+  });
+
+  it("(11.05) a laser hit flashes the target without hit-stop; a blocked one chips", () => {
+    const { scene } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    fx.consume([{ type: "LASER_HIT", attacker: 0, target: 1, damage: 10, blocked: false }], state);
+    expect(fx.frozen(1)).toBeNull();
+    expect(fx.fillFor(1)).toEqual({ fillOverride: P.white, fillAlpha: 0.7 });
+    fx.consume([{ type: "LASER_HIT", attacker: 1, target: 0, damage: 4, blocked: true }], state);
+    expect(fx.fillFor(0)).toEqual({ fillOverride: P.moon, fillAlpha: 0.4 });
+    fx.consume([{ type: "HAZARD_HIT", id: 1, kind: "fire", target: 1, damage: 2 }], state);
+    expect(fx.fillFor(1)).toEqual({ fillOverride: P.danger, fillAlpha: 0.3 });
+  });
+
   it("does not slow down when the round ends on the timer", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);

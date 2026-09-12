@@ -3,6 +3,7 @@ import {
   type CharacterId, type InputFrame, type InputSource, type MatchConfig, type PlayerIndex, type RosterEntry, type SimEvent,
 } from "@midnight/shared";
 import { SnapshotBuffer } from "../net/snapshotBuffer";
+import type { Sfx } from "./sfx";
 
 export const DEFAULT_PLAYER_NAMES: readonly string[] = CHARACTERS.map((c) => CHARACTER_LABEL[c]);
 
@@ -23,6 +24,12 @@ export const session: {
   attract: readonly CharacterId[] | null;
   /** From `prefers-reduced-motion`; the stage stops scrolling. Set by 11.03, read by the arena (11.05). */
   reducedMotion: boolean;
+  /** `M` toggles it; persisted by `Sfx` under MUTE_KEY. Set by main.ts, read by the arena (11.05). */
+  muted: boolean;
+  /** The synthesised sound bank; null until the first user gesture on the page creates the AudioContext (11.05). */
+  sfx: Sfx | null;
+  /** `?rig=vector`: draw the old vector rig instead of the pixel sprites (11.05). */
+  useVectorRig: boolean;
   debug: boolean;
   /** Smoothed round-trip time in ms from the debug PING loop; null until the first PONG (or when not debugging). */
   rtt: number | null;
@@ -38,6 +45,9 @@ export const session: {
   roster: [],
   attract: null,
   reducedMotion: false,
+  muted: false,
+  sfx: null,
+  useVectorRig: typeof location !== "undefined" && new URLSearchParams(location.search).get("rig") === "vector",
   debug: typeof location !== "undefined" && new URLSearchParams(location.search).get("debug") === "1",
   rtt: null,
   visionAvailable: false,

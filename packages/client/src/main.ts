@@ -7,6 +7,7 @@ import { type CameraButton, Lobby } from "./app/lobby";
 import { ResultOverlay } from "./app/result";
 import { startGame } from "./game/config";
 import { DEFAULT_PLAYER_NAMES, session } from "./game/session";
+import { MUTE_KEY, Sfx } from "./game/sfx";
 import { KeyboardInputSource } from "./input/KeyboardInputSource";
 import { MergedInputSource } from "./input/MergedInputSource";
 import { selectSource } from "./input/selectSource";
@@ -153,11 +154,45 @@ function setPaused(paused: boolean): void {
 }
 document.addEventListener("visibilitychange", () => setPaused(pausedByVisibility(document.visibilityState)));
 
+// ---- Sound (11.05): the first user gesture on the page creates the AudioContext; M toggles mute (persisted) ----
+session.muted = readMuted();
+function unlockAudio(): void {
+  if (session.sfx) return;
+  let ctx: AudioContext | undefined;
+  try {
+    const g = globalThis as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
+    const Ctor = g.AudioContext ?? g.webkitAudioContext;
+    ctx = Ctor ? new Ctor() : undefined;
+  } catch {
+    ctx = undefined;
+  }
+  const sfx = new Sfx(ctx);
+  sfx.setMuted(session.muted);
+  session.sfx = sfx;
+}
+for (const type of ["pointerdown", "keydown", "touchstart"] as const) {
+  window.addEventListener(type, unlockAudio, { once: true, passive: true });
+}
+
+function readMuted(): boolean {
+  try { return localStorage.getItem(MUTE_KEY) === "1"; } catch { return false; }
+}
+
+function toggleMute(): void {
+  session.muted = !session.muted;
+  if (session.sfx) session.sfx.setMuted(session.muted);
+  else {
+    try { localStorage.setItem(MUTE_KEY, session.muted ? "1" : "0"); } catch { /* private mode */ }
+  }
+  document.documentElement.dataset["muted"] = String(session.muted);
+}
+
 // ---- Testing keys (Phase 6 rule 6): V toggles the camera preview, R dumps the last seconds of vision samples ----
 window.addEventListener("keydown", (event) => {
   if (event.repeat || event.target instanceof HTMLInputElement) return;
   if (event.code === "KeyV") preview.toggle();
   if (event.code === "KeyR") dumpVision();
+  if (event.code === "KeyM") toggleMute();
 });
 
 /** Logs the recorder ring (added by the vision lane as `dump()`; optional so this compiles before it lands). */

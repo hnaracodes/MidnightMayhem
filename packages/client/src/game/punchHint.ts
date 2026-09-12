@@ -16,9 +16,12 @@ export interface PunchHint {
 
 export const HINT_MAX_FRAMES = 6;
 
-/** A snapshot fighter that can start a punch: not punching, not in hitstun, not blocking. */
+/**
+ * A snapshot fighter that can start a plain punch: not acting, not in hitstun, not blocking, and holding no item
+ * (11.05: a punch edge with an item in hand is a throw, a sword swing or a flash, none of which the hint poses).
+ */
 export function canHint(f: FighterState, fighting: boolean): boolean {
-  return fighting && f.action === null && f.hitstun === 0 && !f.blocking;
+  return fighting && f.action === null && f.hitstun === 0 && !f.blocking && f.item === null;
 }
 
 /**

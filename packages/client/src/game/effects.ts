@@ -31,8 +31,8 @@ const FRAMES = {
   SHAKE: 6,
   /** Pulse hold after an OOB_DAMAGE event: longer than the 30-tick gap between events, so the pulse never gaps. */
   OOB_PULSE: 40,
-  /** Give the 50 ms-delayed displayed state this long to catch up with a ROUND_END event. */
-  KO_PENDING_MAX: 120,
+  /** Laser and fire flashes: a shorter white than a clean punch, no hit-stop (the beam and the fire keep moving). */
+  FLASH_BURN: 3,
 } as const;
 
 const FRAME_MS = 1000 / 60;
@@ -47,7 +47,7 @@ const WALK_DUST_EVERY_TICKS = 10;
 const NO_LANDING = 1_000_000;
 const VIGNETTE_STRIPS = 18;
 const OOB_PULSE_HZ = 2;
-const DEPTH = { FX: 4, VIGNETTE: 5 } as const;
+const DEPTH = { FX: 4.6, VIGNETTE: 5 } as const; // above the item FX (4–4.5), under the debug layer
 const IMPACT_LENGTHS = [26, 16, 22, 14, 26, 18, 20, 14] as const;
 const DUST_PUFFS = [
   { dx: -10, dy: -2, r: 6 },
@@ -90,8 +90,6 @@ export class Effects {
   private readonly walkDustTick: Per<number | null> = per(null);
   private readonly koActive: Per<boolean> = per(false);
   private readonly koCount: Per<number> = per(0);
-  private koPending = false;
-  private koPendingFrames = 0;
   private readonly oobPulseFrames: Per<number> = per(0);
   private clockSec = 0;
 
@@ -179,7 +177,6 @@ export class Effects {
       if (this.koActive[i]) this.koCount[i] += koStep;
       if (this.oobPulseFrames[i] > 0) this.oobPulseFrames[i] -= 1;
     }
-    if (this.koPending && ++this.koPendingFrames > FRAMES.KO_PENDING_MAX) this.koPending = false;
 
     for (let k = this.timed.length - 1; k >= 0; k -= 1) {
       const fx = this.timed[k]!;
@@ -238,10 +235,20 @@ export class Effects {
         if (f) this.dust(f.x, f.y);
         break;
       }
-      case "ROUND_END":
-        this.koPending = true;
-        this.koPendingFrames = 0;
+      case "LASER_HIT": {
+        // 11.05: a beam hit flashes the target like a punch (chip flash when blocked) but never freezes the frame.
+        this.flashFrames[event.target] = event.blocked ? FRAMES.CHIP_FLASH : FRAMES.FLASH_BURN + FRAMES.FLASH_DANGER;
+        this.flashBlocked[event.target] = event.blocked;
+        if (!event.blocked && event.damage >= SHAKE_MIN_DAMAGE) this.shake();
         break;
+      }
+      case "HAZARD_HIT": {
+        // Fire ticks flash danger; a slip (damage 0) has its own stars in ItemFx.
+        if (event.damage <= 0) break;
+        this.flashFrames[event.target] = FRAMES.FLASH_DANGER;
+        this.flashBlocked[event.target] = false;
+        break;
+      }
       case "OOB_DAMAGE":
         this.oobPulseFrames[event.player] = FRAMES.OOB_PULSE;
         break;
@@ -299,15 +306,17 @@ export class Effects {
     }
   }
 
+  /**
+   * (11.05) A KO is read per fighter from the displayed state: the moment a fighter's hp reaches 0 its collapse
+   * starts and the slowdown holds for the 30 ko-frames. With three or four fighters that happens mid-round
+   * (the KO'd fighter stays collapsed, 10.02); with two it coincides with ROUND_END as before. The countdown
+   * of the next round stands everyone back up.
+   */
   private readKo(state: MatchState): void {
     if (state.phase === "COUNTDOWN") {
       for (const i of PLAYERS) { this.koActive[i] = false; this.koCount[i] = 0; }
-      this.koPending = false;
       return;
     }
-    if (!this.koPending) return;
-    if (state.phase !== "ROUND_END" && state.phase !== "MATCH_END") return; // displayed state still catching up
-    this.koPending = false;
     for (const i of PLAYERS) {
       const f = state.fighters[i];
       if (!f || f.hp > 0 || this.koActive[i]) continue;
