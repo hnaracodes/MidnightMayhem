@@ -41,6 +41,7 @@ const SHAKE_PX = 3;
 const SHAKE_MIN_DAMAGE = BALANCE.PUNCH_DAMAGE; // a clean punch shakes; chip never does
 const CHEST_ABOVE_FEET = 90;
 const IMPACT_OFFSET = 20;
+const TRAIL_WIDTH = 10;
 const WALK_DUST_EVERY_TICKS = 10;
 const NO_LANDING = 1_000_000;
 const VIGNETTE_STRIPS = 18;
@@ -387,20 +388,29 @@ function drawArc(g: Graphics, shoulder: Pt, fist: Pt): void {
   const bulge = 14;
   const cx = (shoulder.x + fist.x) / 2 + nx * bulge;
   const cy = (shoulder.y + fist.y) / 2 + ny * bulge;
-  g.clear();
-  g.lineStyle(10, P.moon, 0.3);
-  g.beginPath();
-  g.moveTo(shoulder.x, shoulder.y);
-  const segments = 8;
-  for (let k = 1; k <= segments; k += 1) {
+  // One filled band (thin at the shoulder, TRAIL_WIDTH at the fist) instead of a thick stroked path: at 30 %
+  // alpha the overlapping segment quads of a stroke show as seams, a single polygon does not.
+  const segments = 10;
+  const outer: Pt[] = [];
+  const inner: Pt[] = [];
+  let prev: Pt = shoulder;
+  for (let k = 0; k <= segments; k += 1) {
     const u = k / segments;
     const w = 1 - u;
-    g.lineTo(
-      w * w * shoulder.x + 2 * w * u * cx + u * u * fist.x,
-      w * w * shoulder.y + 2 * w * u * cy + u * u * fist.y,
-    );
+    const x = w * w * shoulder.x + 2 * w * u * cx + u * u * fist.x;
+    const y = w * w * shoulder.y + 2 * w * u * cy + u * u * fist.y;
+    // tangent from the previous sample (the derivative at u = 0 for the first point)
+    const tx = k === 0 ? cx - shoulder.x : x - prev.x;
+    const ty = k === 0 ? cy - shoulder.y : y - prev.y;
+    const tl = Math.hypot(tx, ty) || 1;
+    const half = (TRAIL_WIDTH / 2) * (0.35 + 0.65 * u);
+    outer.push({ x: x - (ty / tl) * half, y: y + (tx / tl) * half });
+    inner.push({ x: x + (ty / tl) * half, y: y - (tx / tl) * half });
+    prev = { x, y };
   }
-  g.strokePath();
+  g.clear();
+  g.fillStyle(P.moon, 0.3);
+  g.fillPoints([...outer, ...inner.reverse()], true);
 }
 
 /** A `danger` gradient `width` px deep on one screen edge, alpha `peak` at the edge fading to 0 inward. */
@@ -409,7 +419,7 @@ function drawEdgeGradient(g: Graphics, peak: number, width: number, rightEdge: b
   for (let k = 0; k < VIGNETTE_STRIPS; k += 1) {
     const x = rightEdge ? WORLD.WIDTH - (k + 1) * w : k * w;
     g.fillStyle(P.danger, peak * (1 - k / VIGNETTE_STRIPS));
-    g.fillRect(x, 0, w + 0.5, WORLD.HEIGHT);
+    g.fillRect(x, 0, w, WORLD.HEIGHT); // 72 / 18 = 4 px strips; no overlap, or the seams double up
   }
 }
 
