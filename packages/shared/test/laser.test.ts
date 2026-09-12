@@ -15,13 +15,6 @@ function laserHits(events: SimEvent[]) {
   return events.filter((e) => e.type === "LASER_HIT");
 }
 
-/** Steps `n` ticks with per-player input arrays of any length (helpers.run is two-player only). */
-function runN(s: MatchState, n: number, inputs: InputFrame[]) {
-  const events: SimEvent[] = [];
-  for (let i = 0; i < n; i++) { const r = step(s, inputs); s = r.state; events.push(...r.events); }
-  return { s, events };
-}
-
 describe("laser phases and hitbox", () => {
   it("laserPhase follows elapsed through charge, beam, recover", () => {
     const f = createMatch().fighters[0]!;
@@ -255,10 +248,18 @@ describe("rule 8: many players", () => {
   it("3-player FFA: one beam hits both opponents, never the attacker", () => {
     const s = createMatch({ players: 3, teams: "ffa", mode: "rounds", map: "roof", items: true });
     s.phase = "FIGHTING"; s.roundTicks = MATCH.ROUND_TICKS;
-    const { s: out, events } = runN(s, TOTAL + 1, [Q, EMPTY_FRAME, EMPTY_FRAME]);
+    let hitSeen: number[] = [];
+    let cur = s; const events: SimEvent[] = [];
+    for (let i = 0; i < TOTAL + 1; i++) {
+      const r = step(cur, [Q, EMPTY_FRAME, EMPTY_FRAME]); cur = r.state; events.push(...r.events);
+      const a = cur.fighters[0]!.action;
+      if (a?.kind === "laser") hitSeen = [...a.hit];
+    }
+    const out = cur;
     const hits = laserHits(events);
     expect(hits).toHaveLength(2);
     expect(hits.map((h) => h.type === "LASER_HIT" && h.target).sort()).toEqual([1, 2]);
+    expect(hitSeen.sort()).toEqual([1, 2]);
     expect(out.fighters[0]!.hp).toBe(BALANCE.MAX_HP);
     expect(out.fighters[1]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);
     expect(out.fighters[2]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);
@@ -280,6 +281,23 @@ describe("rule 8: many players", () => {
     expect(hitList.sort()).toEqual([2, 3]);
     expect(cur.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
     expect(cur.fighters[0]!.hp).toBe(BALANCE.MAX_HP);
+  });
+});
+
+describe("same-tick trade", () => {
+  it("two opposing lasers fired on the same tick both land; the lower index gets no priority", () => {
+    let s = fighting(300);
+    s = run(s, LASER_CHARGE, [Q, Q]).s;
+    expect(s.fighters[0]!.action?.kind).toBe("laser");
+    expect(s.fighters[1]!.action?.kind).toBe("laser");
+    const r = step(s, [Q, Q]);
+    expect(r.events.filter((e) => e.type === "LASER_FIRE").map((e) => e.type === "LASER_FIRE" && e.player).sort()).toEqual([0, 1]);
+    const hits = laserHits(r.events);
+    expect(hits.map((h) => h.type === "LASER_HIT" && h.target).sort()).toEqual([0, 1]);
+    expect(r.state.fighters[0]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);
+    expect(r.state.fighters[1]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);
+    expect(r.state.fighters[0]!.action).toBeNull();
+    expect(r.state.fighters[1]!.action).toBeNull();
   });
 });
 

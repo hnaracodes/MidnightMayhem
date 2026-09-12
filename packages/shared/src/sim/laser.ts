@@ -57,12 +57,17 @@ function laserHurtbox(f: FighterState): Rect {
   return { x: hb.x, w: hb.w, ...bandAt(f.y) };
 }
 
+interface PendingLaserHit { attacker: PlayerIndex; target: PlayerIndex; damage: number; blocked: boolean }
+
 /**
  * Applies active beams. LASER_FIRE on the first beam tick; each beam tick every living opponent not yet in
  * `action.hit` that can be hit, is not invulnerable and whose chest band overlaps the beam is hit once: chip through
  * block (no hitstun), otherwise full damage with hitstun and knockback away from the attacker unless absorbed.
+ * Two passes like `resolvePunches`: every beam is checked against the state at the start of the tick, then the hits
+ * are applied, so two lasers fired on the same tick both land instead of the lower index cancelling the other.
  */
 export function resolveLaser(s: MatchState, events: SimEvent[]): void {
+  const pending: PendingLaserHit[] = [];
   for (const i of playerIndices(s)) {
     const attacker = s.fighters[i]!;
     const action = attacker.action;
@@ -77,16 +82,20 @@ export function resolveLaser(s: MatchState, events: SimEvent[]): void {
       if (!overlaps(box, laserHurtbox(target))) continue;
       action.hit.push(t);
       const blocked = target.blocking;
-      const damage = blocked ? LASER_CHIP : LASER_DAMAGE;
-      const { absorbed } = applyDamage(s, t, damage, "laser", i, events);
-      if (!blocked && !absorbed) {
-        target.action = null;
-        target.blocking = false;
-        target.hitstun = BALANCE.HITSTUN_TICKS;
-        target.knockbackVx = attacker.facing * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
-        target.vx = 0;
-      }
-      events.push({ type: "LASER_HIT", attacker: i, target: t, damage, blocked });
+      pending.push({ attacker: i, target: t, damage: blocked ? LASER_CHIP : LASER_DAMAGE, blocked });
     }
+  }
+  for (const h of pending) {
+    const target = s.fighters[h.target]!;
+    const attacker = s.fighters[h.attacker]!;
+    const { absorbed } = applyDamage(s, h.target, h.damage, "laser", h.attacker, events);
+    if (!h.blocked && !absorbed) {
+      target.action = null;
+      target.blocking = false;
+      target.hitstun = BALANCE.HITSTUN_TICKS;
+      target.knockbackVx = attacker.facing * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
+      target.vx = 0;
+    }
+    events.push({ type: "LASER_HIT", attacker: h.attacker, target: h.target, damage: h.damage, blocked: h.blocked });
   }
 }
