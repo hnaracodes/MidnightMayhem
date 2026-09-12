@@ -11,6 +11,11 @@
  * and has a default export, which is what MediaPipe's import() fallback needs. The classic build
  * (`vision_wasm_internal.js`) only works through importScripts, which module workers do not have.
  * The package's exports map exposes the files at the package root, not under `/wasm/`.
+ *
+ * Two tasks, one loader (9.04): MediaPipe reads `self.ModuleFactory` after import()-ing the loader and then
+ * clears it, and a second import() of the same URL is served from the module cache without re-running the
+ * module body, so the second task would throw "ModuleFactory not set". `primeModuleFactory` imports the
+ * loader once and re-installs its default export before every task creation.
  */
 import { ITEMS } from "@midnight/shared";
 import { ObjectDetector, PoseLandmarker } from "@mediapipe/tasks-vision";
@@ -20,8 +25,20 @@ import { MODEL_URL, OBJECT_MODEL_URL, OBJECT_SCORE } from "./thresholds";
 
 export type Delegate = "GPU" | "CPU";
 
+type LoaderModule = { default: unknown };
+let loader: Promise<LoaderModule> | null = null;
+
+async function primeModuleFactory(): Promise<void> {
+  loader ??= import(/* @vite-ignore */ wasmLoaderPath) as Promise<LoaderModule>;
+  const mod = await loader;
+  if (typeof mod.default === "function") {
+    (self as unknown as { ModuleFactory: unknown }).ModuleFactory = mod.default;
+  }
+}
+
 /** Pose Landmarker, lite model, VIDEO mode, one pose. Throws if the wasm or model fails to load. */
 export async function createPose(delegate: Delegate): Promise<PoseLandmarker> {
+  await primeModuleFactory();
   return PoseLandmarker.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
     baseOptions: { modelAssetPath: MODEL_URL, delegate },
     runningMode: "VIDEO",
@@ -34,6 +51,7 @@ export async function createPose(delegate: Delegate): Promise<PoseLandmarker> {
  * Throws if the model fails to load; the worker treats that as non-fatal and plays pose-only.
  */
 export async function createObjectDetector(delegate: Delegate): Promise<ObjectDetector> {
+  await primeModuleFactory();
   return ObjectDetector.createFromOptions({ wasmLoaderPath, wasmBinaryPath }, {
     baseOptions: { modelAssetPath: OBJECT_MODEL_URL, delegate },
     runningMode: "VIDEO",
