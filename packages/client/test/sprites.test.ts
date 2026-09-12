@@ -322,10 +322,22 @@ describe("every character × state composes without throwing", () => {
   ];
   for (const id of CHARACTERS as readonly CharacterId[]) {
     for (const [name, over, clk] of states) {
-      it(`${id} ${name}`, () => {
-        const c = frame(base({ character: id, ...over }), {}, { ...clock, ...clk });
-        expect(bounds(c).y1).toBeLessThanOrEqual(ANCHOR.y);
-      });
+      for (const facing of [1, -1] as const) {
+        for (const item of [null, "sword", "shield"] as const) {
+          it(`${id} ${name} facing ${facing} item ${item}`, () => {
+            const f = base({ character: id, ...over, facing, item: item ? { kind: item, uses: 1 } : null });
+            const c = frame(f, {}, { ...clock, ...clk });
+            const b = bounds(c);
+            expect(b.y1).toBeLessThanOrEqual(ANCHOR.y);
+            // nothing touches the raster border: the outline pass needs a free ring, and a pixel on the
+            // border means the pose (punch reach, sword, KO sprawl) is clipped
+            expect(b.x0).toBeGreaterThan(-c.ox);
+            expect(b.y0).toBeGreaterThan(-c.oy);
+            expect(b.x1).toBeLessThan(c.w - c.ox - 1);
+            expect(b.y1).toBeLessThan(c.h - c.oy - 1);
+          });
+        }
+      }
     }
   }
 });

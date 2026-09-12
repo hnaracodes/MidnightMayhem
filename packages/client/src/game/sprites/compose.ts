@@ -22,8 +22,11 @@ export const FRAME_W = 40;
 export const FRAME_H = 56;
 /** The feet anchor in frame coordinates. */
 export const ANCHOR = { x: 20, y: 52 } as const;
-/** The raster behind a fighter: the frame plus 20 px each side and 4 px above/below. */
-export const CANVAS = { w: 80, h: 64, ox: 20, oy: 4 } as const;
+/**
+ * The raster behind a fighter: the frame plus 20 px each side, 16 px above (the win pose raises the fists
+ * 5 px over the frame top, plus the hand part and its outline; a held item adds more) and 4 px below.
+ */
+export const CANVAS = { w: 80, h: 76, ox: 20, oy: 16 } as const;
 
 export function createFrameCanvas(): PixelCanvas {
   return new PixelCanvas(CANVAS.w, CANVAS.h, CANVAS.ox, CANVAS.oy);

@@ -98,6 +98,7 @@ class SpritePreviewScene extends Phaser.Scene {
 
   private makeCell(character: CharacterId, state: StateId, x: number, groundY: number, scale: number, index: PlayerIndex, item: ItemId | null = null, vectorX = 0): Cell {
     const sprite = new SpriteFighter(this, index, 10);
+    if (scale !== 1) sprite.setScaleMultiplier(scale);
     const vector = VECTOR && vectorX ? this.add.graphics().setDepth(5) : null;
     return { character, state, x, groundY, scale, item, sprite, vector, vectorX };
   }
@@ -121,7 +122,6 @@ class SpritePreviewScene extends Phaser.Scene {
       });
       this.perfSum += performance.now() - t0;
       this.perfN += 1;
-      if (cell.scale !== 1) cell.sprite.setScaleMultiplier(cell.scale);
       if (cell.vector) {
         cell.vector.clear();
         cell.vector.setPosition(cell.vectorX - cell.x, 0);
