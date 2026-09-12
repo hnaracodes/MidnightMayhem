@@ -15,9 +15,9 @@ Source of truth after review: `docs/superpowers/plans/2026-09-12-midnight-expres
 | 2 | Dodging | DODGE_LEFT/RIGHT with i-frames ticks 3–7 (Combat 01) | Jump is the only evade. **Jump grants i-frames on ticks 3–10 after takeoff** (tunable `JUMP_IFRAME_START/END`); hits during that window are ignored and the rig draws a ghost trail | Owner, round 4: "we do want i frames" | |
 | 3 | Attacks | 5 object abilities, no punches (Combat 01) / punches only (VisFighter) | Punches only: punchL and punchR, identical frame data. 3 weapon slots reserved as `null` | Owner D3 | |
 | 4 | Punch frame data | 4/3/8 ticks at 60 Hz (VisFighter), 8 damage, chip 2 | 4/3/8 ticks, **12 damage, chip 3** | HP dropped to 40, so 12 = about 4 clean hits per round | |
-| 5 | Health | 100 HP (all docs) | **40 HP** | Owner, round 2 | |
+| 5 | Health | 100 HP (all docs) | **50 HP** (was 40; owner retune 2026-09-12) | Owner, round 2; then "bring health up to 50" after the LAN test | |
 | 6 | Hit detection | Projectile swept segment vs lane (Combat 01) | Axis-aligned overlap of the punch hitbox (70 × 60 in front of the fist, active ticks only) with the opponent hurtbox (72 × 140). One hit per punch. Same-tick trades both land | Owner D6 "hitbox around sprites, overlap deals damage" | |
-| 7 | Block | BLOCK_START = fixed 600 ms status with cooldown, 70% reduction (Combat 01) | Held while gesture or key is held, grounded only, no cooldown. Blocked punch deals flat chip 3, no hitstun | Owner D5; chip is simpler than a percentage at 40 HP | |
+| 7 | Block | BLOCK_START = fixed 600 ms status with cooldown, 70% reduction (Combat 01) | Held while gesture or key is held, grounded only, no cooldown. Blocked punch deals flat chip 3, no hitstun | Owner D5; chip is simpler than a percentage at 50 HP | |
 | 8 | Hitstun and knockback | None (Combat, "no knockback") / 12 ticks, ~2 widths (VisFighter) | 12 ticks hitstun, 144 px knockback over the stun. A hit cancels the target's punch and block | VisFighter rule adopted | |
 | 9 | Mid-air | n/a | Punch allowed mid-air; block not | VisFighter rule adopted | |
 | 10 | Out of bounds | none (Combat) / "damage over time, 3 HP per 30 ticks" (Design, NEEDS SIGN-OFF) | Hard edge clamps at x=0/960; 3 HP per 30 ticks while at the edge; always recoverable | Design proposal accepted by default | |
@@ -64,7 +64,7 @@ Source of truth after review: `docs/superpowers/plans/2026-09-12-midnight-expres
 
 | # | Question | Default if unanswered |
 |---|---|---|
-| A | Punch hitbox reach 70 px and punch damage 12 at 40 HP: keep, or tune after the first keyboard match? | Keep, tune in reserve |
+| A | Punch hitbox reach 70 px and punch damage 12 at 50 HP: keep, or tune after the first keyboard match? | Keep, tune in reserve |
 | B | Timer draw round scores for both players (so 1–1 after a draw). Alternative: replay the round. | Score both |
 | C | Winner keys or rematch flow: rematch returns both to lobby ready state. | Lobby |
 
@@ -91,3 +91,4 @@ is a decision taken under the directive, not an unreviewed guess. Spec: `docs/su
 | 46 | Lobby / landing | Plain DOM join form (32) | Landing page with the live stage and four idling fighters behind it; lobby with character pick, loadout pick, host controls (players, teams, mode, map, items). `frontend-design` skill required | Owner: "very midnight express themey… very visually engaging… customize characters" | |
 | 47 | Server | 2 slots (21) | 4 slots, `config.players` decides how many must be in and ready; host = lowest slot; `CONFIG` host-only; `CUSTOMIZE` per player | Consequence of 39, 46 | |
 | 48 | Execution | Four worktrees on one machine (STATUS) | Contracts feature alone, then 13 parallel worktree lanes with disjoint file ownership, then integration, then parallel review and fixes — all agent-run, no owner gates until the end | Owner: "launch a dynamic workflow to implement all of these features in parallel… I don't want to intervene" | |
+| 49 | Action mobility | Any action zeroes `vx` and refuses a jump while grounded; the laser needs `grounded` to start (9.03 rule 6, 9.08 rule 4) | **Only a punch (or a block) pins a fighter.** The laser and the charged throw are charged, fired and recovered while walking or jumping at full `WALK_SPEED`, the laser can start in mid-air, and facing tracks through a charge and commits when the beam fires or the throw releases. No future action is gated on movement (`actionLocksMovement` is the single gate). Spec: `implementation-docs/09-arsenal/10-mobile-actions.md` | Owner 2026-09-12: "make it so that players can charge up their special while they are still moving, and use it while they are still [moving]"; follow-up: "yes both, and all future actions shouldn't be gated by movement" | |

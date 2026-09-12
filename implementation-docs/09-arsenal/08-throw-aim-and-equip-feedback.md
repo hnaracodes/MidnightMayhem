@@ -23,7 +23,8 @@ Do not touch `combat.ts`, `items.ts`, `laser.ts`, `maps.ts`, `rounds.ts`, `creat
   `CHARGE_MAX`), phase → `release`, `elapsed = 0`; release at `elapsed === RELEASE_TICKS` spawns the projectile with
   `throwVelocity(chargeToRange(charge))` in the facing direction; recovery `RECOVERY` ticks.
 - A fighter in `charge` phase cannot move, jump or block (same lock as a punch); a hit cancels it without spending
-  a use.
+  a use. **9.10 supersedes the movement half**: the charge, release and recovery all happen on the move, and only
+  block and a second punch stay refused.
 - Vision input has no hold, so the keyboard and camera differ only in charge: `InputFrame.punchL/R` from the camera
   is a one-frame pulse; the sim cannot tell, so the rule is: **a charge released before 3 ticks throws at
   `VISION_CHARGE · CHARGE_MAX`** (a tap = medium throw, a hold = aimed throw).
@@ -33,7 +34,8 @@ Do not touch `combat.ts`, `items.ts`, `laser.ts`, `maps.ts`, `rounds.ts`, `creat
 1. Tap `F` (held 1 tick) with a molotov → lands 0.7 · (640 − 120) + 120 ≈ 484 px ± 15 away on `roof`.
 2. Hold `F` for 45+ ticks then release → lands 640 ± 15 px; hold 22 ticks → ~374 ± 15.
 3. Hold 45 ticks and keep holding → auto-release at `CHARGE_MAX`.
-4. During charge: no walk, no jump; a hit cancels the throw, use not spent, item still held.
+4. During charge: ~~no walk, no jump~~ (**9.10: both allowed**); a hit cancels the throw, use not spent, item
+   still held.
 5. Banana uses the same charge; existing peel rules unchanged.
 6. Landing beyond the world edge → no hazard; landing in a pit → no hazard (existing).
 7. The 9.02 "70–130 px" test is replaced by rules 1–2 (note this in the commit).

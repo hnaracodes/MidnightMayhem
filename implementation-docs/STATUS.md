@@ -13,8 +13,9 @@ first, then this, then your feature file.
 | `gate-5-code` | Phase 5 vision code, MediaPipe wired, harness page | client tests; camera checklist not run |
 | (untagged) | Phase 4 design (rig, stage, HUD, effects, arena), Phase 6 integration, polish | 219 client + 125 shared/server tests, owner keyboard match |
 | (untagged) | 8.01 contracts, every phase 9–11 lane (9.01–9.06, 10.01–10.03, 11.01–11.05) merged and wired | 165 shared + 38 server + 721 client tests, typecheck, `pnpm build`, headless 2p / 3p / 4p play-throughs |
+| (untagged) | Phase 12 ambience (12.01–12.06) via PR #1, 9.07 YOLO as the default detector, 9.10 mobile actions, health 50 | 187 shared + 40 server + 837 client tests, typecheck |
 
-`main` builds, `pnpm test` (924 tests) and `pnpm typecheck` are green. **The expansion is playable end to end on the
+`main` builds, `pnpm test` (1064 tests) and `pnpm typecheck` are green. **The expansion is playable end to end on the
 keyboard**: pixel sprites for four characters, the moving train with gaps and cargo racks, landing page with the
 attract-mode roof, lobby with route board and seat customisation, two-to-four-player HUD, laser, five items, item FX,
 synthesised sound, timed and deathmatch modes, 2v2 teams, result screen naming the team.
@@ -73,10 +74,22 @@ Integration notes carried over from the 13-lane merge:
 
 ## What is next
 
-1. **Review** — parallel reviewers per area against the feature files (`09-arsenal`, `10-arenas`, `11-look`),
-   fixes, final verification. Candidates seen during integration: `rig/pose.ts` could grow real throw and laser
-   poses (11.05 adapts them through `posedFighter`); `KeyboardInputSource` could latch edges until sampled.
-2. **9.07** is built on `feat/yolo` (benchmark verdict above); merge it, then the human gates below.
+1. **Review** — parallel reviewers per area against the feature files (`09-arsenal`, `10-arenas`, `11-look`,
+   `12-ambience`), fixes, final verification. Candidates seen during integration: `KeyboardInputSource` could latch
+   edges until sampled. (12.04 gave `rig/pose.ts` the real throw and laser poses, so `posedFighter` is the identity.)
+2. **9.09** laser gesture hardening is specified and unbuilt: `09-arsenal/09-laser-gesture-hardening.md`. Worth
+   doing before the camera gates, since the current laser gate still overlaps block and punch.
+3. The human gates below.
+
+### What 9.10 landed (commits `sim:` / `client:`)
+
+Only a punch or a block pins a grounded fighter. The laser and the charged throw are charged, fired and recovered
+while walking or jumping, the laser starts in mid-air, and `updateFacing` tracks through a charge and commits at
+the beam or the release (`aimLocked`). `actionLocksMovement` in `sim/fighter.ts` is the single gate, so any action
+added later is mobile unless it opts in. On the client, `withLocomotion` in `rig/pose.ts` gives the laser and throw
+stances the walk cycle's or the air pose's legs while keeping the action's arms and torso. Spec:
+`09-arsenal/10-mobile-actions.md`; decision row 49. Health is 50 (`BALANCE.MAX_HP`, owner retune), which is a
+fraction change everywhere on the client — the HUD bars already scaled off `MAX_HP`.
 
 ## Running the game today
 
@@ -85,7 +98,8 @@ pnpm dev:server            # terminal 1, http://localhost:8080
 pnpm dev:client            # terminal 2, https://localhost:5173 (accept the certificate warning)
 ```
 Or the demo build: `pnpm build` then `pnpm --filter @midnight/server start` serves `packages/client/dist` on one port.
-Keys: A/D walk, W jump, S block, F/G punch, Q laser, 1–5 hold an item (molotov, sword, shield, banana, flash),
+Keys: A/D walk, W jump, S block, F/G punch, Q laser (all of these work *while* a laser or throw charges),
+1–5 hold an item (molotov, sword, shield, banana, flash),
 V camera preview, M mute. `?debug=1` shows boxes, tick, RTT, map/mode; `?rig=vector` draws the old rig;
 `?input=keyboard|vision` as before.
 

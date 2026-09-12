@@ -23,7 +23,8 @@ boundaries: `LASER_CHARGE` / `LASER_ACTIVE` / `LASER_RECOVERY`), 11.01 (`compose
 ## Exposes
 `rig/pose.ts`:
 - `RigState` gains `"laser" | "throw"`; `rigState` ladder: ko → hit → laser → punch → throw → jump → block →
-  offbounds → walk → idle.
+  offbounds → walk → idle. (**9.10**: because the laser and throw rungs sit above `jump` and `walk`, both stances
+  run through `withLocomotion`, which swaps in the walk cycle's or the air pose's legs while the body moves.)
 - `Clock` gains `beat?: { kind: "flash"; frames: number } | undefined` — a render-side pose beat with no sim action.
 - `laserHands(j: Joints): Pt` — the cupped point (midpoint of both fists) for the charge ring and beam cap.
 - Pure, exported for tests: `laserStage(elapsed): { stage: "charge" | "release" | "hold" | "recover"; t: number }`,
