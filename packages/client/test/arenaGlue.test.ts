@@ -95,7 +95,7 @@ describe("posedFighter", () => {
     const total = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH_RECOVERY;
     const throwTotal = ARSENAL.THROW_STARTUP + ARSENAL.THROW_RECOVERY;
     const at = (elapsed: number) =>
-      posedFighter({ ...base(), action: { kind: "throw", item: "molotov", arm: "R", elapsed, released: elapsed >= ARSENAL.THROW_STARTUP } });
+      posedFighter({ ...base(), action: { kind: "throw", item: "molotov", arm: "R", phase: "release", charge: 0, elapsed, released: elapsed >= ARSENAL.THROW_STARTUP } });
     expect(at(0).action).toEqual({ kind: "punch", arm: "R", elapsed: 0, landed: false, sword: false });
     expect(at(throwTotal - 1).action!.elapsed).toBeLessThan(total);
     expect(at(throwTotal + 5).action!.elapsed).toBe(total - 1);

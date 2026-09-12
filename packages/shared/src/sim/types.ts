@@ -12,7 +12,14 @@ export type Winner = number | "draw";
 export interface HeldItem { kind: ItemId; uses: number }
 
 export interface PunchAction { kind: "punch"; arm: Arm; elapsed: number; landed: boolean; sword: boolean }
-export interface ThrowAction { kind: "throw"; item: "molotov" | "banana"; arm: Arm; elapsed: number; released: boolean }
+/**
+ * 9.08: a throw charges while the punch key stays held (`phase: "charge"`, `charge` 0..THROW.CHARGE_MAX, `elapsed`
+ * held at 0), then releases (`phase: "release"`, `elapsed` counts up; the projectile spawns at THROW.RELEASE_TICKS).
+ */
+export interface ThrowAction {
+  kind: "throw"; item: "molotov" | "banana"; arm: Arm;
+  phase: "charge" | "release"; charge: number; elapsed: number; released: boolean;
+}
 export interface LaserAction { kind: "laser"; elapsed: number; hit: PlayerIndex[] }
 export type Action = PunchAction | ThrowAction | LaserAction;
 

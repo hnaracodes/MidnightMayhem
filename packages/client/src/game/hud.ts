@@ -40,6 +40,9 @@ const FIGHT_BANNER_TICKS = 60;
 const FIGHT_BANNER_SEC = FIGHT_BANNER_TICKS / TICK.HZ;
 const PULSE = { SEC: 0.6, BEATS: 2, W: 5, FILL: 0.35 } as const;
 const BLINK_HZ = 4;
+/** 9.08 rule 2: the equip toast. Frames at 60 Hz; the panel rests beside the bar under the name row. */
+export const TOAST = { W: 168, H: 34, IN: 10, HOLD: 90, OUT: 10, BROKEN_HOLD: 45, GAP: 8, ROW: 38, STRIPE: 3, GLYPH: 18, NAME: 12, STATUS: 10 } as const;
+const PIP_PULSE_FRAMES = 12;
 const DEPTH = { HUD: 10, BANNER: 11 } as const;
 const FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif";
 const MAX_BARS = 4;
@@ -62,6 +65,47 @@ export interface ColorableText { style: { color: unknown }; setColor(color: stri
 export function setColorIfChanged<T extends ColorableText>(text: T, css: string): T {
   if (text.style.color !== css) text.setColor(css);
   return text;
+}
+
+export interface ToastLayout { x: number; y: number; w: number; h: number; align: BarAlign; dx: number; dy: number }
+
+/**
+ * Where fighter `i`'s equip toast rests: under that side's name rows, hugging the bar's outer edge, sliding in
+ * from that screen edge (`dx`, `dy` is the start offset). The centred third bar's toast drops in from above.
+ */
+export function toastLayout(players: number, i: PlayerIndex): ToastLayout {
+  const bar = barLayout(players, i);
+  const h = barHeight(players, i);
+  const tight = players === 4 || (players === 3 && i === 2);
+  const nameBottom = bar.y + h + (tight ? NAME.DY_TIGHT + NAME.SIZE_SMALL : NAME.DY + NAME.SIZE);
+  const w = TOAST.W;
+  if (players === 3 && i === 2) {
+    return { x: (WORLD.WIDTH - w) / 2, y: nameBottom + TOAST.GAP, w, h: TOAST.H, align: "left", dx: 0, dy: -(TOAST.H + TOAST.GAP) };
+  }
+  // Four players: both of a side's bars stack, so both toasts hang under the lower name row, one per row.
+  const rowBottom = players === 4 ? barLayout(players, 1).y + h + NAME.DY_TIGHT + NAME.SIZE_SMALL : nameBottom;
+  const y = rowBottom + TOAST.GAP + (players === 4 ? (i % 2) * TOAST.ROW : 0);
+  if (bar.align === "left") return { x: bar.x, y, w, h: TOAST.H, align: "left", dx: -(bar.x + w), dy: 0 };
+  return { x: bar.x + bar.w - w, y, w, h: TOAST.H, align: "right", dx: WORLD.WIDTH - (bar.x + bar.w - w), dy: 0 };
+}
+
+/** 0 → 1 over `IN` frames, 1 through `hold`, back to 0 over `OUT`; null once the toast has ended. */
+export function toastSlide(frame: number, hold: number): number | null {
+  if (frame < TOAST.IN) return easeOut(frame / TOAST.IN);
+  if (frame < TOAST.IN + hold) return 1;
+  const out = frame - TOAST.IN - hold;
+  if (out >= TOAST.OUT) return null;
+  return 1 - easeIn(out / TOAST.OUT);
+}
+
+export type ItemEdge = "equip" | "use" | "break";
+
+/** What changed in a held item between two frames: the state-side view of ITEM_EQUIP / ITEM_USE / ITEM_BREAK. */
+export function itemEdge(prev: HeldItem | null, next: HeldItem | null): ItemEdge | null {
+  if (next && (!prev || prev.kind !== next.kind)) return "equip";
+  if (next && prev && next.uses < prev.uses) return "use";
+  if (!next && prev) return "break";
+  return null;
 }
 
 /** Character key colours for the team outline, from the rig data (11.01 owns the tokens). */
@@ -199,7 +243,13 @@ interface FighterTexts {
   dazzle: Phaser.GameObjects.Text;
   glyph: Phaser.GameObjects.Text;
   minis: [Phaser.GameObjects.Text, Phaser.GameObjects.Text];
+  toastGlyph: Phaser.GameObjects.Text;
+  toastName: Phaser.GameObjects.Text;
+  toastStatus: Phaser.GameObjects.Text;
 }
+
+/** A running equip toast: `frame` counts render frames from the slide-in; `hold` is 90 (equip) or 45 (broken). */
+interface Toast { frame: number; hold: number; broken: boolean; item: ItemId; uses: number }
 
 export class Hud {
   private readonly g: Phaser.GameObjects.Graphics;
@@ -211,6 +261,10 @@ export class Hud {
   /** Laser ring pulse clock per fighter: seconds since the ring became ready, or null when idle. */
   private readonly pulse: (number | null)[] = [];
   private readonly wasReady: boolean[] = [];
+  private readonly toasts: (Toast | null)[] = [];
+  /** Last seen held item per fighter; `undefined` until the first update so a joined-in-progress item is not an equip. */
+  private readonly lastItem: (HeldItem | null | undefined)[] = [];
+  private readonly pulseFrames: number[] = [];
   private names: string[] = [];
   private bannerText: string | null = null;
   private popT: number = BANNER.POP_SEC;
@@ -250,14 +304,25 @@ export class Hud {
         dazzle: text(NAME.SIZE_SMALL, CSS_P.amber1, 2),
         glyph: text(NAME.SIZE, CSS_P.moon, 0).setOrigin(0.5, 0.5),
         minis: [text(9, CSS_P.steel2, 0).setOrigin(0.5, 0.5), text(9, CSS_P.steel2, 0).setOrigin(0.5, 0.5)],
+        toastGlyph: text(TOAST.GLYPH, CSS_P.moon, 0).setOrigin(0.5, 0.5),
+        toastName: text(TOAST.NAME, CSS_P.amber1, 0).setOrigin(0, 0.5),
+        toastStatus: text(TOAST.STATUS, CSS_P.moon, 0).setOrigin(0, 0.5),
       });
       const full = BALANCE.MAX_HP;
       this.anim.push({ hp: full, ghost: full, from: full, t: GHOST_DRAIN_SEC });
       this.pulse.push(null);
       this.wasReady.push(true);
+      this.toasts.push(null);
+      this.lastItem.push(undefined);
+      this.pulseFrames.push(0);
     }
     this.timer.setVisible(false);
     this.car.setVisible(false);
+  }
+
+  /** Frames left of the slot-pip pulse after a use (0 when idle); the arena's tests read it. */
+  pipPulse(i: PlayerIndex): number {
+    return this.pulseFrames[i] ?? 0;
   }
 
   /** Player names shown under the bars; a missing name falls back to the fighter's character label. */
@@ -310,8 +375,79 @@ export class Hud {
     this.drawRoundPips(state, i, bar, h, after);
 
     const acc = accessories(players, i, bar, h);
-    this.drawSlot(f, acc, t);
+    this.trackItem(state, i, f);
+    this.drawSlot(i, f, acc, t);
     this.drawRing(i, f, acc.ring, dt);
+    this.drawToast(players, i, t, color);
+  }
+
+  /** Item edges from the state (equip / use / break) drive the toast and the pip pulse; round resets are not breaks. */
+  private trackItem(state: MatchState, i: PlayerIndex, f: FighterState): void {
+    const prev = this.lastItem[i];
+    const next = f.item ? { kind: f.item.kind, uses: f.item.uses } : null;
+    this.lastItem[i] = next;
+    if (prev === undefined || state.phase !== "FIGHTING") return;
+    const edge = itemEdge(prev, next);
+    if (!edge) return;
+    const toast = this.toasts[i] ?? null;
+    if (edge === "equip" && next) {
+      this.toasts[i] = { frame: 0, hold: TOAST.HOLD, broken: false, item: next.kind, uses: next.uses };
+    } else if (edge === "use" && next) {
+      this.pulseFrames[i] = PIP_PULSE_FRAMES;
+      if (toast && !toast.broken) toast.uses = next.uses;
+    } else if (edge === "break" && prev) {
+      // Already resting: keep the panel where it is and swap the words; else slide in fresh.
+      const resting = toast && toast.frame >= TOAST.IN && toast.frame < TOAST.IN + toast.hold;
+      this.toasts[i] = { frame: resting ? TOAST.IN : 0, hold: TOAST.BROKEN_HOLD, broken: true, item: prev.kind, uses: 0 };
+    }
+  }
+
+  /** The equip toast: a night panel with an accent stripe on its leading edge, glyph, name × uses and a status line. */
+  private drawToast(players: number, i: PlayerIndex, t: FighterTexts, teamColor: number): void {
+    const toast = this.toasts[i] ?? null;
+    const k = toast ? toastSlide(toast.frame, toast.hold) : null;
+    if (!toast || k === null) {
+      this.toasts[i] = null;
+      t.toastGlyph.setVisible(false);
+      t.toastName.setVisible(false);
+      t.toastStatus.setVisible(false);
+      return;
+    }
+    toast.frame += 1;
+    const l = toastLayout(players, i);
+    const x = l.x + l.dx * (1 - k);
+    const y = l.y + l.dy * (1 - k);
+    const g = this.g;
+    const accent = toast.broken ? P.danger : teamColor;
+    g.fillStyle(P.night0, 0.9 * k);
+    g.fillRect(x, y, l.w, l.h);
+    g.lineStyle(1, P.steel2, k);
+    g.strokeRect(x + 0.5, y + 0.5, l.w - 1, l.h - 1);
+    const left = l.align === "left";
+    const stripeX = left ? x : x + l.w - TOAST.STRIPE;
+    g.fillStyle(accent, k);
+    g.fillRect(stripeX, y, TOAST.STRIPE, l.h);
+
+    const cy = y + l.h / 2;
+    const glyphX = left ? x + 20 : x + l.w - 20;
+    const textX = left ? x + 36 : x + 36; // text block always reads left → right; it sits after the glyph on the left side
+    t.toastGlyph.setText(GLYPH[toast.item]).setPosition(glyphX, cy - 1).setAlpha(k).setVisible(true);
+    setColorIfChanged(t.toastGlyph, toast.broken ? CSS_P.steel2 : CSS_P.moon);
+    const label = toast.item.toUpperCase(); // MOLOTOV, SWORD, SHIELD, BANANA, FLASH: the words the keys 1–5 are taught by
+    const name = toast.broken ? label : `${label} ×${toast.uses}`;
+    t.toastName.setText(name).setAlpha(k).setVisible(true);
+    setColorIfChanged(t.toastName, toast.broken ? CSS_P.moon : CSS_P.amber1);
+    t.toastStatus.setText(toast.broken ? "BROKEN" : "EQUIPPED").setAlpha(k).setVisible(true);
+    setColorIfChanged(t.toastStatus, toast.broken ? CSS_P.danger : CSS_P.moon);
+    if (left) {
+      t.toastName.setOrigin(0, 0.5).setPosition(textX, cy - 7);
+      t.toastStatus.setOrigin(0, 0.5).setPosition(textX, cy + 8);
+    } else {
+      // Mirrored: glyph on the outer (right) edge, text right-aligned toward it.
+      const right = x + l.w - 36;
+      t.toastName.setOrigin(1, 0.5).setPosition(right, cy - 7);
+      t.toastStatus.setOrigin(1, 0.5).setPosition(right, cy + 8);
+    }
   }
 
   private advanceDrain(anim: BarAnim, hp: number, dt: number): void {
@@ -425,8 +561,11 @@ export class Hud {
   }
 
   /** The held item in a chamfered 22 px slot with uses pips, then the two loadout minis: dim, lit while held, struck once used. */
-  private drawSlot(f: FighterState, acc: Accessories, t: FighterTexts): void {
+  private drawSlot(i: PlayerIndex, f: FighterState, acc: Accessories, t: FighterTexts): void {
     const g = this.g;
+    const pulse = this.pulseFrames[i] ?? 0;
+    if (pulse > 0) this.pulseFrames[i] = pulse - 1;
+    const beat = pulse / PIP_PULSE_FRAMES; // 1 on the use frame → 0
     const { x, y } = acc.slot;
     const s = SLOT.SIZE;
     const c = SLOT.CHAMFER;
@@ -450,10 +589,15 @@ export class Hud {
       const pitch = SLOT.PIP_W + SLOT.PIP_GAP;
       const total = held.uses * pitch - SLOT.PIP_GAP;
       let px = x + (s - total) / 2;
-      g.fillStyle(P.amber1, 1);
+      const grow = Math.round(2 * beat); // the pips swell and whiten for 12 frames after a use
+      g.fillStyle(beat > 0.5 ? P.white : P.amber1, 1);
       for (let u = 0; u < held.uses; u += 1) {
-        g.fillRect(px, y + s - SLOT.PIP_H - 2, SLOT.PIP_W, SLOT.PIP_H);
+        g.fillRect(px - grow / 2, y + s - SLOT.PIP_H - 2 - grow, SLOT.PIP_W + grow, SLOT.PIP_H + grow);
         px += pitch;
+      }
+      if (beat > 0) {
+        g.lineStyle(2, P.white, beat);
+        g.strokeRect(x - 1 - 3 * (1 - beat), y - 1 - 3 * (1 - beat), s + 2 + 6 * (1 - beat), s + 2 + 6 * (1 - beat));
       }
     }
 
@@ -542,7 +686,9 @@ export class Hud {
 }
 
 function hideAll(t: FighterTexts): void {
-  for (const text of [t.name, t.tag, t.out, t.dazzle, t.glyph, t.minis[0], t.minis[1]]) text.setVisible(false);
+  for (const text of [t.name, t.tag, t.out, t.dazzle, t.glyph, t.minis[0], t.minis[1], t.toastGlyph, t.toastName, t.toastStatus]) {
+    text.setVisible(false);
+  }
 }
 
 /** Banner text and size for the phase; `fightEdge` is the one-second window after entering FIGHTING (deathmatch has no timer to read it from). */
@@ -616,4 +762,9 @@ function lerp(a: number, b: number, k: number): number {
 function easeOut(k: number): number {
   const t = clamp01(k);
   return 1 - (1 - t) * (1 - t);
+}
+
+function easeIn(k: number): number {
+  const t = clamp01(k);
+  return t * t;
 }

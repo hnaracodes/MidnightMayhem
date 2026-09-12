@@ -50,7 +50,10 @@ export function controlFighter(s: MatchState, i: PlayerIndex, input: InputFrame,
   }
 }
 
-/** The held item gets first refusal of a punch edge; otherwise a normal punch starts. */
+/**
+ * The held item gets first refusal of a punch edge (a throwable starts a charging throw that
+ * `advanceThrowCharge` releases on the key's falling edge); otherwise a normal punch starts.
+ */
 function startPunch(s: MatchState, i: PlayerIndex, arm: Arm, events: SimEvent[]): void {
   if (usePunchWithItem(s, i, arm, events)) return;
   const f = s.fighters[i]!;

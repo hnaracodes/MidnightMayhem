@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
+import type Phaser from "phaser";
 import {
   ARSENAL, CHARACTER_LABEL, ITEM_IDS, MODES, WORLD, createMatch, type ItemId, type MatchState, type PlayerIndex,
 } from "@midnight/shared";
 import {
-  HUD_BAND, bannerFor, barHeight, barLayout, blinkOn, cooldownFraction, isOut, itemGlyph, pipCount, readyEdge, roundPipRow,
-  setColorIfChanged, teamColor, timerText,
+  HUD_BAND, Hud, TOAST, bannerFor, barHeight, barLayout, blinkOn, cooldownFraction, isOut, itemEdge, itemGlyph, pipCount,
+  readyEdge, roundPipRow, setColorIfChanged, teamColor, timerText, toastLayout, toastSlide,
 } from "../src/game/hud";
 import { P } from "../src/game/palette";
 
@@ -241,5 +242,198 @@ describe("setColorIfChanged (11.05 update budget)", () => {
     expect(calls).toEqual(["#ff0000"]);
     expect(setColorIfChanged(text, "#ffffff")).toBe(text);
     expect(calls).toEqual(["#ff0000", "#ffffff"]);
+  });
+});
+
+describe("toastLayout (9.08 rule 2)", () => {
+  const nameBox = (players: 2 | 3 | 4, i: PlayerIndex): Box => {
+    const l = barLayout(players, i);
+    const h = barHeight(players, i);
+    const tight = players === 4 || (players === 3 && i === 2);
+    const w = 140;
+    return { x: l.align === "left" ? l.x : l.x + l.w - w, y: l.y + h + (tight ? 1 : 6), w, h: tight ? 12 : 14 };
+  };
+
+  for (const players of [2, 3, 4] as const) {
+    it(`${players} players: toasts overlap no bar, no name row and no other toast, and stay on screen`, () => {
+      const bars = boxes(players);
+      const toasts: Box[] = [];
+      for (let i = 0; i < players; i += 1) {
+        const t = toastLayout(players, i as PlayerIndex);
+        const box = { x: t.x, y: t.y, w: t.w, h: t.h };
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.w).toBeLessThanOrEqual(WORLD.WIDTH);
+        expect(box.y + box.h).toBeLessThan(250); // above a standing rig's head
+        for (const bar of bars) expect(overlaps(box, bar), `toast ${i} vs a bar`).toBe(false);
+        for (let j = 0; j < players; j += 1) expect(overlaps(box, nameBox(players, j as PlayerIndex)), `toast ${i} vs name ${j}`).toBe(false);
+        for (const other of toasts) expect(overlaps(box, other), `toast ${i} vs another toast`).toBe(false);
+        toasts.push(box);
+      }
+    });
+  }
+
+  it("sits inside (toward the centre) for P0 / P2 and mirrored for P1 / P3, sliding in from that side", () => {
+    const a = toastLayout(2, 0);
+    const b = toastLayout(2, 1);
+    expect(a.align).toBe("left");
+    expect(b.align).toBe("right");
+    expect(a.x).toBe(barLayout(2, 0).x);
+    expect(b.x + b.w).toBe(barLayout(2, 1).x + barLayout(2, 1).w);
+    expect(a.dx).toBeLessThan(0); // enters from the left edge
+    expect(b.dx).toBeGreaterThan(0);
+    expect(toastLayout(4, 0).align).toBe("left");
+    expect(toastLayout(4, 1).align).toBe("left");
+    expect(toastLayout(4, 2).align).toBe("right");
+    expect(toastLayout(4, 3).align).toBe("right");
+    const c = toastLayout(3, 2);
+    expect(c.x + c.w / 2).toBe(WORLD.WIDTH / 2);
+  });
+});
+
+describe("toastSlide and itemEdge (9.08 rule 2)", () => {
+  it("slides in over 10 frames, holds, slides out over 10, then ends", () => {
+    expect(toastSlide(0, TOAST.HOLD)).toBe(0);
+    expect(toastSlide(5, TOAST.HOLD)).toBeGreaterThan(0);
+    expect(toastSlide(5, TOAST.HOLD)).toBeLessThan(1);
+    expect(toastSlide(TOAST.IN, TOAST.HOLD)).toBe(1);
+    expect(toastSlide(TOAST.IN + TOAST.HOLD - 1, TOAST.HOLD)).toBe(1);
+    expect(toastSlide(TOAST.IN + TOAST.HOLD + 5, TOAST.HOLD)).toBeLessThan(1);
+    expect(toastSlide(TOAST.IN + TOAST.HOLD + TOAST.OUT - 1, TOAST.HOLD)).toBeGreaterThan(0);
+    expect(toastSlide(TOAST.IN + TOAST.HOLD + TOAST.OUT, TOAST.HOLD)).toBeNull();
+    expect(TOAST.IN).toBe(10);
+    expect(TOAST.HOLD).toBe(90);
+    expect(TOAST.OUT).toBe(10);
+    expect(TOAST.BROKEN_HOLD).toBe(45);
+  });
+
+  it("reads equip / use / break from the held item's change", () => {
+    expect(itemEdge(null, null)).toBeNull();
+    expect(itemEdge(null, { kind: "molotov", uses: 2 })).toBe("equip");
+    expect(itemEdge({ kind: "sword", uses: 3 }, { kind: "molotov", uses: 2 })).toBe("equip");
+    expect(itemEdge({ kind: "molotov", uses: 2 }, { kind: "molotov", uses: 1 })).toBe("use");
+    expect(itemEdge({ kind: "molotov", uses: 2 }, { kind: "molotov", uses: 2 })).toBeNull();
+    expect(itemEdge({ kind: "molotov", uses: 1 }, null)).toBe("break");
+  });
+});
+
+// ---- Hud lifecycle with a stub scene ----
+
+class FakeText {
+  visible = true;
+  text = "";
+  x = 0;
+  y = 0;
+  alpha = 1;
+  displayWidth = 60;
+  style: { color: unknown } = { color: "#000000" };
+  constructor() {
+    return new Proxy(this, {
+      get: (target, prop, receiver) => {
+        if (prop in target) return Reflect.get(target, prop, receiver);
+        return () => receiver;
+      },
+    });
+  }
+  setVisible(v: boolean): this { this.visible = v; return this; }
+  setText(t: string): this { this.text = String(t); return this; }
+  setPosition(x: number, y: number): this { this.x = x; this.y = y; return this; }
+  setAlpha(a: number): this { this.alpha = a; return this; }
+  setColor(c: string): this { this.style.color = c; return this; }
+}
+
+function hudScene() {
+  const texts: FakeText[] = [];
+  const graphics = { calls: [] as string[] };
+  const g = new Proxy(graphics, {
+    get: (target, prop, receiver) => {
+      if (prop in target) return Reflect.get(target, prop, receiver);
+      return (...args: unknown[]) => { target.calls.push(`${String(prop)}(${args.map((a) => typeof a === "number" ? Math.round(a) : String(a)).join(",")})`); return receiver; };
+    },
+  });
+  const scene = { add: { graphics: () => g, text: () => { const t = new FakeText(); texts.push(t); return t; } } };
+  return { scene: scene as unknown as Phaser.Scene, texts, graphics };
+}
+
+describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
+  const DT = 1 / 60;
+  const fighting = () => {
+    const s = createMatch({ players: 2, teams: "ffa", mode: "rounds", map: "roof", items: true });
+    s.phase = "FIGHTING";
+    s.phaseTicks = 0;
+    return s;
+  };
+  const shown = (texts: FakeText[], text: string) => texts.filter((t) => t.visible && t.text === text);
+
+  it("an equip shows `MOLOTOV ×2` / `EQUIPPED` for 110 frames beside the bar, then hides", () => {
+    const { scene, texts } = hudScene();
+    const hud = new Hud(scene);
+    const s = fighting();
+    hud.update(s, DT);
+    expect(shown(texts, "EQUIPPED")).toHaveLength(0);
+    s.fighters[0]!.item = { kind: "molotov", uses: 2 };
+    hud.update(s, DT); // frame 0 of the slide
+    expect(shown(texts, "MOLOTOV ×2")).toHaveLength(1);
+    expect(shown(texts, "EQUIPPED")).toHaveLength(1);
+    const name = shown(texts, "MOLOTOV ×2")[0]!;
+    const rest = toastLayout(2, 0);
+    expect(name.x).toBeLessThan(rest.x + rest.w); // still sliding in from the left
+    for (let k = 0; k < TOAST.IN; k += 1) hud.update(s, DT);
+    expect(name.x).toBeGreaterThan(rest.x);
+    expect(name.x).toBeLessThan(rest.x + rest.w);
+    expect(name.style.color).toBe("#F2A03D");
+    expect(shown(texts, "EQUIPPED")[0]!.style.color).toBe("#E8F0FF");
+    for (let k = 0; k < TOAST.HOLD + TOAST.OUT - 1; k += 1) hud.update(s, DT); // frames 11..109: the last visible one
+    expect(shown(texts, "EQUIPPED")).toHaveLength(1);
+    hud.update(s, DT);
+    expect(shown(texts, "EQUIPPED")).toHaveLength(0);
+  });
+
+  it("a use updates the count and pulses the slot pips; a break shows BROKEN in danger for 45 frames", () => {
+    const { scene, texts, graphics } = hudScene();
+    const hud = new Hud(scene);
+    const s = fighting();
+    hud.update(s, DT);
+    s.fighters[0]!.item = { kind: "molotov", uses: 2 };
+    hud.update(s, DT);
+    s.fighters[0]!.item = { kind: "molotov", uses: 1 };
+    graphics.calls.length = 0;
+    hud.update(s, DT);
+    expect(shown(texts, "MOLOTOV ×1")).toHaveLength(1);
+    expect(hud.pipPulse(0)).toBeGreaterThan(0);
+    const before = graphics.calls.length;
+    for (let k = 0; k < 20; k += 1) hud.update(s, DT);
+    expect(hud.pipPulse(0)).toBe(0);
+    expect(before).toBeGreaterThan(0);
+    s.fighters[0]!.item = null;
+    hud.update(s, DT);
+    expect(shown(texts, "BROKEN")).toHaveLength(1);
+    expect(shown(texts, "BROKEN")[0]!.style.color).toBe("#E8434F");
+    expect(shown(texts, "MOLOTOV")).toHaveLength(1);
+    for (let k = 0; k < TOAST.BROKEN_HOLD + TOAST.OUT - 1; k += 1) hud.update(s, DT); // already at rest: no slide-in
+    expect(shown(texts, "BROKEN")).toHaveLength(1);
+    hud.update(s, DT);
+    expect(shown(texts, "BROKEN")).toHaveLength(0);
+  });
+
+  it("items cleared by a round reset are not a break, and the other bar's toast is mirrored", () => {
+    const { scene, texts } = hudScene();
+    const hud = new Hud(scene);
+    const s = fighting();
+    s.fighters[1]!.item = { kind: "sword", uses: 6 };
+    hud.update(s, DT); // first sight of a held item: no toast
+    expect(shown(texts, "EQUIPPED")).toHaveLength(0);
+    s.phase = "ROUND_END";
+    s.fighters[1]!.item = null;
+    hud.update(s, DT);
+    expect(shown(texts, "BROKEN")).toHaveLength(0);
+    s.phase = "FIGHTING";
+    s.fighters[1]!.item = { kind: "shield", uses: 3 };
+    hud.update(s, DT);
+    for (let k = 0; k < TOAST.IN; k += 1) hud.update(s, DT);
+    const name = shown(texts, "SHIELD ×3")[0]!;
+    expect(name).toBeDefined();
+    const rest = toastLayout(2, 1);
+    expect(name.x).toBeGreaterThan(rest.x);
+    expect(name.x).toBeLessThanOrEqual(rest.x + rest.w);
   });
 });

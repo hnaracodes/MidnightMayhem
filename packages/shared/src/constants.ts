@@ -49,7 +49,7 @@ export const ITEM_IDS = ["molotov", "sword", "shield", "banana", "flash"] as con
 export type ItemId = (typeof ITEM_IDS)[number];
 export const ITEMS: Record<ItemId, { uses: number; label: string; cocoLabel: string }> = {
   molotov: { uses: 2, label: "Molotov", cocoLabel: "bottle" },
-  sword: { uses: 6, label: "Umbrella sword", cocoLabel: "umbrella" },
+  sword: { uses: 6, label: "Racket sword", cocoLabel: "tennis racket" },
   shield: { uses: 3, label: "Backpack shield", cocoLabel: "backpack" },
   banana: { uses: 1, label: "Banana peel", cocoLabel: "banana" },
   flash: { uses: 1, label: "Phone flash", cocoLabel: "cell phone" },
@@ -67,6 +67,16 @@ export const ARSENAL = {
   LASER_SPEED: 60,        // px per tick the beam front travels (960 px in 16 ticks)
   LASER_DAMAGE: 20, LASER_CHIP: 4,
   LASER_BAND_TOP: 105, LASER_BAND_BOTTOM: 35, // 70 px band (half the 140 px hurtbox) centred on the sprite's middle, feet − 70
+} as const;
+
+/**
+ * 9.08 charged, aimed throws. Charge grows one per tick the punch key stays held (CHARGE_MAX ticks = full range);
+ * the landing distance from the release point runs MIN_RANGE → MAX_RANGE. A release inside 3 ticks (a camera pulse
+ * or a keyboard tap) throws at VISION_CHARGE · CHARGE_MAX. RELEASE_TICKS + RECOVERY must equal
+ * ARSENAL.THROW_STARTUP + THROW_RECOVERY, the total `combat.ts` clears the action at.
+ */
+export const THROW = {
+  CHARGE_MAX: 45, MIN_RANGE: 120, MAX_RANGE: 640, ANGLE_DEG: 45, VISION_CHARGE: 0.7, RELEASE_TICKS: 6, RECOVERY: 12,
 } as const;
 
 // ---- Maps (spec §4.4) ----

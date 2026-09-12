@@ -122,7 +122,7 @@ describe("Customize", () => {
     new Customize(vi.fn()).render(el, { character: "stoker", loadout: ["banana", "flash"] }, []);
     const sword = el.querySelector<HTMLElement>('.item[data-item="sword"]')!;
     expect(sword.querySelectorAll(".pip").length).toBe(6);
-    expect(sword.textContent).toMatch(/umbrella/i);
+    expect(sword.textContent).toMatch(/racket/i);
     expect(sword.textContent).toMatch(/bring/i);
   });
 });
