@@ -827,17 +827,22 @@ function placeTwinkle(layers: Layers, dots: Extras["dots"]): void {
   }
 }
 
-/** Advances every scrolling layer screen-left. Call once per render frame with the frame delta in seconds. */
+/**
+ * Advances every scrolling layer screen-left. Call once per render frame with the frame delta in seconds.
+ *
+ * 13.07 (owner, 2026-09-12): the fighters stand on the train, so the car itself — roof, body, window glow and lamp
+ * fixtures — no longer slides under their feet; it only bobs. Everything that is *not* the car moves: sky, stars,
+ * clouds, telegraph poles, tunnel wall, foreground silhouettes, the rail ballast under the wheels, the track seen
+ * through a gap and the final car's track trail. `roofSpeed` stays the train's speed for those layers, the wind,
+ * the particles and the sparks.
+ */
 export function scrollBackgrounds(layers: Layers, dtSec: number): void {
   const dt = Math.min(Math.max(dtSec, 0), 0.1);
   layers.tiles.forEach((tile, i) => {
     const row = TILE_ROWS[i];
-    if (!row) return;
-    const speed = i === ROOF_INDEX || i === BODY_INDEX ? layers.roofSpeed : row.speed;
-    if (speed !== 0) tile.tilePositionX += speed * dt;
+    if (!row || i === ROOF_INDEX || i === BODY_INDEX) return; // the car stands still
+    if (row.speed !== 0) tile.tilePositionX += row.speed * dt;
   });
-  layers.glow.tilePositionX += layers.roofSpeed * dt;
-  layers.lamps.tilePositionX += layers.roofSpeed * dt;
   layers.foreground.tilePositionX += layers.roofSpeed * FOREGROUND_SPEED * dt;
   layers.tunnel.tilePositionX += TUNNEL_SPEED * dt;
   layers.track.tilePositionX += TRACK_SPEED * dt;

@@ -95,7 +95,11 @@ signature and draws the soft pool.
    `glow1` light (r 90 × 120, intensity 0.25, doubled during the absorb flash) while it stands. `Effects` pulses
    `amber1` (r 90, 4 frames) at each clean-hit impact point. A pulse decays linearly to 0 over `frames` then
    removes itself.
-8. Fighter rim: `rimFor(x, y)` (sampled 60 px above the feet) picks the strongest warm light against the moon at
+   *13.02 / 13.07 notes:* `RimChoice` also carries `dir`, the falloff-weighted unit vector toward the net light
+   (`lightDirFor`), which the sprite composer shades the limbs from (`13-art/02`); `Props.setLampGain` (`13-art/06`)
+   multiplies a roof lamp's intensity per frame; and since the car stands still (13.07) the roof offset handed to
+   `placeRepeating` is 0, so the pools sit on fixed fixtures.
+8. Fighter rim: `rimFor(x, y)` (sampled 42 px above the feet since 13.00) picks the strongest warm light against the moon at
    the fighter. `color` is that light's colour (`lamp`, `amber1`, `danger`, the transient's own) when a warm light
    dominates, `glow1` when the moon does or nothing reaches; `side` is `"left"` when the light is left of x,
    `"right"` otherwise (the moon lights from the right for x < 740), `"both"` in the tunnel or when the two
