@@ -56,8 +56,10 @@ Integration notes carried over from the 13-lane merge:
 
 - Second detector track behind one interface: `src/vision/backends/ObjectBackend.ts`, `mediapipe.ts` (wraps
   9.04's detector), `yolo.ts` (yolov10n on `onnxruntime-web`, lazy `import()`, webgpu → wasm fallback), `nms.ts`
-  (pure IoU / NMS / letterbox). The worker loads the backend named in `init { detector }`; a YOLO load failure
-  falls back to MediaPipe with one warning; `ready` and every result carry `backend`, `ready` carries `fallback`.
+  (pure IoU / NMS / letterbox), `loader.ts` (rule 1 `loadBackend` and the `GuardedBackend` throw guard, both
+  unit-tested). The worker loads the backend named in `init { detector }`; a YOLO load failure falls back to
+  MediaPipe with one warning (`fallback: true` only for a YOLO request); a backend that throws on three
+  consecutive frames is disposed and the client marks objects off; `ready` and every result carry `backend`.
 - `?detector=yolo|mediapipe` → `session.detector` → the worker; the lobby camera button reads "Camera on · yolo";
   the harness objects line reads "yolo · 30.0 ms" / "mediapipe (yolo failed) · 12.3 ms" / "off".
 - `bench.html` runs both backends on CPU and GPU over the same frames (fake camera, 40 procedural fixtures, any

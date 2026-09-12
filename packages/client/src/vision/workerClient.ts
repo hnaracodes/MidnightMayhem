@@ -48,7 +48,7 @@ export type ResultMessage = {
   backend: DetectorId | null;
 };
 
-/** What the worker loaded (9.07): `backend` null = objects off; `fallback` = the requested detector failed to load. */
+/** What the worker loaded (9.07): `backend` null = objects off; `fallback` = YOLO was requested and failed to load. */
 export interface ReadyInfo {
   delegate: Delegate;
   objects: boolean;
@@ -83,7 +83,7 @@ export interface WorkerStats {
   objects: boolean;
   /** The loaded detector backend (9.07); null before ready and when objects are off. */
   backend: DetectorId | null;
-  /** True when the requested detector failed to load and another (or none) took over. */
+  /** True when YOLO was requested and failed to load, so MediaPipe (or nothing) took over. */
   fallback: boolean;
 }
 
@@ -208,6 +208,11 @@ export class WorkerClient {
         this.inFlight = false;
         this.stats.poseMs = msg.poseMs;
         if (msg.objects !== null) this.stats.objectMs = msg.objectMs;
+        if (msg.backend === null && this.stats.objects) {
+          // The worker disabled the backend after BACKEND_MAX_THROWS consecutive throws (9.07 invariant).
+          this.stats.objects = false;
+          this.stats.backend = null;
+        }
         this.stats.delegate = msg.delegate;
         const t = this.now();
         this.resultTimes.push(t);

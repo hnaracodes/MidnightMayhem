@@ -197,8 +197,9 @@ export function createYoloBackend(opts: YoloOptions, deps: YoloDeps = {}): Objec
         if (type.includes("text/html")) throw new Error(`${opts.modelUrl} → not found (got ${type})`);
         const model = new Uint8Array(await res.arrayBuffer());
         if (delegate === "GPU") {
+          // webgpu alone first so `provider` names the path that actually runs; the wasm retry is explicit.
           try {
-            session = await createSession(model, ["webgpu", "wasm"]);
+            session = await createSession(model, ["webgpu"]);
             provider = "webgpu";
           } catch (err) {
             console.info("[vision] yolo: webgpu unavailable, using wasm", err instanceof Error ? err.message : err);

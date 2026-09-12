@@ -91,6 +91,20 @@ describe("WorkerClient.start", () => {
     expect(results[0]).toMatchObject({ backend: "yolo", objectMs: 30 });
   });
 
+  it("9.07 invariant: a result with backend: null after objects were on marks the detector disabled", async () => {
+    const { worker, client } = setup();
+    const p = client.start("yolo");
+    worker.emit({ type: "ready", delegate: "GPU", objects: true, backend: "yolo", fallback: false });
+    await p;
+    client.sendFrame(video, 1);
+    worker.emit({ type: "result", ts: 1, pose: null, poseMs: 4, delegate: "GPU", objects: [], objectMs: 30, backend: "yolo" });
+    expect(client.stats).toMatchObject({ objects: true, backend: "yolo", objectMs: 30 });
+    // the worker disposed the backend after BACKEND_MAX_THROWS consecutive throws
+    client.sendFrame(video, 2);
+    worker.emit({ type: "result", ts: 2, pose: null, poseMs: 4, delegate: "GPU", objects: null, objectMs: 0, backend: null });
+    expect(client.stats).toMatchObject({ objects: false, backend: null });
+  });
+
   it("9.04: a worker without the detector reports objects: false and results carry objects: null", async () => {
     const { worker, client } = setup();
     const p = client.start();

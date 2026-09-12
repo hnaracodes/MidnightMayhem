@@ -169,7 +169,7 @@ describe("createYoloBackend", () => {
     expect(log.disposed).toBe(1);
   });
 
-  it("asks for webgpu then wasm on GPU and falls back to wasm when webgpu is refused", async () => {
+  it("on GPU tries webgpu alone, then wasm, so `provider` names the path that actually runs", async () => {
     const { ort, log } = fakeOrt({
       dims: [1, 0, 6], data: () => new Float32Array(0), createFails: (p) => p[0] === "webgpu",
     });
@@ -177,8 +177,16 @@ describe("createYoloBackend", () => {
       loadOrt: async () => ort, fetch: fetchOk, createContext: () => fakeCanvas(320).ctx as unknown as OffscreenCanvasRenderingContext2D,
     });
     await yolo.init("GPU");
-    expect(log.providers).toEqual([["webgpu", "wasm"], ["wasm"]]);
+    expect(log.providers).toEqual([["webgpu"], ["wasm"]]);
     expect(yolo.provider).toBe("wasm");
+
+    const ok = fakeOrt({ dims: [1, 0, 6], data: () => new Float32Array(0) });
+    const gpu = createYoloBackend({ modelUrl: "/models/yolo.onnx", inputSize: 320 }, {
+      loadOrt: async () => ok.ort, fetch: fetchOk, createContext: () => fakeCanvas(320).ctx as unknown as OffscreenCanvasRenderingContext2D,
+    });
+    await gpu.init("GPU");
+    expect(ok.log.providers).toEqual([["webgpu"]]);
+    expect(gpu.provider).toBe("webgpu");
   });
 
   it("rejects with model-load when the model is missing or the runtime cannot create a session", async () => {
