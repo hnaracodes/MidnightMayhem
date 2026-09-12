@@ -60,7 +60,10 @@ client.on("LOBBY", (message) => {
 });
 
 client.on("ERROR", (message) => showBanner(message.message));
-client.on("OPPONENT_LEFT", () => showBanner("Opponent left the room"));
+client.on("OPPONENT_LEFT", () => {
+  matchRunning = false;
+  showBanner("Opponent left the room");
+});
 
 client.on("SNAPSHOT", (message) => {
   session.buffer.push(message.state, performance.now());

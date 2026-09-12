@@ -1,4 +1,10 @@
-import { EMPTY_FRAME, type InputFrame, type InputKey, type InputSource } from "@midnight/shared";
+import {
+  EMPTY_FRAME,
+  INPUT_KEYS,
+  type InputFrame,
+  type InputKey,
+  type InputSource,
+} from "@midnight/shared";
 
 const KEY_MAP: Readonly<Record<string, InputKey>> = {
   KeyA: "left",
@@ -25,7 +31,7 @@ export class KeyboardInputSource implements InputSource {
   };
 
   private readonly onBlur = (): void => {
-    if (this.frame !== EMPTY_FRAME) this.frame = EMPTY_FRAME;
+    this.clear();
   };
 
   async start(): Promise<void> {
@@ -42,7 +48,7 @@ export class KeyboardInputSource implements InputSource {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
     window.removeEventListener("blur", this.onBlur);
-    this.frame = EMPTY_FRAME;
+    this.clear();
   }
 
   sample(): Readonly<InputFrame> {
@@ -52,5 +58,9 @@ export class KeyboardInputSource implements InputSource {
   private set(input: InputKey, value: boolean): void {
     if (this.frame[input] === value) return;
     this.frame = Object.freeze({ ...this.frame, [input]: value });
+  }
+
+  private clear(): void {
+    if (INPUT_KEYS.some((input) => this.frame[input])) this.frame = EMPTY_FRAME;
   }
 }

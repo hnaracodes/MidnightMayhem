@@ -56,4 +56,14 @@ describe("KeyboardInputSource", () => {
       block: false,
     });
   });
+
+  it("preserves frame identity when blur has nothing to clear", async () => {
+    const source = new KeyboardInputSource();
+    await source.start();
+    const idle = source.sample();
+
+    fakeWindow.dispatchEvent(new Event("blur"));
+
+    expect(source.sample()).toBe(idle);
+  });
 });
