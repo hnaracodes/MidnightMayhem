@@ -6,7 +6,7 @@ import { advanceHazards } from "./hazards";
 import { applyEquip, tickCooldowns } from "./items";
 import { resolveLaser } from "./laser";
 import { applyPits } from "./maps";
-import { advanceProjectiles } from "./projectiles";
+import { advanceProjectiles, advanceThrowCharge } from "./projectiles";
 import { advancePhase, applyOutOfBounds, tickRound } from "./rounds";
 import type { MatchState, SimEvent, StepResult } from "./types";
 
@@ -40,6 +40,7 @@ export function fightTick(s: MatchState, inputs: readonly InputFrame[], events: 
   tickCooldowns(s);
   const players = playerIndices(s);
   for (const i of players) controlFighter(s, i, inputs[i] ?? EMPTY_FRAME, events);
+  advanceThrowCharge(s, inputs);
   for (const i of players) applyEquip(s, i, inputs[i] ?? EMPTY_FRAME, events);
   for (const i of players) applyPhysics(s.fighters[i]!, i, s.config.map, events);
   updateFacing(s);

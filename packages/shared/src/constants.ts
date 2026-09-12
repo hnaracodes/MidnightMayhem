@@ -67,6 +67,16 @@ export const ARSENAL = {
   LASER_DAMAGE: 10, LASER_CHIP: 4, LASER_BAND_TOP: 130, LASER_BAND_BOTTOM: 70,
 } as const;
 
+/**
+ * 9.08 charged, aimed throws. Charge grows one per tick the punch key stays held (CHARGE_MAX ticks = full range);
+ * the landing distance from the release point runs MIN_RANGE → MAX_RANGE. A release inside 3 ticks (a camera pulse
+ * or a keyboard tap) throws at VISION_CHARGE · CHARGE_MAX. RELEASE_TICKS + RECOVERY must equal
+ * ARSENAL.THROW_STARTUP + THROW_RECOVERY, the total `combat.ts` clears the action at.
+ */
+export const THROW = {
+  CHARGE_MAX: 45, MIN_RANGE: 120, MAX_RANGE: 640, ANGLE_DEG: 45, VISION_CHARGE: 0.7, RELEASE_TICKS: 6, RECOVERY: 12,
+} as const;
+
 // ---- Maps (spec §4.4) ----
 export const MAP_IDS = ["roof", "gaps", "platforms", "chaos"] as const;
 export type MapId = (typeof MAP_IDS)[number];
