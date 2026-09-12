@@ -22,7 +22,7 @@ Owns nothing else.
 - `laserReach(k): number` — how far the front has travelled on 0-based beam tick `k`: `LASER_SPEED · (k + 1)`.
 - `laserHitbox(f): Rect | null` — while `laserPhase === "beam"`: from `f.x` toward the world edge in the facing direction,
   `w = min(laserReach(elapsed − LASER_CHARGE), facing === 1 ? WIDTH − f.x : f.x)`, `x = facing === 1 ? f.x : f.x − w`,
-  `y = f.y − LASER_BAND_TOP`, `h = LASER_BAND_TOP − LASER_BAND_BOTTOM` (70 px, half the 140 px hurtbox, centred on the
+  `y = f.y − LASER_BAND_TOP`, `h = LASER_BAND_TOP − LASER_BAND_BOTTOM` (49 px since 13.00, half the 98 px hurtbox — was 70 of 140 — centred on the
   sprite's middle at `feet − 70`). `LASER_SPEED · LASER_ACTIVE ≥ WIDTH`, so the front always reaches the far edge.
 - `resolveLaser(s, events): void` — for every fighter in the beam phase: on the first beam tick push `LASER_FIRE`; each
   beam tick, for every `opponentsOf` target not yet in `action.hit`, with `canBeHit`, not `isInvulnerable`, whose

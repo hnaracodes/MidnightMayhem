@@ -5,9 +5,11 @@
  *
  * Local space: origin at the feet, +x toward facing, +y down. Angles in degrees, 0 = straight down,
  * 90 = forward (toward facing), 180 = up. Authored facing right; facing left flips every x offset.
+ * 13.00: local space is the 150 px author body; `computePose` multiplies every offset by `BODY_SCALE` on the
+ * way to world, so the drawn fighter is 105 px and the sim's scaled hitboxes still hug it.
  */
 import { ARSENAL, BALANCE, THROW, WORLD, type FighterState } from "@midnight/shared";
-import { CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
+import { BODY_SCALE, CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
 
 export interface Pt { x: number; y: number }
 export interface Arm { shoulder: Pt; elbow: Pt; wrist: Pt; fist: Pt }
@@ -542,7 +544,7 @@ export function computePose(f: FighterState, clock: Clock): Joints {
     case "win": p = winPose(rig, clock.renderMs); break;
     default: p = applyBeat(idlePose(rig, clock.renderMs), clock.beat);
   }
-  const W = (l: Pt): Pt => ({ x: f.x + f.facing * l.x, y: f.y + l.y });
+  const W = (l: Pt): Pt => ({ x: f.x + f.facing * l.x * BODY_SCALE, y: f.y + l.y * BODY_SCALE });
   const WA = (a: Arm): Arm => ({ shoulder: W(a.shoulder), elbow: W(a.elbow), wrist: W(a.wrist), fist: W(a.fist) });
   const WL = (l: Leg): Leg => ({ hip: W(l.hip), knee: W(l.knee), foot: W(l.foot) });
   const hip = W(p.t.hip);
@@ -551,7 +553,7 @@ export function computePose(f: FighterState, clock: Clock): Joints {
   if (!f.grounded && f.jumpTicks >= BALANCE.JUMP_IFRAME_START && f.jumpTicks <= BALANCE.JUMP_IFRAME_END) {
     const len = Math.hypot(f.vx, f.vy);
     const back = len > 1e-6 ? { x: -f.vx / len, y: -f.vy / len } : { x: 0, y: 1 };
-    ghosts.push(add(hip, scale(back, 6)), add(hip, scale(back, 12)));
+    ghosts.push(add(hip, scale(back, 6 * BODY_SCALE)), add(hip, scale(back, 12 * BODY_SCALE)));
   }
 
   return {

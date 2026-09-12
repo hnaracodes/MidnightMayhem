@@ -47,8 +47,10 @@ Owns `maps.ts` and `fighter.ts`. Does not edit `combat.ts`, `rounds.ts`, `create
    (x > 330) falls back to the roof and lands with `LAND`, `onPlatform null`.
 5. `platforms`: jumping from directly under a platform passes through it on the way up and lands on top on the way
    down (one-way).
-6. A fighter standing on a platform (feet 330, hurtbox 190–330) is clipped by a grounded opponent's punch directly
-   below (hitbox 310–370 overlaps his shins by 20 px — assert the hit lands), so platforms are not a safe perch.
+6. ~~A fighter standing on a platform (feet 330, hurtbox 190–330) is clipped by a grounded opponent's punch directly
+   below (hitbox 310–370 overlaps his shins by 20 px — assert the hit lands), so platforms are not a safe perch.~~
+   **Changed by 13.00 (body 70 %):** the hurtbox is 232–330 and a grounded punch box 346–388, so a perch is out of a
+   grounded punch's reach (assert no hit); reach it by jumping. `MAPS` itself is unchanged.
 7. `chaos`: rule 2 and rule 4 both hold on the same map.
 8. A fighter in a pit (`pitTicks > 0`) ignores input, cannot be hit, is not counted for OOB, and keeps his item.
 9. Pit damage is never absorbed by a shield.

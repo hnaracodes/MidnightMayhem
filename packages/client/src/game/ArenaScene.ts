@@ -40,7 +40,7 @@ const BUDGET_EMA = 0.05;
 /** Attract mode steps the sim at most this many ticks per render frame (a hidden tab must not spiral). */
 const ATTRACT_MAX_STEPS = 5;
 /** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
-const CHEST_ABOVE_FEET = 60;
+const CHEST_ABOVE_FEET = 42; // 13.00: 60 × 0.7
 const FRAME_BUDGET_LABEL = "6 ms";
 /** 12.04 rule 9: how far into gloom a fallen fighter sinks (the 12.02 floor). */
 const KO_GLOOM = 0.25;
@@ -305,7 +305,7 @@ export class ArenaScene extends Phaser.Scene {
     const hand = this.hands[i];
     if (hand) return hand;
     const f = newest.fighters[i];
-    return f ? { x: f.x + f.facing * 20, y: f.y - 90 } : { x: WORLD.WIDTH / 2, y: WORLD.ROOF_Y - 90 };
+    return f ? { x: f.x + f.facing * 14, y: f.y - 63 } : { x: WORLD.WIDTH / 2, y: WORLD.ROOF_Y - 63 };
   }
 
   /** Creates or destroys fighter views so there is exactly one per fighter in the state. */

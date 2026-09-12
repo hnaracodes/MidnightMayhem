@@ -195,11 +195,12 @@ describe("12.02 rules 1–2: darkness and pools", () => {
 
 describe("12.02 rule 10: contact shadow pool", () => {
   it("widens and fades with height, snapped to the pixel grid", () => {
-    expect(shadowPool(0)).toEqual({ w: 64, alpha: 1 });
-    expect(shadowPool(150).w).toBe(110);
+    // 13.00: 64 → 110 px at the 150 px body became 45 → 77 at 70 %
+    expect(shadowPool(0)).toEqual({ w: 45, alpha: 1 });
+    expect(shadowPool(150).w).toBe(77);
     expect(shadowPool(150).alpha).toBeCloseTo(0.3, 6);
-    expect(shadowPool(75).w).toBeGreaterThan(64);
-    expect(shadowPool(75).w).toBeLessThan(110);
+    expect(shadowPool(75).w).toBeGreaterThan(45);
+    expect(shadowPool(75).w).toBeLessThan(77);
     const g = new FakeObject();
     drawShadow(g as unknown as Phaser.GameObjects.Graphics, 301, WORLD.ROOF_Y, 0);
     expect(g.ellipses.length).toBe(3);
@@ -208,6 +209,6 @@ describe("12.02 rule 10: contact shadow pool", () => {
     g.clear();
     drawShadow(g as unknown as Phaser.GameObjects.Graphics, 301, WORLD.ROOF_Y, 150);
     expect(g.ellipses[0]!.alpha).toBeLessThan(planted);
-    expect(g.ellipses[0]!.w).toBeGreaterThan(64);
+    expect(g.ellipses[0]!.w).toBeGreaterThan(45);
   });
 });

@@ -8,7 +8,8 @@ export const WORLD = {
   WIDTH: 960, HEIGHT: 540, ROOF_Y: 430,
   SOFT_EDGE_L: 72, SOFT_EDGE_R: 888,
   PLAYER_START_X: [280, 680] as const,
-  HURTBOX_W: 72, HURTBOX_H: 140,
+  // 13.00: the drawn body is 70 % of the 150 px author rig (105 px); the hurtbox follows (was 72 × 140).
+  HURTBOX_W: 50, HURTBOX_H: 98,
 } as const;
 
 export const BALANCE = {
@@ -18,14 +19,15 @@ export const BALANCE = {
   PUNCH_STARTUP: 4,
   PUNCH_ACTIVE: 3,
   PUNCH_RECOVERY: 8,
-  PUNCH_GAP: 10,          // hitbox starts this far in front of the fighter centre
-  PUNCH_REACH: 70,        // hitbox width
-  PUNCH_HITBOX_TOP: 120,  // hitbox top, measured up from the feet
-  PUNCH_HITBOX_H: 60,
+  // 13.00: punch geometry at 70 % of the 150 px body (was 10 / 70 / 120 / 60)
+  PUNCH_GAP: 7,           // hitbox starts this far in front of the fighter centre
+  PUNCH_REACH: 49,        // hitbox width
+  PUNCH_HITBOX_TOP: 84,   // hitbox top, measured up from the feet
+  PUNCH_HITBOX_H: 42,
   HITSTUN_TICKS: 12,
   KNOCKBACK_PX: 144,      // total displacement over the hitstun
   WALK_SPEED: 3,          // px per tick (180 px/s)
-  JUMP_VELOCITY: -9.1,    // px per tick, negative is up; apex ~151 px (the drawn 150 px character height) at tick 34, airborne 68 ticks
+  JUMP_VELOCITY: -9.1,    // px per tick, negative is up; apex ~151 px (~1.4 × the 105 px drawn body since 13.00) at tick 34, airborne 68 ticks
   GRAVITY: 8 / 30,        // px per tick^2, shared with projectiles so throw arcs are unchanged
   JUMP_IFRAME_START: 3,   // inclusive, ticks since takeoff
   JUMP_IFRAME_END: 10,    // inclusive
@@ -57,7 +59,7 @@ export const ITEMS: Record<ItemId, { uses: number; label: string; cocoLabel: str
 export const DEFAULT_LOADOUT: Loadout = ["molotov", "shield"];
 
 export const ARSENAL = {
-  SWORD_REACH: 130, SWORD_DAMAGE: 10, PARRY_WINDOW: 10, PARRY_STUN: 24,
+  SWORD_REACH: 91, SWORD_DAMAGE: 10, PARRY_WINDOW: 10, PARRY_STUN: 24, // 13.00: sword reach was 130 at the 150 px body
   THROW_STARTUP: 6, THROW_RECOVERY: 12,
   MOLOTOV_VX: 2, MOLOTOV_VY: -3, BANANA_VX: 5, BANANA_VY: -4, // molotov: low ~41-tick lob landing 70–130 px out (9.02 rule 2)
   FIRE_W: 120, FIRE_TICKS: 240, FIRE_DAMAGE: 2, FIRE_EVERY: 20,
@@ -66,7 +68,7 @@ export const ARSENAL = {
   LASER_CHARGE: 180, LASER_ACTIVE: 16, LASER_RECOVERY: 20, LASER_COOLDOWN: 720, // charge 3 s; active long enough for the front to cross the world
   LASER_SPEED: 60,        // px per tick the beam front travels (960 px in 16 ticks)
   LASER_DAMAGE: 20, LASER_CHIP: 4,
-  LASER_BAND_TOP: 105, LASER_BAND_BOTTOM: 35, // 70 px band (half the 140 px hurtbox) centred on the sprite's middle, feet − 70
+  LASER_BAND_TOP: 74, LASER_BAND_BOTTOM: 25, // 49 px band (half the 98 px hurtbox) centred on the sprite's middle, feet − 49 (13.00; was 105 / 35)
 } as const;
 
 /**

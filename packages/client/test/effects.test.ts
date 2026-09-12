@@ -167,7 +167,7 @@ describe("Effects hit-stop and flashes", () => {
 });
 
 describe("Effects impact position", () => {
-  it("4.06 rule 1: the spark sits on the newest snapshot's target chest, 20 px toward the attacker", () => {
+  it("4.06 rule 1: the spark sits on the newest snapshot's target chest, 14 px toward the attacker (13.00: 20 × 0.7)", () => {
     const { scene, created } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
@@ -180,11 +180,11 @@ describe("Effects impact position", () => {
     // 12.04: a clean hit spawns the impact star, then the spark burst and the ring; the star is the one with circles
     const spark = [...created].reverse().find((g) => g.circles.length > 0)!;
     const core = spark.circles.at(-1)!;
-    // 12.01: snapped to the pixel grid (440 → 441, 340 → 339)
-    expect(core.x).toBe(441);
-    expect(core.y).toBe(339);
-    expect(Math.abs(core.x - (460 - 20))).toBeLessThanOrEqual(PIXEL / 2);
-    expect(Math.abs(core.y - (WORLD.ROOF_Y - 90))).toBeLessThanOrEqual(PIXEL / 2);
+    // 12.01 / 13.01: snapped to the 2 px grid (446 → 446, 367 → 368)
+    expect(core.x).toBe(446);
+    expect(core.y).toBe(368);
+    expect(Math.abs(core.x - (460 - 14))).toBeLessThanOrEqual(PIXEL / 2);
+    expect(Math.abs(core.y - (WORLD.ROOF_Y - 63))).toBeLessThanOrEqual(PIXEL / 2);
     expect(fx.frozen(1)?.x).toBe(460);
   });
 
@@ -197,9 +197,9 @@ describe("Effects impact position", () => {
     fx.consume([{ type: "JUMP", player: 0 }], state);
     const dust = created.at(-1)!;
     expect(dust.circles.length).toBeGreaterThan(0);
-    // drawDust offsets puff 0 by dx −10 from the feet; feet 301 snap to 300, so the puff sits at 290 (not 291)
-    expect(dust.circles[0]!.x).toBe(290);
-    expect(PIXEL).toBe(3);
+    // drawDust offsets puff 0 by dx −10 from the feet; feet 301 snap to 302 on the 2 px grid (13.01), so the puff sits at 292 (not 291)
+    expect(dust.circles[0]!.x).toBe(292);
+    expect(PIXEL).toBe(2);
   });
 });
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import {
-  ARSENAL, BALANCE, ITEM_IDS, ITEMS, WORLD, createMatch,
+  ARSENAL, BALANCE, ITEM_IDS, ITEMS, THROW_RELEASE_H, WORLD, createMatch,
   type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile, type SimEvent,
 } from "@midnight/shared";
 import { ItemFx, type HandPoint } from "../src/game/itemFx";
@@ -238,10 +238,10 @@ describe("ItemFx laser", () => {
     expect(rect[2]).toBe(ARSENAL.LASER_SPEED);
     expect(rect[3]).toBe(ARSENAL.LASER_BAND_TOP - ARSENAL.LASER_BAND_BOTTOM);
     expect(rect[3]).toBe(WORLD.HURTBOX_H / 2);
-    expect(rect[1]! + rect[3]! / 2).toBe(f.y - WORLD.HURTBOX_H / 2);
+    expect(Math.abs(rect[1]! + rect[3]! / 2 - (f.y - WORLD.HURTBOX_H / 2))).toBeLessThanOrEqual(0.5); // 13.00: the band is whole px
     const muzzle = beam.calls.find((c) => c.m === "fillCircle")!.args as number[];
     expect(muzzle[0]).toBe(f.x);
-    expect(muzzle[1]).toBe(f.y - WORLD.HURTBOX_H / 2);
+    expect(Math.abs(muzzle[1]! - (f.y - WORLD.HURTBOX_H / 2))).toBeLessThanOrEqual(0.5);
 
     fx.draw(state, hands, 0);
     fx.update(DT); // the spawn frame's own update: still frame 0
@@ -333,9 +333,9 @@ describe("ItemFx shield barrier", () => {
     expect(hex).toHaveLength(6);
     const xs = hex.map((p) => p.x);
     const ys = hex.map((p) => p.y);
-    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(70, 5);
-    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(150, 5);
-    expect(Math.min(...xs)).toBeCloseTo(f.x + 30, 5); // near edge 30 px in front (facing 1)
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(49, 5); // 13.00: 70 × 150 → 49 × 105
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(105, 5);
+    expect(Math.min(...xs)).toBeCloseTo(f.x + 21, 5); // near edge 21 px in front (facing 1)
     expect(Math.max(...ys)).toBeCloseTo(f.y, 5);
     expect(barrier.styles()[0]).toEqual({ kind: "fill", color: P.moon, alpha: 0.35 });
     const edge = barrier.styles().find((s) => s.kind === "line" && s.color === P.steel2);
@@ -359,7 +359,7 @@ describe("ItemFx shield barrier", () => {
     f.facing = -1;
     fx.draw(state, hands, 0);
     const hex = created[0]!.calls.find((c) => c.m === "fillPoints")!.args[0] as Array<{ x: number }>;
-    expect(Math.max(...hex.map((p) => p.x))).toBeCloseTo(f.x - 30, 5);
+    expect(Math.max(...hex.map((p) => p.x))).toBeCloseTo(f.x - 21, 5); // 13.00: 30 × 0.7
   });
 
   it("the shimmer band moves top → bottom every 1.2 s", () => {
@@ -382,7 +382,7 @@ describe("ItemFx shield barrier", () => {
     fx.update(0.3);
     fx.draw(state, hands, 0);
     const y1 = bandY();
-    expect(y1 - y0).toBeCloseTo(150 * 0.25, 0); // a quarter of the height per 0.3 s
+    expect(y1 - y0).toBeCloseTo(105 * 0.25, 0); // a quarter of the 105 px barrier (13.00) per 0.3 s
     fx.update(0.6);
     fx.draw(state, hands, 0);
     expect(bandY()).toBeCloseTo(start, 0); // wrapped after 1.2 s
@@ -468,7 +468,7 @@ describe("throw preview (rule 5)", () => {
       const { vx, vy } = throwVelocity(range);
       expect(vx).toBeGreaterThan(0);
       expect(vy).toBeLessThan(0);
-      const { landing } = predictFlight({ x: 0, y: -100 }, vx, vy, 0, 12);
+      const { landing } = predictFlight({ x: 0, y: -THROW_RELEASE_H }, vx, vy, 0, 12);
       expect(Math.abs(landing.x - range), `range ${range}`).toBeLessThanOrEqual(10);
     }
   });
@@ -478,7 +478,7 @@ describe("throw preview (rule 5)", () => {
     // packages/shared/src/sim/projectiles.ts: `vy += GRAVITY; x += vx; y += vy;` then land when `vy > 0 && y >= surface`.
     const sim: { x: number; y: number }[] = [];
     let x = 0;
-    let y = -100;
+    let y = -THROW_RELEASE_H;
     let dy = vy;
     while (!(dy > 0 && y >= 0)) {
       dy += BALANCE.GRAVITY;
@@ -486,7 +486,7 @@ describe("throw preview (rule 5)", () => {
       y += dy;
       sim.push({ x, y });
     }
-    const { landing, dots } = predictFlight({ x: 0, y: -100 }, vx, vy, 0, 12);
+    const { landing, dots } = predictFlight({ x: 0, y: -THROW_RELEASE_H }, vx, vy, 0, 12);
     expect(dots).toHaveLength(12);
     expect(landing.y).toBe(0);
     expect(Math.abs(landing.x - x)).toBeLessThanOrEqual(Math.abs(vx)); // the marker backs off along the last step

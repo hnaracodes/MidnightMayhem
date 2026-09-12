@@ -59,8 +59,8 @@ WORLD_WIDTH    = 960
 WORLD_HEIGHT   = 540
 ROOF_Y         = 430     // ground plane; fighters' feet sit exactly here
 PLAYER_START_X = [280, 680]
-CHAR_HEIGHT    = 150     // standing, crown of head to sole
-HURTBOX        = { w: 72, h: 140 }   // anchored bottom-centre at the fighter's feet
+CHAR_HEIGHT    = 150     // author space; drawn at BODY_SCALE 0.7 = 105 px since 13.00 (implementation-docs/13-art/00)
+HURTBOX        = { w: 50, h: 98 }    // anchored bottom-centre at the fighter's feet (was 72 × 140)
 ```
 
 Vertical budget above the roof: 430 px. A fighter at 150 px plus a jump apex of ~151 px tops out around

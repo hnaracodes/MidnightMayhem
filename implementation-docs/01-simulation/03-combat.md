@@ -10,7 +10,7 @@ Create: `packages/shared/src/sim/combat.ts`, `packages/shared/test/combat.test.t
 1.02.
 
 ## Exposes
-- `hurtbox(f): Rect` — `{ x: f.x - 36, y: f.y - 140, w: 72, h: 140 }`
+- `hurtbox(f): Rect` — `{ x: f.x - 25, y: f.y - 98, w: 50, h: 98 }` (13.00; was `x − 36, y − 140, 72 × 140`)
 - `isActivePunch(f): boolean` — `elapsed` in `[STARTUP, STARTUP + ACTIVE)`
 - `punchHitbox(f): Rect | null` — null unless active; facing right: `x = f.x + 10`, facing left: `x = f.x - 10 - 70`; `y = f.y - 120`, `w = 70`, `h = 60`
 - `isInvulnerable(f): boolean` — airborne and `jumpTicks` in `[3, 10]`

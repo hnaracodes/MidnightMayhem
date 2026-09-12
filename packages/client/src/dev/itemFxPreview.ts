@@ -48,8 +48,8 @@ const EFFECTS: Effect[] = [
 ];
 
 const LOCAL: PlayerIndex = 0;
-const HAND_ABOVE_FEET = 100;
-const HAND_FORWARD = 30;
+const HAND_ABOVE_FEET = 70; // 13.00: 100 × 0.7
+const HAND_FORWARD = 21;
 const DEPTH = { STAGE: 0, RIG: 2, LABEL: 10, DAZZLE: 12 } as const;
 
 class ItemFxPreviewScene extends Phaser.Scene {

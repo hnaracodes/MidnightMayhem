@@ -5,7 +5,14 @@
 import type { CharacterId } from "@midnight/shared";
 import { P } from "../palette";
 
-/** Shared segment lengths and thicknesses. `*W` fields are capsule widths. */
+/**
+ * 13.00: the drawn body is this fraction of the 150 px author rig (105 px). `RIG` and every constant in
+ * `rig/pose.ts` stay in author px; `computePose` scales the local offsets when mapping to world, `rig/draw.ts`
+ * scales its widths, and `shared/constants.ts` carries the matching hurtbox, reach and band numbers.
+ */
+export const BODY_SCALE = 0.7;
+
+/** Shared segment lengths and thicknesses in author px (a 150 px body). `*W` fields are capsule widths. */
 export const RIG = {
   head: 16,
   neck: 8, neckW: 10,

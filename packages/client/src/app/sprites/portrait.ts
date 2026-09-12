@@ -9,8 +9,8 @@ import { PixelCanvas, alphaOf, parsePart, rgbOf } from "../../game/sprites/grid"
  */
 export const PORTRAIT_SIZE = 48;
 
-/** Sprite pixels per side; each becomes a 2 × 2 block on the 48 px canvas. */
-const CELL = PORTRAIT_SIZE / 2;
+/** Sprite pixels per side (13.01: one art px per canvas px, so the 36 px head fits). */
+const CELL = PORTRAIT_SIZE;
 const HEAD_TOP = 2;
 /** Rows the shoulders tuck under the chin. */
 const CHIN_OVERLAP = 2;

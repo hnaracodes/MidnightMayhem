@@ -3,30 +3,52 @@
  * Pure: no Phaser, no DOM. Authored facing right in sprite space, mirrored as a whole for facing left, then
  * outlined and lit in screen space (rim on the moon side, dither on the dark side).
  *
- * Sprite space: 1 sprite px = 3 world px. The nominal standing frame is FRAME_W × FRAME_H with the feet at
- * (20, 52); the raster the fighter is drawn into is larger (CANVAS) so punches, the sword and the KO sprawl
- * do not clip, and it addresses pixels in frame coordinates through the PixelCanvas origin offset.
+ * Sprite space (13.01): 1 sprite px = 1 world px, so the 105 px body (13.00) is 105 rows of art. The nominal
+ * standing frame is FRAME_W × FRAME_H with the feet at ANCHOR; the raster the fighter is drawn into is larger
+ * (CANVAS) so punches, the sword and the KO sprawl do not clip, and it addresses pixels in frame coordinates
+ * through the PixelCanvas origin offset. Effects and backgrounds keep their own 2 px grid (`pixel.ts`).
  */
 import type { CharacterId, FighterState, ItemId } from "@midnight/shared";
 import { P } from "../palette";
 import type { Joints, Pt, RigState } from "../rig/pose";
-import { PixelCanvas, darken, type Part } from "./grid";
+import { PixelCanvas, darken, scalePart, type Part } from "./grid";
 import { CLAUDE_PARTS } from "./parts/claude";
 import { CONDUCTOR_PARTS } from "./parts/conductor";
 import { DRIFTER_PARTS } from "./parts/drifter";
 import { ITEM_PARTS } from "./parts/items";
 import { STOKER_PARTS } from "./parts/stoker";
 
-export const SPRITE_SCALE = 3;
-export const FRAME_W = 40;
-export const FRAME_H = 56;
-/** The feet anchor in frame coordinates. */
-export const ANCHOR = { x: 20, y: 52 } as const;
+export const SPRITE_SCALE = 1;
+export const FRAME_W = 80;
+export const FRAME_H = 112;
+/** The feet anchor in frame coordinates: 108 rows above the sole for the 105 px body plus its outline and bob; the guard fists reach 39 px ahead. */
+export const ANCHOR = { x: 40, y: 108 } as const;
 /**
- * The raster behind a fighter: the frame plus 20 px each side, 16 px above (the win pose raises the fists
- * 5 px over the frame top, plus the hand part and its outline; a held item adds more) and 4 px below.
+ * The raster behind a fighter: the frame plus 48 px each side (the KO sprawl reaches −78..+77 from the feet), 40 px
+ * above (the flash beat and win pose lift a held molotov to −140) and 4 px below, from the 13.01 extents probe over
+ * every character × state × facing × item, with an 8 px free ring for the outline and 13.03's secondary motion.
  */
-export const CANVAS = { w: 80, h: 76, ox: 20, oy: 16 } as const;
+export const CANVAS = { w: 176, h: 152, ox: 48, oy: 40 } as const;
+
+/**
+ * 13.01 placeholders: the 11.01 grids were authored at 3 world px per art px for a 150 px body; at 1 px per art
+ * px and a 105 px body every part is 3 × 0.7 = 2.1 old pixels wide. 13.03 replaces these with hand-authored art.
+ */
+const PLACEHOLDER_K = 2.1;
+function scaleParts(p: CharacterParts): CharacterParts {
+  const out: CharacterParts = {
+    ...p,
+    head: scalePart(p.head, PLACEHOLDER_K),
+    headKo: scalePart(p.headKo, PLACEHOLDER_K),
+    torso: scalePart(p.torso, PLACEHOLDER_K),
+    handOpen: scalePart(p.handOpen, PLACEHOLDER_K),
+    handFist: scalePart(p.handFist, PLACEHOLDER_K),
+    foot: scalePart(p.foot, PLACEHOLDER_K),
+  };
+  if (p.torsoBlock) out.torsoBlock = scalePart(p.torsoBlock, PLACEHOLDER_K);
+  if (p.torsoBlink) out.torsoBlink = scalePart(p.torsoBlink, PLACEHOLDER_K);
+  return out;
+}
 
 export function createFrameCanvas(): PixelCanvas {
   return new PixelCanvas(CANVAS.w, CANVAS.h, CANVAS.ox, CANVAS.oy);
@@ -51,11 +73,16 @@ export interface CharacterParts {
 }
 
 export const CHARACTER_PARTS: Record<CharacterId, CharacterParts> = {
-  drifter: DRIFTER_PARTS,
-  conductor: CONDUCTOR_PARTS,
-  stoker: STOKER_PARTS,
-  claude: CLAUDE_PARTS,
+  drifter: scaleParts(DRIFTER_PARTS),
+  conductor: scaleParts(CONDUCTOR_PARTS),
+  stoker: scaleParts(STOKER_PARTS),
+  claude: scaleParts(CLAUDE_PARTS),
 };
+
+/** The held-item sprites at the art grid (13.01 placeholders from `parts/items.ts`). */
+export const ITEM_SPRITES: Record<ItemId, Part> = Object.fromEntries(
+  (Object.keys(ITEM_PARTS) as ItemId[]).map((id) => [id, scalePart(ITEM_PARTS[id], PLACEHOLDER_K)]),
+) as Record<ItemId, Part>;
 
 export interface ComposeOpts {
   facing: 1 | -1;
@@ -73,13 +100,15 @@ export interface ComposeOpts {
   blinkMs?: number | undefined;
 }
 
-/** Thickness of the rasterised limbs in sprite px. */
-const THIGH_W = 4;
-const SHIN_W = 4;
-const UPPER_W = 4;
-const FORE_W = 3;
-/** The ankle sits this many sprite px above the sole (RIG.footW / 2 + 3 = 7 world px). */
-const ANKLE_LIFT = 2;
+/** Thickness of the rasterised limbs in sprite px (13.01: world px at the 105 px body; 13.02 tapers and shades them). */
+const THIGH_W = 8;
+const SHIN_W = 6;
+const UPPER_W = 8;
+const FORE_W = 6;
+/** The ankle sits this many sprite px above the sole ((RIG.footW / 2 + 3) · BODY_SCALE ≈ 4.9 world px). */
+const ANKLE_LIFT = 4;
+/** Length of the cuff band at the wrist end of the forearm, sprite px. */
+const CUFF_LEN = 4;
 /** Below this |lean| the authored (upright) torso is used as-is. */
 const LEAN_AUTHORED = 8;
 /** Up to this quantised |angle| the torso rows are sheared; beyond it the part is rotated (KO sprawl). */
@@ -138,7 +167,7 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
   // backpack: on the back, behind everything, hanging off the back shoulder
   if (item && item.kind === "shield") {
     const sh = J(joints.arms.B.shoulder);
-    canvas.blit(ITEM_PARTS.shield, sh.x - 2, sh.y + 2, false);
+    canvas.blit(ITEM_SPRITES.shield, sh.x - 4, sh.y + 4, false);
   }
 
   const drawLeg = (leg: Joints["legs"]["F"], color: number): void => {
@@ -161,7 +190,7 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
       const len = Math.hypot(w.x - e.x, w.y - e.y) || 1;
       const ux = (w.x - e.x) / len;
       const uy = (w.y - e.y) / len;
-      canvas.line(Math.round(w.x - ux * 2), Math.round(w.y - uy * 2), w.x, w.y, FORE_W, parts.cuff);
+      canvas.line(Math.round(w.x - ux * CUFF_LEN), Math.round(w.y - uy * CUFF_LEN), w.x, w.y, FORE_W, parts.cuff);
     }
     canvas.blit(hand, fist.x, fist.y, false);
   };
@@ -186,7 +215,7 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
 
   if (item && holding) {
     const fist = J(joints.arms.F.fist);
-    canvas.blit(ITEM_PARTS[item.kind], fist.x, fist.y, false);
+    canvas.blit(ITEM_SPRITES[item.kind], fist.x, fist.y, false);
   }
 
   if (opts.facing === -1) canvas.mirror(ANCHOR.x);

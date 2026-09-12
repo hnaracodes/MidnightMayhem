@@ -21,7 +21,9 @@ Owns `pixel.ts`, the `render` block of `config.ts`.
 - `export function snapUp(v: number): number` — next multiple of `PIXEL` at or above `v` (sizes that must not shrink).
 
 ## Behaviour
-1. `PIXEL === SPRITE_SCALE`; `pixel.ts` imports it rather than redeclaring 3.
+1. ~~`PIXEL === SPRITE_SCALE`; `pixel.ts` imports it rather than redeclaring 3.~~ **Superseded by 13.01:** `PIXEL = 2`
+   is the grid for effects, shadows, particles and background rasters; fighters rasterise at `SPRITE_SCALE = 1`
+   (a 105 px body needs a face). `PIXEL` no longer imports `SPRITE_SCALE`.
 2. `snap(v)` rounds to the nearest multiple (`snap(4) === 3`, `snap(5) === 6`, `snap(-4) === -3`); half-way rounds up
    (`snap(4.5) === 6`). `snapUp(4) === 6`, `snapUp(6) === 6`.
 3. `gameConfig.render.roundPixels` is `true`, so camera and game-object positions are rounded to whole pixels at

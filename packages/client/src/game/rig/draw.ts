@@ -7,7 +7,7 @@ import type Phaser from "phaser";
 import type { CharacterId } from "@midnight/shared";
 import { P } from "../palette";
 import { snap } from "../pixel";
-import { CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
+import { BODY_SCALE, CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
 import type { Arm, Joints, Leg, Pt } from "./pose";
 
 type G = Phaser.GameObjects.Graphics;
@@ -32,9 +32,15 @@ export interface DrawOpts {
 
 const OUTLINE_W = 3;
 const MAX_GLOOM = 0.25;
+/** 13.00: the body is drawn at BODY_SCALE of the author rig; widths, radii and signature offsets scale, strokes stay 3 px. */
+const S = BODY_SCALE;
+const R = {
+  head: RIG.head * S, neckW: RIG.neckW * S, upperW: RIG.upperW * S, foreW: RIG.foreW * S, fist: RIG.fist * S,
+  thighW: RIG.thighW * S, shinW: RIG.shinW * S, foot: RIG.foot * S, footW: RIG.footW * S,
+} as const;
 /** Which edges carry the rim stroke: +1 screen-right, −1 screen-left. */
 const sides = (side: "left" | "right" | "both"): readonly (1 | -1)[] => (side === "both" ? [1, -1] : side === "left" ? [-1] : [1]);
-const ANKLE_LIFT = RIG.footW / 2 + 3;
+const ANKLE_LIFT = (RIG.footW / 2 + 3) * S;
 /** Drifter hair wedges, crown to nape: length, angle from straight up toward screen-left, base width. */
 const HAIR_LEN = [18, 24, 30, 22] as const;
 const HAIR_ANGLE = [10, 34, 58, 80] as const;
@@ -67,8 +73,8 @@ export function shadowPool(heightAboveGround: number): { w: number; alpha: numbe
   return { w: SHADOW_W0 + (SHADOW_W1 - SHADOW_W0) * t, alpha: 1 - (1 - SHADOW_ALPHA_APEX) * t };
 }
 const SHADOW_APEX = 150;
-const SHADOW_W0 = 64;
-const SHADOW_W1 = 110;
+const SHADOW_W0 = 45; // 13.00: 64 × 0.7
+const SHADOW_W1 = 77;  // 13.00: 110 × 0.7
 const SHADOW_ALPHA_APEX = 0.3;
 /** Three stacked ellipses, the outer ones softer, so the contact reads as a pool that tightens toward the ground. */
 const SHADOW_LAYERS = [
@@ -155,61 +161,62 @@ function limbGroup(g: G, segs: Seg[], st: Style): void {
 
 function drawLeg(g: G, leg: Leg, rig: CharacterRig, trouser: number, skin: number, st: Style, facing: 1 | -1, tornCuff: boolean): void {
   const ankle = { x: leg.foot.x, y: leg.foot.y - ANKLE_LIFT };
-  const footA = { x: ankle.x - facing * 3, y: ankle.y };
-  const footB = { x: ankle.x + facing * (RIG.foot - 4), y: ankle.y };
-  const segs: Seg[] = [{ a: leg.hip, b: leg.knee, w: RIG.thighW, color: trouser }];
+  const footA = { x: ankle.x - facing * 3 * S, y: ankle.y };
+  const footB = { x: ankle.x + facing * (R.foot - 4 * S), y: ankle.y };
+  const segs: Seg[] = [{ a: leg.hip, b: leg.knee, w: R.thighW, color: trouser }];
   if (tornCuff) {
     const u = unit(leg.knee, ankle);
-    const cuff = { x: ankle.x - u.x * 4, y: ankle.y - u.y * 4 };
-    segs.push({ a: cuff, b: ankle, w: RIG.shinW - 4, color: skin });
-    segs.push({ a: leg.knee, b: cuff, w: RIG.shinW, color: trouser });
+    const cuff = { x: ankle.x - u.x * 4 * S, y: ankle.y - u.y * 4 * S };
+    segs.push({ a: cuff, b: ankle, w: R.shinW - 4 * S, color: skin });
+    segs.push({ a: leg.knee, b: cuff, w: R.shinW, color: trouser });
   } else {
-    segs.push({ a: leg.knee, b: ankle, w: RIG.shinW, color: trouser });
+    segs.push({ a: leg.knee, b: ankle, w: R.shinW, color: trouser });
   }
-  segs.push({ a: footA, b: footB, w: RIG.footW, color: darken(trouser, 0.35) });
+  segs.push({ a: footA, b: footB, w: R.footW, color: darken(trouser, 0.35) });
   limbGroup(g, segs, st);
   if (tornCuff) {
     // notch in the torn cuff
     const u = unit(leg.knee, ankle);
     const n = { x: -u.y, y: u.x };
-    const cx = ankle.x - u.x * 5;
-    const cy = ankle.y - u.y * 5;
+    const cx = ankle.x - u.x * 5 * S;
+    const cy = ankle.y - u.y * 5 * S;
     g.fillStyle(st.outline, st.alpha);
     g.fillPoints([
-      { x: cx + n.x * 7, y: cy + n.y * 7 },
-      { x: cx + n.x * 2 - u.x * 3, y: cy + n.y * 2 - u.y * 3 },
-      { x: cx + n.x * 7 - u.x * 6, y: cy + n.y * 7 - u.y * 6 },
+      { x: cx + n.x * 7 * S, y: cy + n.y * 7 * S },
+      { x: cx + (n.x * 2 - u.x * 3) * S, y: cy + (n.y * 2 - u.y * 3) * S },
+      { x: cx + (n.x * 7 - u.x * 6) * S, y: cy + (n.y * 7 - u.y * 6) * S },
     ], true);
   }
 }
 
 function drawArm(g: G, arm: Arm, rig: CharacterRig, coat: number, hand: number, st: Style): void {
   const segs: Seg[] = [
-    { a: arm.shoulder, b: arm.elbow, w: RIG.upperW, color: coat },
-    { a: arm.elbow, b: arm.wrist, w: RIG.foreW, color: rig.signature === "drifter" ? rig.skin : coat },
+    { a: arm.shoulder, b: arm.elbow, w: R.upperW, color: coat },
+    { a: arm.elbow, b: arm.wrist, w: R.foreW, color: rig.signature === "drifter" ? rig.skin : coat },
   ];
   limbGroup(g, segs, st);
   if (rig.signature === "drifter") {
     // cloth wraps: 4 px amber-2 bands across the forearm
     const u = unit(arm.elbow, arm.wrist);
     const n = { x: -u.y, y: u.x };
-    const half = RIG.foreW / 2 + 1;
-    g.lineStyle(4, st.fill(P.amber2), st.alpha);
+    const half = R.foreW / 2 + 1;
+    g.lineStyle(3, st.fill(P.amber2), st.alpha);
     for (const t of [0.32, 0.62]) {
       const cx = arm.elbow.x + (arm.wrist.x - arm.elbow.x) * t;
       const cy = arm.elbow.y + (arm.wrist.y - arm.elbow.y) * t;
       g.lineBetween(cx - n.x * half, cy - n.y * half, cx + n.x * half, cy + n.y * half);
     }
   }
-  outlinedCircle(g, arm.fist, RIG.fist, hand, st);
+  outlinedCircle(g, arm.fist, R.fist, hand, st);
 }
 
 function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wind: number, facing: 1 | -1): void {
   const u = unit(j.hip, j.neck); // up the spine
   const p = { x: -u.y, y: u.x }; // across the body; p.x > 0 means screen-right
+  // author px in, world px out (13.00): `along` / `across` are the 150 px design values
   const sw = rig.shoulderW / 2;
   const hw = rig.hipW / 2;
-  const at = (base: Pt, along: number, across: number): Pt => ({ x: base.x + u.x * along + p.x * across, y: base.y + u.y * along + p.y * across });
+  const at = (base: Pt, along: number, across: number): Pt => ({ x: base.x + (u.x * along + p.x * across) * S, y: base.y + (u.y * along + p.y * across) * S });
   const neckL = at(j.neck, -1, -sw);
   const neckR = at(j.neck, -1, sw);
   const hipL = at(j.hip, -3, -hw);
@@ -225,13 +232,13 @@ function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wi
     for (const [x, len] of drops) {
       const a = hem(x - 5);
       const b = hem(x + 5);
-      const tip = { x: a.x + 5 * p.x - u.x * len - wind * (len / 12), y: a.y + 5 * p.y - u.y * len };
+      const tip = { x: a.x + (5 * p.x - u.x * len) * S - wind * (len / 12), y: a.y + (5 * p.y - u.y * len) * S };
       outlinedPoly(g, [a, b, tip], rag, st);
     }
     for (const [along, len] of [[-14, 14], [-30, 18]] as const) {
       const a = at(j.hip, RIG.torso + along, leftIsBack * (hw - 1));
       const b = at(j.hip, RIG.torso + along - 9, leftIsBack * (hw - 1));
-      const tip = { x: a.x - len - wind, y: a.y + 10 };
+      const tip = { x: a.x - len * S - wind, y: a.y + 10 * S };
       outlinedPoly(g, [a, b, tip], rag, st);
     }
   } else {
@@ -239,7 +246,7 @@ function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wi
     for (const across of [leftIsBack * (hw - 4), leftIsBack * (hw - 13)]) {
       const a = at(j.hip, -2, across - 4);
       const b = at(j.hip, -2, across + 4);
-      const d = { x: -(8 + wind), y: 14 };
+      const d = { x: -(8 * S + wind), y: 14 * S };
       outlinedPoly(g, [a, b, { x: b.x + d.x, y: b.y + d.y }, { x: a.x + d.x, y: a.y + d.y }], c.coat, st);
     }
   }
@@ -264,13 +271,13 @@ function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wi
     g.lineBetween(a.x, a.y, b.x, b.y);
     const knot = at(j.hip, 5, facing * 6);
     g.fillStyle(st.fill(P.amber2), st.alpha);
-    g.fillCircle(knot.x, knot.y, 3);
+    g.fillCircle(knot.x, knot.y, 3 * S);
   } else {
     // two columns of three brass buttons
     g.fillStyle(st.fill(P.amber1), st.alpha);
     for (const across of [-4, 4]) for (const along of [18, 30, 42]) {
       const b = at(j.hip, along, across);
-      g.fillCircle(b.x, b.y, 2);
+      g.fillCircle(b.x, b.y, 2 * S);
     }
     // watch chain: a sagging arc across the lower torso
     const pts: Pt[] = [];
@@ -287,9 +294,9 @@ function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wi
 function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wind: number, flap: number, facing: 1 | -1): void {
   const u = unit(j.neck, j.head); // up through the head
   const p = { x: -u.y, y: u.x };
-  const at = (along: number, across: number): Pt => ({ x: j.head.x + u.x * along + p.x * across, y: j.head.y + u.y * along + p.y * across });
+  const at = (along: number, across: number): Pt => ({ x: j.head.x + (u.x * along + p.x * across) * S, y: j.head.y + (u.y * along + p.y * across) * S });
   const neckTop = at(-RIG.head, 0);
-  limbGroup(g, [{ a: j.neck, b: neckTop, w: RIG.neckW, color: c.skin }], { ...st, rim: null });
+  limbGroup(g, [{ a: j.neck, b: neckTop, w: R.neckW, color: c.skin }], { ...st, rim: null });
   if (rig.signature === "conductor") {
     // collar: a moon wedge sitting on the coat, under the chin
     const cl = at(-RIG.head - 8, -13);
@@ -298,7 +305,7 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
     g.fillStyle(st.fill(P.moon), st.alpha);
     g.fillPoints([cl, cr, ct], true);
   }
-  outlinedCircle(g, j.head, RIG.head, c.skin, st);
+  outlinedCircle(g, j.head, R.head, c.skin, st);
 
   if (rig.signature === "drifter") {
     // beard: rounded jagged triangle hanging from the chin, tip toward facing, streaming screen-left
@@ -325,7 +332,7 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
       const b = at(along - tx * HAIR_BASE / 2, across - ty * HAIR_BASE / 2);
       const osc = i === HAIR_LONGEST ? flap : 0;
       const root = at(along, across);
-      const tip = { x: root.x - len - wind * 1.5, y: root.y + len * 0.35 + osc };
+      const tip = { x: root.x - len * S - wind * 1.5, y: root.y + len * 0.35 * S + osc };
       outlinedPoly(g, [a, b, tip], c.hair, st);
     }
     // hair cap: a half-disc over the top of the head, chord just above the centre line (its 3 px outline is the
@@ -345,7 +352,7 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
       g.lineStyle(3, st.rim, st.alpha);
       for (const side of sides(st.rimSide)) {
         g.beginPath();
-        g.arc(j.head.x, j.head.y, r - 1.5, side === 1 ? -0.95 : Math.PI + 0.05, side === 1 ? -0.05 : Math.PI + 0.95, false);
+        g.arc(j.head.x, j.head.y, r * S - 1.5, side === 1 ? -0.95 : Math.PI + 0.05, side === 1 ? -0.05 : Math.PI + 0.95, false);
         g.strokePath();
       }
     }
@@ -359,7 +366,7 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
     outlinedPoly(g, brim, darken(c.cap, 0.2), st);
     g.fillStyle(st.fill(P.conductorGlove), st.alpha);
     const badge = at(18, 7 * facing);
-    g.fillCircle(badge.x, badge.y, 2);
+    g.fillCircle(badge.x, badge.y, 2 * S);
     if (st.rim !== null) {
       g.lineStyle(3, st.rim, st.alpha);
       const rightEdge = facing === 1 ? [band[5]!, band[4]!] : [band[0]!, band[1]!];

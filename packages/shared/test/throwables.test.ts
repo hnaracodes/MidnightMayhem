@@ -13,7 +13,7 @@ const P_L: InputFrame = { ...EMPTY_FRAME, punchL: true };
 /** Ticks from the release (key up or CHARGE_MAX) until the action clears; combat.ts owns the clear. */
 const THROW_TOTAL = THROW.RELEASE_TICKS + THROW.RECOVERY;
 /** The hand lets go 20 px in front of the feet; ranges are measured from there. */
-const HAND_X = 20;
+const HAND_X = 14; // 13.00
 const MEDIUM_RANGE = chargeToRange(THROW.VISION_CHARGE * THROW.CHARGE_MAX); // ≈ 484
 
 function run(s: MatchState, n: number, inputs: [InputFrame, InputFrame] = NONE) {

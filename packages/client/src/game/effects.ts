@@ -48,7 +48,7 @@ const KO_TIME_SCALE = 0.25;
 const SQUASH_Y = 0.94; // vertical; the drawer widens by the inverse (≈ 1.06)
 const SHAKE_PX = 3;
 const SHAKE_MIN_DAMAGE = BALANCE.PUNCH_DAMAGE; // a clean punch shakes; chip never does
-const CHEST_ABOVE_FEET = 90;
+const CHEST_ABOVE_FEET = 63; // 13.00: 90 × 0.7
 /** 12.02 rule 7: a clean hit lights the roof around the impact for four frames. */
 const IMPACT_LIGHT = { r: 90, intensity: 0.7, frames: 4 } as const;
 /** 12.04 rule 7: seven specks fanned ±35° around the punch direction, 18–42 px, from a seeded rng. */
@@ -58,7 +58,7 @@ const NUDGE_PX = 2;
 /** 12.04 rule 8: landing dust by fall speed, and the heavy-landing light. */
 const LANDING = { slow: 3, fast: 9, scaleMin: 0.6, scaleMax: 1.4, heavy: 7, lightR: 80, lightFrames: 4 } as const;
 const SCUFF = { behind: 14, scale: 0.6 } as const;
-const IMPACT_OFFSET = 20;
+const IMPACT_OFFSET = 14; // 13.00: 20 × 0.7
 const TRAIL_WIDTH = 10;
 const WALK_DUST_EVERY_TICKS = 10;
 const NO_LANDING = 1_000_000;

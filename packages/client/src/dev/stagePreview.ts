@@ -139,7 +139,7 @@ class StagePreviewScene extends Phaser.Scene {
       this.fighter = f;
     }
     const joints = computePose(f, { renderMs: this.time.now, koFrames: 0, landFrames: 0 });
-    this.rimNow = this.lighting.rimFor(f.x, f.y - 60);
+    this.rimNow = this.lighting.rimFor(f.x, f.y - 42);
     this.shadow.clear();
     drawShadow(this.shadow, f.x, WORLD.ROOF_Y, 0);
     this.sprite.update(f, joints, {

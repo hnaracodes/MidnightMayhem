@@ -68,15 +68,15 @@ const BEAM_CORE_FRACTION = 0.5; // core thickness as a fraction of the band (the
 const BEAM_EDGE_ALPHA = 0.6;
 const BEAM_SHAKE_PX = 4;
 const PARRY_SHAKE_PX = 2;
-const CHEST_ABOVE_FEET = 90;
-const IMPACT_OFFSET = 20;
+const CHEST_ABOVE_FEET = 63; // 13.00: 90 × 0.7
+const IMPACT_OFFSET = 14;
 const IMPACT_LENGTHS = [26, 16, 22, 14, 26, 18, 20, 14] as const;
 const SLASH_REACH = ARSENAL.SWORD_REACH;
 const SLASH_SWEEP = Math.PI / 3; // 60°
-const BARRIER_W = 70;
-const BARRIER_H = 150;
+const BARRIER_W = 49;  // 13.00: 70 × 0.7
+const BARRIER_H = 105; // 13.00: 150 × 0.7 (head height)
 const BARRIER_ALPHA = 0.35;
-const BARRIER_OFFSET = 30; // near edge this far in front of the fighter's centre line
+const BARRIER_OFFSET = 21; // near edge this far in front of the fighter's centre line (13.00: 30 × 0.7)
 const BARRIER_SHIMMER_SEC = 1.2;
 const BARRIER_SHIMMER_H = 16;
 /** Crack geometry: where each crack starts on the outer edge (dy from centre) and its jagged run/rise steps. */
@@ -688,7 +688,7 @@ function drawSparkStar(g: Graphics, at: Pt, t: number): void {
   g.fillCircle(at.x, at.y, 5 * (1 - t) + 2);
 }
 
-/** The six corners of the barrier hexagon: pointed top and bottom, 70 wide, 150 tall. */
+/** The six corners of the barrier hexagon: pointed top and bottom, BARRIER_W wide, BARRIER_H tall. */
 function hexagon(centre: Pt): Pt[] {
   const hw = BARRIER_W / 2;
   const hh = BARRIER_H / 2;

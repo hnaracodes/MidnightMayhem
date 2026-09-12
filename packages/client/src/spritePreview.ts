@@ -1,5 +1,5 @@
 /**
- * Sprite preview page (owner gate 11.01): every character in every state at 3×, plus one 6× row where each
+ * Sprite preview page (owner gate 11.01): every character in every state at 1×, plus one 3× row where each
  * fighter holds a different item. Frames cycle on a timer. `?rig=vector` draws the old vector rig beside
  * each cell. Exposes `window.__sprites` for the headless driver and logs the SpriteFighter.update cost.
  */
@@ -8,7 +8,7 @@ import { ARSENAL, BALANCE, CHARACTERS, ITEM_IDS, WORLD, createMatch, type Charac
 import { CSS_P, P } from "./game/palette";
 import { computePose, type Clock, type Joints } from "./game/rig/pose";
 import { drawFighter } from "./game/rig/draw";
-import { SPRITE_SCALE } from "./game/sprites/compose";
+import { FRAME_H, SPRITE_SCALE } from "./game/sprites/compose";
 import { SpriteFighter } from "./game/sprites/SpriteFighter";
 
 type StateId = "idle" | "walk" | "jump" | "punch" | "block" | "hit" | "ko" | "win" | "throw" | "laser";
@@ -24,8 +24,9 @@ const COLUMN: Record<StateId, { w: number; anchor: number }> = {
 /** With `?rig=vector` every column doubles: the vector rig is drawn in the right half. */
 const VECTOR_EXTRA = VECTOR ? 150 : 0;
 const CELL_H = 240;
-const HERO_SCALE = 6;
-const HERO_H = 56 * HERO_SCALE + 40;
+/** 13.01: a 105 px fighter at 3× (6× would not fit the page). */
+const HERO_SCALE = 3;
+const HERO_H = FRAME_H * HERO_SCALE + 40;
 const MARGIN_X = 40;
 const TOP = 40;
 const WIDTH = MARGIN_X * 2 + STATES.reduce((sum, s) => sum + COLUMN[s].w + VECTOR_EXTRA, 0);
@@ -91,7 +92,7 @@ class SpritePreviewScene extends Phaser.Scene {
     CHARACTERS.forEach((character, i) => {
       const x = WIDTH / 2 + (i - 1.5) * 320;
       const item = HERO_ITEMS[i]!;
-      label(x, heroGround + 12, `${character} · ${item} · 6×`);
+      label(x, heroGround + 12, `${character} · ${item} · ${HERO_SCALE}×`);
       this.cells.push(this.makeCell(character, i % 2 === 0 ? "idle" : "walk", x, heroGround, HERO_SCALE / SPRITE_SCALE, index++ as PlayerIndex, item));
     });
   }

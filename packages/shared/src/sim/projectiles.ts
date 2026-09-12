@@ -13,9 +13,9 @@ function isThrowable(kind: string): kind is Throwable {
   return kind === "molotov" || kind === "banana";
 }
 
-/** Release height above the ground, and how far in front of the feet the hand lets go. */
-export const THROW_RELEASE_H = 100;
-const HAND_X = 20;
+/** Release height above the ground, and how far in front of the feet the hand lets go (13.00: 70 % of 100 / 20). */
+export const THROW_RELEASE_H = 70;
+const HAND_X = 14;
 /** A charge released before this many ticks is a tap or a camera pulse: it throws at VISION_CHARGE. */
 const TAP_TICKS = 3;
 

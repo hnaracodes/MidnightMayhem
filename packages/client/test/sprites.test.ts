@@ -4,10 +4,13 @@ import { computePose, type Clock } from "../src/game/rig/pose";
 import { P } from "../src/game/palette";
 import { GRID_PALETTE, PixelCanvas, alphaOf, parseGrid, parsePart, rgba, type Part } from "../src/game/sprites/grid";
 import {
-  ANCHOR, CHARACTER_PARTS, FRAME_H, FRAME_W, composeFrame, createFrameCanvas, isBlinkOn, jointToSprite,
+  ANCHOR, CHARACTER_PARTS, FRAME_H, FRAME_W, ITEM_SPRITES, SPRITE_SCALE, composeFrame, createFrameCanvas, isBlinkOn, jointToSprite,
   type ComposeOpts,
 } from "../src/game/sprites/compose";
-import { ITEM_PARTS } from "../src/game/sprites/parts/items";
+import { BODY_SCALE } from "../src/game/rig/characters";
+
+/** 13.01: the 11.01 minimums were authored at 3 world px per art px for a 150 px body; at 1 px and 70 % they are ×2.1. */
+const K = 2.1;
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
 const base = (over: Partial<FighterState> = {}): FighterState => ({ ...createMatch().fighters[0]!, ...over });
@@ -78,17 +81,17 @@ describe("rule 1: every grid parses and every character has every part at the mi
         expect(part.anchor.y).toBeGreaterThanOrEqual(0);
       }
       const size = (p: Part): [number, number] => [parsePart(p).w, parsePart(p).h];
-      expect(size(parts.head)[0]).toBeGreaterThanOrEqual(14);
-      expect(size(parts.head)[1]).toBeGreaterThanOrEqual(14);
-      expect(size(parts.headKo)[0]).toBeGreaterThanOrEqual(14);
-      expect(size(parts.headKo)[1]).toBeGreaterThanOrEqual(14);
+      expect(size(parts.head)[0]).toBeGreaterThanOrEqual(Math.floor(14 * K));
+      expect(size(parts.head)[1]).toBeGreaterThanOrEqual(Math.floor(14 * K));
+      expect(size(parts.headKo)[0]).toBeGreaterThanOrEqual(Math.floor(14 * K));
+      expect(size(parts.headKo)[1]).toBeGreaterThanOrEqual(Math.floor(14 * K));
       expect(colourCount(parts.head)).toBeGreaterThanOrEqual(3);
-      expect(size(parts.torso)[0]).toBeGreaterThanOrEqual(12);
-      expect(size(parts.torso)[1]).toBeGreaterThanOrEqual(18);
-      expect(size(parts.handOpen)).toEqual([5, 5]);
-      expect(size(parts.handFist)).toEqual([5, 5]);
-      expect(size(parts.foot)).toEqual([7, 4]);
-      expect(opaqueCount(parts.head)).toBeGreaterThan(80);
+      expect(size(parts.torso)[0]).toBeGreaterThanOrEqual(Math.floor(12 * K));
+      expect(size(parts.torso)[1]).toBeGreaterThanOrEqual(Math.floor(18 * K));
+      expect(size(parts.handOpen)).toEqual([Math.round(5 * K), Math.round(5 * K)]);
+      expect(size(parts.handFist)).toEqual([Math.round(5 * K), Math.round(5 * K)]);
+      expect(size(parts.foot)).toEqual([Math.round(7 * K), Math.round(4 * K)]);
+      expect(opaqueCount(parts.head)).toBeGreaterThan(80 * K * K);
       expect(parts.headKo.grid).not.toEqual(parts.head.grid);
       for (const v of [parts.limbColor, parts.limbShade, parts.legColor]) expect(v).toBeGreaterThanOrEqual(0);
       for (const [k, v] of Object.entries(parts.extras)) {
@@ -102,27 +105,50 @@ describe("rule 1: every grid parses and every character has every part at the mi
     const c = CHARACTER_PARTS.claude;
     expect(c.torsoBlink).toBeDefined();
     const diff = c.torso.grid.filter((row, i) => row !== c.torsoBlink!.grid[i]);
-    expect(diff).toHaveLength(1);
+    // one authored row, which the 13.01 placeholder resample spreads over two or three
+    expect(diff.length).toBeGreaterThanOrEqual(1);
+    expect(diff.length).toBeLessThanOrEqual(Math.ceil(K));
   });
 
-  it("every item part parses and is 10–14 px on its long side", () => {
+  it("every item sprite parses and is 21–29 px on its long side (10–14 authored × 2.1)", () => {
     for (const id of ITEM_IDS) {
-      const p = ITEM_PARTS[id];
+      const p = ITEM_SPRITES[id];
       expect(() => parsePart(p)).not.toThrow();
       const { w, h } = parsePart(p);
-      expect(Math.max(w, h), id).toBeGreaterThanOrEqual(10);
-      expect(Math.max(w, h), id).toBeLessThanOrEqual(14);
+      expect(Math.max(w, h), id).toBeGreaterThanOrEqual(Math.floor(10 * K));
+      expect(Math.max(w, h), id).toBeLessThanOrEqual(Math.ceil(14 * K));
     }
   });
 });
 
-describe("rule 2: the idle frame fills the nominal frame from the feet up", () => {
+/** 13.01 rule 7: the standing world bounds every later lane must keep (width, height, top above the feet). */
+const STANDING_BOUNDS: Record<CharacterId, { w: number; h: number; top: number }> = {
+  drifter: { w: 58, h: 108, top: -107 }, conductor: { w: 41, h: 109, top: -108 }, stoker: { w: 60, h: 108, top: -107 }, claude: { w: 44, h: 109, top: -108 },
+};
+
+describe("13.01 rule 7: standing world bounds are the contract every later art lane keeps (±1 px)", () => {
   for (const id of CHARACTERS) {
-    it(`${id} idle spans ≥ 44 rows, ≤ ${FRAME_W} columns, feet at row ${ANCHOR.y}`, () => {
+    it(`${id} stands ${STANDING_BOUNDS[id].h} px tall and ${STANDING_BOUNDS[id].w} wide with the feet on the anchor row`, () => {
+      const c = frame(base({ character: id }));
+      const b = bounds(c);
+      const want = STANDING_BOUNDS[id];
+      // sprite px are world px at SPRITE_SCALE 1, so these are world bounds
+      expect(Math.abs((b.x1 - b.x0 + 1) * SPRITE_SCALE - want.w)).toBeLessThanOrEqual(1);
+      expect(Math.abs((b.y1 - b.y0 + 1) * SPRITE_SCALE - want.h)).toBeLessThanOrEqual(1);
+      expect(Math.abs((b.y0 - ANCHOR.y) * SPRITE_SCALE - want.top)).toBeLessThanOrEqual(1);
+      expect(b.y1).toBe(ANCHOR.y);
+    });
+  }
+});
+
+describe("rule 2: the idle frame fills the nominal frame from the feet up", () => {
+  const MIN_ROWS = Math.round(150 * BODY_SCALE * 0.88 / SPRITE_SCALE); // 92 of the 105 px body
+  for (const id of CHARACTERS) {
+    it(`${id} idle spans ≥ ${MIN_ROWS} rows, ≤ ${FRAME_W} columns, feet at row ${ANCHOR.y}`, () => {
       const c = frame(base({ character: id }));
       const b = bounds(c);
       expect(b.y1).toBe(ANCHOR.y);
-      expect(b.y1 - b.y0 + 1).toBeGreaterThanOrEqual(44);
+      expect(b.y1 - b.y0 + 1).toBeGreaterThanOrEqual(MIN_ROWS);
       expect(b.y1 - b.y0 + 1).toBeLessThanOrEqual(FRAME_H);
       expect(b.x1 - b.x0 + 1).toBeLessThanOrEqual(FRAME_W);
       expect(b.x0).toBeGreaterThanOrEqual(0);
@@ -178,7 +204,7 @@ describe("rule 4: the silhouette edge is always outline", () => {
             }
           }
         }
-        expect(edge).toBeGreaterThan(40);
+        expect(edge).toBeGreaterThan(40 * K);
       });
     }
   }
@@ -199,8 +225,8 @@ describe("rule 5: the punching hand sits on the fist joint", () => {
         composeFrame(c, joints, f, id, OPTS);
         const hand = CHARACTER_PARTS[id].handFist;
         const centre = centreOfPartAt(c, hand, fist.x, fist.y);
-        expect(Math.abs(centre.x - fist.x)).toBeLessThanOrEqual(2);
-        expect(Math.abs(centre.y - fist.y)).toBeLessThanOrEqual(2);
+        expect(Math.abs(centre.x - fist.x)).toBeLessThanOrEqual(2 * K);
+        expect(Math.abs(centre.y - fist.y)).toBeLessThanOrEqual(2 * K);
       });
     }
   }
@@ -215,7 +241,7 @@ describe("rule 6: items ride the front hand or the back", () => {
       const c = createFrameCanvas();
       composeFrame(c, joints, f, "drifter", OPTS);
       const fist = jointToSprite(joints.arms.F.fist, f);
-      const part = ITEM_PARTS[kind];
+      const part = ITEM_SPRITES[kind];
       const centre = centreOfPartAt(c, part, fist.x, fist.y);
       const { w, h } = parsePart(part);
       // the grip (anchor) is on the fist: the part's centroid lies within its own extent of it
@@ -260,8 +286,8 @@ describe("rule 7: KO head and blink torso", () => {
     expect(ko.data).not.toEqual(alive.data);
     // the ko frame is low and wide: sprawled on the roof
     const b = bounds(ko);
-    expect(b.y1 - b.y0 + 1).toBeLessThan(30);
-    expect(b.x1 - b.x0 + 1).toBeGreaterThan(30);
+    expect(b.y1 - b.y0 + 1).toBeLessThan(30 * K);
+    expect(b.x1 - b.x0 + 1).toBeGreaterThan(30 * K);
   });
 
   it("isBlinkOn toggles every 500 ms", () => {
@@ -279,7 +305,7 @@ describe("rule 7: KO head and blink torso", () => {
     expect(on.data).not.toEqual(off.data);
     let diff = 0;
     for (let i = 0; i < on.data.length; i++) if (on.data[i] !== off.data[i]) diff += 1;
-    expect(diff).toBeLessThanOrEqual(3);
+    expect(diff).toBeLessThanOrEqual(Math.ceil(3 * K * K));
     // other characters ignore the clock
     const d0 = frame(base({ character: "drifter" }), { blinkMs: 0 });
     const d1 = frame(base({ character: "drifter" }), { blinkMs: 600 });

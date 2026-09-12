@@ -63,6 +63,28 @@ export function parseGrid(grid: Grid, colors: Record<string, number | null>): Pa
   return { data, w, h };
 }
 
+/**
+ * 13.01: nearest-neighbour resample of a part by `k` (grid and anchor). Used for the placeholder grids until
+ * 13.03 re-authors every part at the 1 px art grid. Pure.
+ */
+export function scalePart(part: Part, k: number): Part {
+  const src = part.grid;
+  const h = src.length;
+  const w = src[0]?.length ?? 0;
+  const nw = Math.max(1, Math.round(w * k));
+  const nh = Math.max(1, Math.round(h * k));
+  const grid: Grid = [];
+  for (let y = 0; y < nh; y++) {
+    const sy = Math.min(h - 1, Math.floor((y + 0.5) / k));
+    let row = "";
+    for (let x = 0; x < nw; x++) row += src[sy]![Math.min(w - 1, Math.floor((x + 0.5) / k))]!;
+    grid.push(row);
+  }
+  const out: Part = { grid, anchor: { x: Math.round(part.anchor.x * k), y: Math.round(part.anchor.y * k) } };
+  if (part.palette) out.palette = part.palette;
+  return out;
+}
+
 const parsedCache = new WeakMap<Part, Parsed>();
 export function parsePart(part: Part): Parsed {
   let p = parsedCache.get(part);
