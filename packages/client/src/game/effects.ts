@@ -1,6 +1,7 @@
 import type Phaser from "phaser";
 import { BALANCE, WORLD, type FighterState, type MatchState, type PlayerIndex, type SimEvent } from "@midnight/shared";
 import { P } from "./palette";
+import { PIXEL, snapPt } from "./pixel";
 
 /**
  * 4.06 — Effects and feel. Reacts to `SimEvent`s and state reads; never predicts and never mutates the state.
@@ -221,7 +222,8 @@ export class Effects {
         const attacker = newest.fighters[event.attacker];
         if (!target || !attacker) break;
         const toward = attacker.x !== target.x ? Math.sign(attacker.x - target.x) : target.facing;
-        const at = { x: target.x + toward * IMPACT_OFFSET, y: target.y - CHEST_ABOVE_FEET };
+        // 12.01: sparks and rings sit on the pixel grid
+        const at = snapPt({ x: target.x + toward * IMPACT_OFFSET, y: target.y - CHEST_ABOVE_FEET });
         if (event.blocked) {
           this.flashFrames[event.target] = FRAMES.CHIP_FLASH;
           this.flashBlocked[event.target] = true;
@@ -361,7 +363,7 @@ export class Effects {
   }
 
   private dust(x: number, y: number): void {
-    this.spawn(FRAMES.DUST, (g, t) => drawDust(g, { x, y }, t));
+    this.spawn(FRAMES.DUST, (g, t) => drawDust(g, snapPt({ x, y }), t));
   }
 
   private drawVignette(): void {

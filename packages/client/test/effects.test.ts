@@ -3,6 +3,7 @@ import type Phaser from "phaser";
 import { BALANCE, WORLD, createMatch, type MatchState, type SimEvent } from "@midnight/shared";
 import { Effects } from "../src/game/effects";
 import { P } from "../src/game/palette";
+import { PIXEL } from "../src/game/pixel";
 
 /** Records fill alphas and destruction; every other Graphics method is a chainable no-op. */
 class FakeGraphics {
@@ -178,9 +179,26 @@ describe("Effects impact position", () => {
     fx.consume([hit(1, false)], state, newest);
     const spark = created.at(-1)!;
     const core = spark.circles.at(-1)!;
-    expect(core.x).toBe(460 - 20);
-    expect(core.y).toBe(WORLD.ROOF_Y - 90);
+    // 12.01: snapped to the pixel grid (440 → 441, 340 → 339)
+    expect(core.x).toBe(441);
+    expect(core.y).toBe(339);
+    expect(Math.abs(core.x - (460 - 20))).toBeLessThanOrEqual(PIXEL / 2);
+    expect(Math.abs(core.y - (WORLD.ROOF_Y - 90))).toBeLessThanOrEqual(PIXEL / 2);
     expect(fx.frozen(1)?.x).toBe(460);
+  });
+
+  it("12.01 rule 4: dust puffs land on the pixel grid", () => {
+    const { scene, created } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    state.fighters[0]!.x = 301;
+    state.fighters[0]!.y = WORLD.ROOF_Y;
+    fx.consume([{ type: "JUMP", player: 0 }], state);
+    const dust = created.at(-1)!;
+    expect(dust.circles.length).toBeGreaterThan(0);
+    // drawDust offsets puff 0 by dx −10 from the feet; feet 301 snap to 300, so the puff sits at 290 (not 291)
+    expect(dust.circles[0]!.x).toBe(290);
+    expect(PIXEL).toBe(3);
   });
 });
 
