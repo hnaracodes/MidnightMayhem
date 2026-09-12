@@ -28,7 +28,7 @@ function open(i) {
     sockets[i] = ws;
     ws.on("error", (e) => reject(e));
     ws.on("open", () => {
-      ws.send(JSON.stringify({ type: "HELLO", name: `P${i}`, roomId }));
+      ws.send(JSON.stringify({ type: "HELLO", name: `P${i}`, roomId, protocolVersion: 2 }));
     });
     ws.on("message", (data) => {
       const m = JSON.parse(data.toString());

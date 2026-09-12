@@ -37,6 +37,8 @@ export class RoomLoop {
     if (!this.room.match) return;
     const result = step(this.room.match, this.room.inputs());
     this.room.match = result.state;
+    // A fresh match (tick 1) must not carry odd-tick events left over from a match that was aborted mid-snapshot.
+    if (result.state.tick === 1) this.pending = [];
     this.pending.push(...result.events);
     if (result.state.tick % TICK.SNAPSHOT_EVERY !== 0) return;
     const events = this.pending;

@@ -13,7 +13,7 @@ function setup() {
 describe("message handlers", () => {
   it("HELLO creates a room, welcomes player 0, and broadcasts lobby", () => {
     const { ctx, conn, sent } = setup();
-    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "Alice", roomId: "ABCDE" }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "Alice", roomId: "ABCDE", protocolVersion: 2 }));
     expect(conn.index).toBe(0);
     expect(sent).toEqual(expect.arrayContaining([
       { type: "WELCOME", roomId: "ABCDE", playerIndex: 0, protocolVersion: 2 },
@@ -21,13 +21,22 @@ describe("message handlers", () => {
     ]));
   });
 
+  it("HELLO with the wrong protocol version gets VERSION_MISMATCH, is closed, and never seats", () => {
+    const { ctx, conn, sent } = setup();
+    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "Old", roomId: "ABCDE", protocolVersion: 1 }));
+    expect(sent).toEqual([expect.objectContaining({ type: "ERROR", code: "VERSION_MISMATCH" })]);
+    expect(conn.close).toHaveBeenCalledWith(1008, expect.any(String));
+    expect(conn.room).toBeNull();
+    expect(ctx.registry.get("ABCDE")).toBeUndefined();
+  });
+
   it("seats a second HELLO and rejects a third with ROOM_FULL", () => {
     const { ctx, conn } = setup();
     const second = { ...setup().conn, send: vi.fn() } as Conn;
     const third = { ...setup().conn, send: vi.fn() } as Conn;
-    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE" }));
-    handleMessage(ctx, second, JSON.stringify({ type: "HELLO", name: "B", roomId: "ABCDE" }));
-    handleMessage(ctx, third, JSON.stringify({ type: "HELLO", name: "C", roomId: "ABCDE" }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE", protocolVersion: 2 }));
+    handleMessage(ctx, second, JSON.stringify({ type: "HELLO", name: "B", roomId: "ABCDE", protocolVersion: 2 }));
+    handleMessage(ctx, third, JSON.stringify({ type: "HELLO", name: "C", roomId: "ABCDE", protocolVersion: 2 }));
     expect(second.index).toBe(1);
     expect(third.send).toHaveBeenCalledWith(expect.objectContaining({ type: "ERROR", code: "ROOM_FULL" }));
   });
@@ -35,8 +44,8 @@ describe("message handlers", () => {
   it("starts a loop when both players are ready", () => {
     const { ctx, conn } = setup();
     const second = { ...setup().conn, send: vi.fn() } as Conn;
-    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE" }));
-    handleMessage(ctx, second, JSON.stringify({ type: "HELLO", name: "B", roomId: "ABCDE" }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE", protocolVersion: 2 }));
+    handleMessage(ctx, second, JSON.stringify({ type: "HELLO", name: "B", roomId: "ABCDE", protocolVersion: 2 }));
     handleMessage(ctx, conn, JSON.stringify({ type: "READY", ready: true }));
     handleMessage(ctx, second, JSON.stringify({ type: "READY", ready: true }));
     const loop = ctx.loops.get("ABCDE");
@@ -48,7 +57,7 @@ describe("message handlers", () => {
     const { ctx, conn, sent } = setup();
     handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null } }));
     expect(sent.at(-1)).toEqual(expect.objectContaining({ type: "ERROR", code: "NOT_IN_ROOM" }));
-    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE" }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE", protocolVersion: 2 }));
     handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null } }));
     expect(conn.room?.inputs()[0]!.left).toBe(true);
   });
@@ -71,8 +80,8 @@ describe("message handlers", () => {
   it("notifies the opponent and removes an empty room on close", () => {
     const { ctx, conn } = setup();
     const second = { ...setup().conn, send: vi.fn() } as Conn;
-    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE" }));
-    handleMessage(ctx, second, JSON.stringify({ type: "HELLO", name: "B", roomId: "ABCDE" }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE", protocolVersion: 2 }));
+    handleMessage(ctx, second, JSON.stringify({ type: "HELLO", name: "B", roomId: "ABCDE", protocolVersion: 2 }));
     handleClose(ctx, conn);
     expect(second.send).toHaveBeenCalledWith({ type: "OPPONENT_LEFT" });
     expect(second.room).toBeDefined();
@@ -90,7 +99,7 @@ describe("message handlers (10.03: config, customise, four players)", () => {
       return { conn, sent, last: (type: string) => sent.filter((m) => m.type === type).at(-1) };
     });
     const send = (i: number, m: unknown) => handleMessage(ctx, list[i]!.conn, JSON.stringify(m));
-    const hello = (i: number) => send(i, { type: "HELLO", name: `P${i}`, roomId: "ABCDE" });
+    const hello = (i: number) => send(i, { type: "HELLO", name: `P${i}`, roomId: "ABCDE", protocolVersion: 2 });
     return { ctx, list, send, hello };
   }
   const fourPlayers = { players: 4, teams: "2v2", mode: "rounds", map: "roof", items: true };

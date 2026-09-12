@@ -26,7 +26,10 @@ export const LoadoutSchema = z.tuple([z.enum(ITEM_IDS), z.enum(ITEM_IDS)])
   .refine((l) => l[0] !== l[1], { message: "loadout items must differ" });
 
 export const ClientMessageSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("HELLO"), name: z.string().trim().min(1).max(16), roomId: z.string().regex(ROOM_ID_RE).optional() }).strict(),
+  z.object({
+    type: z.literal("HELLO"), name: z.string().trim().min(1).max(16), roomId: z.string().regex(ROOM_ID_RE).optional(),
+    protocolVersion: z.number().int(),
+  }).strict(),
   z.object({ type: z.literal("INPUT"), seq: z.number().int().positive(), frame: InputFrameSchema }).strict(),
   z.object({ type: z.literal("READY"), ready: z.boolean() }).strict(),
   z.object({ type: z.literal("PING"), t: z.number() }).strict(),
@@ -35,7 +38,7 @@ export const ClientMessageSchema = z.discriminatedUnion("type", [
 ]);
 export type ClientMessage = z.infer<typeof ClientMessageSchema>;
 
-export type ErrorCode = "BAD_MESSAGE" | "ROOM_FULL" | "NOT_IN_ROOM" | "ALREADY_JOINED" | "NOT_HOST" | "BAD_CONFIG";
+export type ErrorCode = "BAD_MESSAGE" | "ROOM_FULL" | "NOT_IN_ROOM" | "ALREADY_JOINED" | "NOT_HOST" | "BAD_CONFIG" | "VERSION_MISMATCH";
 export interface LobbyPlayer { name: string; ready: boolean; connected: boolean; character: CharacterId; loadout: Loadout }
 
 export type ServerMessage =

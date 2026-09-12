@@ -46,6 +46,11 @@ export function handleMessage(ctx: ServerContext, conn: Conn, raw: string): void
       error(conn, "ALREADY_JOINED", "connection is already in a room");
       return;
     }
+    if (message.protocolVersion !== PROTOCOL_VERSION) {
+      error(conn, "VERSION_MISMATCH", `client protocol ${message.protocolVersion}, server protocol ${PROTOCOL_VERSION}; reload the page`);
+      conn.close(1008, "protocol version mismatch");
+      return;
+    }
     const room = ctx.registry.getOrCreate(message.roomId);
     const index = room.join(message.name, (m) => conn.send(m));
     if (index === null) {

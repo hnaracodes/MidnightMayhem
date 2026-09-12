@@ -6,10 +6,11 @@ const j = (o: unknown) => JSON.stringify(o);
 
 describe("parseClientMessage", () => {
   it("accepts HELLO with and without an uppercase room id", () => {
-    expect(parseClientMessage(j({ type: "HELLO", name: "Hruday" })).ok).toBe(true);
-    expect(parseClientMessage(j({ type: "HELLO", name: "H", roomId: "AB12C" })).ok).toBe(true);
-    expect(parseClientMessage(j({ type: "HELLO", name: "H", roomId: "ab12c" })).ok).toBe(false);
-    expect(parseClientMessage(j({ type: "HELLO", name: "x".repeat(17) })).ok).toBe(false);
+    expect(parseClientMessage(j({ type: "HELLO", name: "Hruday", protocolVersion: 2 })).ok).toBe(true);
+    expect(parseClientMessage(j({ type: "HELLO", name: "H", roomId: "AB12C", protocolVersion: 2 })).ok).toBe(true);
+    expect(parseClientMessage(j({ type: "HELLO", name: "H", roomId: "ab12c", protocolVersion: 2 })).ok).toBe(false);
+    expect(parseClientMessage(j({ type: "HELLO", name: "x".repeat(17), protocolVersion: 2 })).ok).toBe(false);
+    expect(parseClientMessage(j({ type: "HELLO", name: "H" })).ok).toBe(false); // protocolVersion is required
   });
   it("accepts INPUT with a positive int seq and a strict frame", () => {
     expect(parseClientMessage(j({ type: "INPUT", seq: 1, frame: EMPTY_FRAME })).ok).toBe(true);

@@ -44,6 +44,28 @@ describe("RoomLoop", () => {
     loop.stop();
   });
 
+  it("drops events left over from a match aborted after an odd tick before the next match's first snapshot", () => {
+    const room = new Room("ABCDE");
+    const send = vi.fn();
+    room.join("Alice", send); room.join("Bob", vi.fn());
+    room.match = createMatch();
+    const loop = new RoomLoop(room);
+    loop.tickOnce(); loop.tickOnce(); loop.tickOnce();
+    expect(room.match!.tick).toBe(3);
+    // The odd tick's events are still pending when the room aborts the match (a player left).
+    const backlog = (loop as unknown as { pending: unknown[] }).pending;
+    backlog.push({ type: "KO", player: 1 });
+    room.leave(1);
+    expect(room.match).toBeNull();
+    send.mockClear();
+    room.join("Bob", vi.fn());
+    room.startMatch();
+    loop.tickOnce(); loop.tickOnce();
+    const first = send.mock.calls.map(([m]) => m).find((m) => m.type === "SNAPSHOT");
+    expect(first.state.tick).toBe(2);
+    expect(first.events).not.toContainEqual({ type: "KO", player: 1 });
+  });
+
   it("does nothing when the room has no match", () => {
     const room = new Room("ABCDE"); const send = vi.fn(); room.join("Alice", send);
     expect(() => new RoomLoop(room).tickOnce()).not.toThrow();

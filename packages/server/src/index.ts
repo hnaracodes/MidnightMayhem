@@ -29,8 +29,16 @@ function serveStatic(req: IncomingMessage, res: ServerResponse): void {
     res.end("Client build missing. Run pnpm --filter @midnight/client build.\n");
     return;
   }
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-  const relative = decodeURIComponent(pathname).replace(/^\/+/, "");
+  let relative: string;
+  try {
+    const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+    relative = decodeURIComponent(pathname).replace(/^\/+/, "");
+  } catch {
+    // A bad percent-escape (GET /%) throws URIError; an uncaught throw here would kill the whole server.
+    res.statusCode = 400;
+    res.end("Bad path");
+    return;
+  }
   const candidate = resolve(distDir, relative);
   if (!candidate.startsWith(`${distDir}/`) && candidate !== distDir) {
     res.statusCode = 403;
@@ -64,7 +72,26 @@ const certs = loadCerts();
 const server = certs ? createHttpsServer(certs, serveStatic) : createHttpServer(serveStatic);
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 4096 });
 
+/** Milliseconds between liveness pings; a socket that has not answered the previous ping is terminated. */
+export const HEARTBEAT_MS = 5000;
+
+// Liveness: `ws` never notices a half-open peer (laptop asleep, Wi-Fi dropped) on its own, and the OS timeout can be
+// minutes, during which the ghost keeps its slot and the room stays full. `terminate()` fires `close`, so the
+// ordinary leave path (10.03 rule 8) runs unchanged.
+const alive = new WeakMap<WebSocket, boolean>();
+const heartbeat = setInterval(() => {
+  for (const socket of wss.clients) {
+    if (alive.get(socket) === false) { socket.terminate(); continue; }
+    alive.set(socket, false);
+    socket.ping();
+  }
+}, HEARTBEAT_MS);
+heartbeat.unref();
+wss.on("close", () => clearInterval(heartbeat));
+
 wss.on("connection", (socket) => {
+  alive.set(socket, true);
+  socket.on("pong", () => alive.set(socket, true));
   const conn: Conn = {
     room: null,
     index: null,
@@ -79,6 +106,10 @@ wss.on("connection", (socket) => {
   socket.on("close", () => handleClose(context, conn));
   socket.on("error", () => handleClose(context, conn));
 });
+
+// One bad request or a throw inside a handler must never take every room down with it.
+process.on("uncaughtException", (err) => { console.error("[server] uncaught exception", err); });
+process.on("unhandledRejection", (err) => { console.error("[server] unhandled rejection", err); });
 
 server.listen(PORT, () => {
   const scheme = certs ? "https" : "http";
