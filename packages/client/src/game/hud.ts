@@ -8,7 +8,8 @@ const PIP = { RADIUS: 6, GAP: 16, DY: 12 } as const;
 const NAME = { DY: 6, SIZE: 14 } as const;
 const TIMER = { X: 480, Y: 34, SIZE: 40, STROKE: 4 } as const;
 const CAR = { INSET: 12, SIZE: 12 } as const;
-const BANNER = { X: 480, Y: 240, STROKE: 6, POP_FROM: 1.4, POP_SEC: 0.13 } as const;
+/** Banner centre at y 175: below the HUD band (ends ≈ 75) and above a standing rig's head (≈ 250), so neither is covered. */
+const BANNER = { X: 480, Y: 175, STROKE: 6, POP_FROM: 1.4, POP_SEC: 0.13 } as const;
 const BANNER_SIZE = { COUNTDOWN: 96, ROUND_END: 48, MATCH_END: 64 } as const;
 const GHOST_DRAIN_SEC = 0.4;
 const GHOST_ALPHA = 0.7; // stays legible when the live fill is danger too
@@ -38,6 +39,8 @@ export class Hud {
   private readonly anim: [BarAnim, BarAnim];
   private bannerText: string | null = null;
   private popT: number = BANNER.POP_SEC;
+  /** Text objects stay hidden until the first update: the arena boots under the lobby before any snapshot. */
+  private shown = false;
 
   constructor(scene: Phaser.Scene) {
     this.bars = scene.add.graphics().setDepth(DEPTH.HUD);
@@ -64,6 +67,8 @@ export class Hud {
       .setDepth(DEPTH.BANNER)
       .setVisible(false);
 
+    for (const text of [this.timer, this.names[0], this.names[1], this.car]) text.setVisible(false);
+
     const full = BALANCE.MAX_HP;
     this.anim = [
       { hp: full, ghost: full, from: full, t: GHOST_DRAIN_SEC },
@@ -79,6 +84,10 @@ export class Hud {
 
   update(state: MatchState, dtSec: number): void {
     const dt = Math.max(0, dtSec);
+    if (!this.shown) {
+      this.shown = true;
+      for (const text of [this.timer, this.names[0], this.names[1], this.car]) text.setVisible(true);
+    }
     this.bars.clear();
     for (const index of [0, 1] as const) {
       const anim = this.anim[index];

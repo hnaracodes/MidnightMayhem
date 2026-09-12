@@ -30,8 +30,12 @@ const CAMERA_MESSAGES: Record<VisionErrorCode, string> = {
   "worker-failed": "The camera tracker crashed before it was ready. Keyboard still works.",
 };
 
+/** design/04 § Banners: the 64 px canvas banner and the KO collapse play for 1 s before the DOM result takes over. */
+const RESULT_DELAY_MS = 1000;
+
 let connected = false;
 let hasSnapshot = false;
+let resultTimer: ReturnType<typeof setTimeout> | null = null;
 let matchRunning = false;
 let lastLobby: { roomId: string; players: [LobbyPlayer | null, LobbyPlayer | null] } | null = null;
 
@@ -115,6 +119,8 @@ const lobby = new Lobby({
 
 void inputSource.start();
 lobby.renderJoin();
+// 4.08 rule 1: the arena boots under the lobby so the roof scrolls behind every overlay from the first frame.
+startGame();
 
 // ---- Pause on blur / hidden (Phase 6 rule 5) ----
 let pausedBanner = false;
@@ -174,7 +180,6 @@ client.on("SNAPSHOT", (message) => {
 
   if (!hasSnapshot) {
     hasSnapshot = true;
-    startGame();
     inputSender.start();
     overlay.setMode("compact");
   }
@@ -182,11 +187,18 @@ client.on("SNAPSHOT", (message) => {
   matchRunning = message.state.phase !== "MATCH_END";
   setMatchBanner(matchRunning);
   if (matchRunning) lobby.hide();
-  if (message.state.phase === "COUNTDOWN") result.hide();
+  if (message.state.phase === "COUNTDOWN") {
+    result.hide();
+    if (resultTimer !== null) { clearTimeout(resultTimer); resultTimer = null; }
+  }
 
   const matchEnd = message.events.find((event) => event.type === "MATCH_END");
   if (matchEnd?.type === "MATCH_END") {
-    result.show(matchEnd.winner, session.localIndex);
+    if (resultTimer !== null) clearTimeout(resultTimer);
+    resultTimer = setTimeout(() => {
+      resultTimer = null;
+      result.show(matchEnd.winner, session.localIndex);
+    }, RESULT_DELAY_MS);
   }
 });
 
