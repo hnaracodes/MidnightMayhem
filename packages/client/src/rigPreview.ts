@@ -1,17 +1,20 @@
 /**
  * Rig preview page (owner gate 4.03): both fighters in every pose at 2x. Uses computePose and drawFighter
- * unchanged. Background is the 4.03 fallback (flat night-1 sky, steel-1 roof band) until the stage lands.
+ * unchanged, on the real 4.04 stage (createBackgrounds / scrollBackgrounds / applyTrainCar). The top row
+ * stands on a preview-only ledge because the stage has a single roof line at ROOF_Y.
  */
 import Phaser from "phaser";
 import {
   WORLD, createFighter, hurtbox, punchHitbox,
   type CharacterId, type FighterState, type TrainCar,
 } from "@midnight/shared";
+import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./game/backgrounds";
 import { CSS_P, P } from "./game/palette";
 import { computePose, type Clock, type RigState } from "./game/rig/pose";
 import { drawFighter, drawShadow } from "./game/rig/draw";
 
-const WIND: Record<TrainCar, number> = { STANDARD: 240, TUNNEL: 420, FINAL_CAR: 180 };
+/** Roof scroll speed per car (the slider label when no override is set); matches the stage, the tunnel wall scrolls faster on its own. */
+const WIND: Record<TrainCar, number> = { STANDARD: 240, TUNNEL: 240, FINAL_CAR: 180 };
 
 type ColumnId = "idle" | "walk" | "jumpUp" | "jumpApex" | "jumpDown" | "punch" | "block" | "hit" | "ko" | "offbounds" | "win";
 interface Column { id: ColumnId; label: string; w: number; anchor: number }
@@ -45,10 +48,12 @@ const ui = {
   /** Pinned ticks per state: punch elapsed, ko frames, hit hitstun, walk x, idle/block/win render ms. */
   pins: {} as Partial<Record<RigState, number>>,
 };
-const windSpeed = (): number => ui.wind ?? WIND[ui.car];
 
 class RigPreviewScene extends Phaser.Scene {
-  private stage!: Phaser.GameObjects.Graphics;
+  private layers!: Layers;
+  private car: TrainCar = "STANDARD";
+  private ledge!: Phaser.GameObjects.Graphics;
+  private ledgeScroll = 0;
   private shadows!: Phaser.GameObjects.Graphics;
   private fighters: Phaser.GameObjects.Graphics[] = [];
   private overlay!: Phaser.GameObjects.Graphics;
@@ -59,7 +64,8 @@ class RigPreviewScene extends Phaser.Scene {
 
   create(): void {
     this.cameras.main.setZoom(2).centerOn(WORLD.WIDTH / 2, WORLD.HEIGHT / 2);
-    this.stage = this.add.graphics();
+    this.layers = createBackgrounds(this);
+    this.ledge = this.add.graphics();
     this.shadows = this.add.graphics();
     for (let i = 0; i < ROWS.length * COLUMNS.length; i++) this.fighters.push(this.add.graphics());
     this.overlay = this.add.graphics();
@@ -72,11 +78,18 @@ class RigPreviewScene extends Phaser.Scene {
     }
   }
 
-  update(): void {
+  update(_time: number, delta: number): void {
     this.frame += 1;
     const now = performance.now();
-    const wind = windSpeed();
-    this.drawStage(now, wind);
+    if (ui.car !== this.car) {
+      this.car = ui.car;
+      applyTrainCar(this, this.layers, this.car);
+    }
+    // The wind slider overrides the roof scroll too, so the rigs and the stage agree; a car change resets it.
+    if (ui.wind !== null) this.layers.roofSpeed = ui.wind;
+    const wind = this.layers.roofSpeed;
+    scrollBackgrounds(this.layers, delta / 1000);
+    this.drawLedge(delta / 1000);
     this.shadows.clear();
     this.overlay.clear();
 
@@ -113,20 +126,17 @@ class RigPreviewScene extends Phaser.Scene {
     if (ui.flashFrames > 0) ui.flashFrames -= 1;
   }
 
-  /** 4.03 fallback stage: flat sky, steel roof band from ROOF_Y, a roof line, a ledge for the top row, scrolling rivets. */
-  private drawStage(now: number, wind: number): void {
-    const g = this.stage;
+  /** Preview-only ledge for the top row (the real roof is at ROOF_Y); scrolls with the roof so the two rows agree. */
+  private drawLedge(dtSec: number): void {
+    const g = this.ledge;
+    const top = ROWS[0]!.groundY;
+    this.ledgeScroll = (this.ledgeScroll + this.layers.roofSpeed * dtSec) % 48;
     g.clear();
-    g.fillStyle(ui.car === "TUNNEL" ? P.night0 : P.night1, 1).fillRect(0, 0, WORLD.WIDTH, WORLD.HEIGHT);
-    if (ui.car !== "TUNNEL") g.fillStyle(P.moon, 1).fillCircle(740, 70, 26);
-    const scroll = ((now / 1000) * wind) % 48;
-    for (const [top, bottom] of [[ROWS[0]!.groundY, ROWS[0]!.groundY + 30], [WORLD.ROOF_Y, WORLD.HEIGHT]] as const) {
-      g.fillStyle(P.steel1, 1).fillRect(0, top, WORLD.WIDTH, bottom - top);
-      g.fillStyle(P.steel0, 1).fillRect(0, top + 22, WORLD.WIDTH, Math.max(0, bottom - top - 22));
-      g.lineStyle(2, P.steel2, 1).lineBetween(0, top, WORLD.WIDTH, top);
-      g.fillStyle(P.steel2, 1);
-      for (let x = -scroll; x < WORLD.WIDTH; x += 48) g.fillCircle(x, top + 26, 1.5);
-    }
+    g.fillStyle(P.steel1, 1).fillRect(0, top, WORLD.WIDTH, 30);
+    g.fillStyle(P.steel0, 1).fillRect(0, top + 22, WORLD.WIDTH, 8);
+    g.lineStyle(2, P.steel2, 1).lineBetween(0, top, WORLD.WIDTH, top);
+    g.fillStyle(P.steel2, 1);
+    for (let x = -this.ledgeScroll; x < WORLD.WIDTH; x += 48) g.fillCircle(x, top + 26, 1.5);
   }
 }
 

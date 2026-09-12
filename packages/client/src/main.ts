@@ -147,6 +147,10 @@ client.on("WELCOME", (message) => {
 });
 
 client.on("LOBBY", (message) => {
+  session.playerNames = [
+    message.players[0]?.name || session.playerNames[0],
+    message.players[1]?.name || session.playerNames[1],
+  ];
   lastLobby = { roomId: message.roomId, players: message.players };
   renderRoom();
   if (sourceChoice === "vision" && !autoCameraDone) {
