@@ -1,24 +1,25 @@
 /**
  * In-match camera preview (integrator amendment to Phase 6): a fixed 240 px box in the bottom-left corner
- * showing the mirrored camera with the smoothed skeleton, a row of six input dots (L R J PL PR B), a status
- * line and, when the vision layer reports punch diagnostics, one gate row per hand. Pointer events pass
- * through to the arena. The pure `previewModel` decides what the rows show; the class only paints it.
+ * showing the mirrored camera with the smoothed skeleton and (9.04) the detector's boxes, a row of seven
+ * input dots (L R J PL PR B SP) plus the held item's label, a status line and, when the vision layer reports
+ * punch diagnostics, one gate row per hand. Pointer events pass through to the arena. The pure `previewModel`
+ * decides what the rows show; the class only paints it.
  *
  * The camera stream is never opened twice: every animation frame the source's own `<video>` is drawn onto
  * the preview canvas (mirrored), so the element itself can stay wherever the calibration overlay put it.
  */
-import type { InputKey } from "@midnight/shared";
+import { ITEMS, type InputKey, type ItemId } from "@midnight/shared";
 import type { CalibrationPhase } from "../vision/calibration";
 import { COLOR_LABEL, COLOR_MARKER, COLOR_POSE } from "../vision/thresholds";
 import type { PunchDiag } from "../vision/gestures/punch";
 export type { PunchDiag };
 import type { DebugFrame, VisionInputSource } from "../vision/VisionInputSource";
-import type { Landmark } from "../vision/workerClient";
+import type { Landmark, ObjectBox } from "../vision/workerClient";
 
 export type PreviewFrame = DebugFrame & { fps?: number };
 
-export const DOT_KEYS: readonly InputKey[] = ["left", "right", "jump", "punchL", "punchR", "block"];
-export const DOT_LABELS: readonly string[] = ["L", "R", "J", "PL", "PR", "B"];
+export const DOT_KEYS: readonly InputKey[] = ["left", "right", "jump", "punchL", "punchR", "block", "special"];
+export const DOT_LABELS: readonly string[] = ["L", "R", "J", "PL", "PR", "B", "SP"];
 export const GATE_NAMES = ["ext", "depth", "thrust", "jab"] as const;
 export type GateName = (typeof GATE_NAMES)[number];
 
@@ -38,15 +39,33 @@ export interface PreviewModel {
   status: string;
   /** Null until the frame carries punch diagnostics. */
   gates: { L: GateRow; R: GateRow } | null;
+  /** The held item (9.04), or null; `itemLabel` is ITEMS[item].label or "". */
+  item: ItemId | null;
+  itemLabel: string;
+  /** The laser pose (9.04). */
+  special: boolean;
 }
 
 export function previewModel(frame: PreviewFrame | null, fps?: number): PreviewModel {
-  if (!frame) return { dots: DOT_KEYS.map(() => false), status: "no camera", gates: null };
+  if (!frame) {
+    return { dots: DOT_KEYS.map(() => false), status: "no camera", gates: null, item: null, itemLabel: "", special: false };
+  }
   const dots = DOT_KEYS.map((key) => frame.frame[key]);
   const status = statusText(frame.calibration.phase, frame.calibration.progress, frame.fps ?? fps);
   const punch = frame.punch;
   const gates = punch ? { L: gateRow(punch.L), R: gateRow(punch.R) } : null;
-  return { dots, status, gates };
+  const item = frame.frame.item;
+  return { dots, status, gates, item, itemLabel: item ? ITEMS[item].label : "", special: frame.frame.special };
+}
+
+/**
+ * The boxes the preview should draw after `frame` (9.04): the detector runs on every OBJECT_EVERY_N-th pose
+ * frame and the others carry `objects: null`, so the last detector result is kept until the next one to
+ * avoid a one-frame-in-three flicker. Losing the pose drops them.
+ */
+export function retainBoxes(prev: ObjectBox[] | null, frame: PreviewFrame): ObjectBox[] | null {
+  if (!frame.landmarks) return null;
+  return frame.objects ?? prev;
 }
 
 function statusText(phase: CalibrationPhase, progress: number, fps: number | undefined): string {
@@ -88,6 +107,9 @@ export class CameraPreview {
   private readonly root: HTMLElement;
   private readonly canvas: HTMLCanvasElement;
   private readonly dots: HTMLSpanElement[] = [];
+  private readonly itemGlyph: HTMLSpanElement;
+  /** Last detector boxes, kept across the detector's off frames (see retainBoxes). */
+  private boxes: ObjectBox[] | null = null;
   private readonly status: HTMLDivElement;
   private readonly gates: HTMLDivElement;
   private readonly gateGlyphs: Record<"L" | "R", { label: HTMLSpanElement; glyphs: Record<GateName, HTMLSpanElement> }>;
@@ -117,6 +139,10 @@ export class CameraPreview {
       dots.append(dot);
       this.dots.push(dot);
     }
+    this.itemGlyph = document.createElement("span");
+    this.itemGlyph.className = "campreview-item on";
+    this.itemGlyph.hidden = true;
+    dots.append(this.itemGlyph);
 
     this.status = document.createElement("div");
     this.status.className = "campreview-status";
@@ -152,6 +178,7 @@ export class CameraPreview {
     this.source = source;
     feed.onDebug((frame) => {
       this.frame = frame as PreviewFrame;
+      this.boxes = retainBoxes(this.boxes, this.frame);
     });
   }
 
@@ -186,6 +213,8 @@ export class CameraPreview {
   private render(): void {
     const model = previewModel(this.frame, this.source?.stats().fps);
     this.dots.forEach((dot, i) => dot.classList.toggle("on", model.dots[i] ?? false));
+    this.itemGlyph.hidden = model.item === null;
+    this.itemGlyph.textContent = model.itemLabel;
     this.status.textContent = model.status;
     this.gates.hidden = model.gates === null;
     if (model.gates) {
@@ -221,8 +250,10 @@ export class CameraPreview {
     }
 
     const f = this.frame;
-    const lms = f?.landmarks;
-    if (!f || !lms) return;
+    if (!f) return;
+    if (this.boxes) this.drawBoxes(ctx, this.boxes, f.item, w, h);
+    const lms = f.landmarks;
+    if (!lms) return;
     const px = (l: Landmark) => ({ x: (1 - l.x) * w, y: l.y * h });
 
     ctx.lineWidth = 3;
@@ -241,7 +272,9 @@ export class CameraPreview {
     }
 
     const crossed = f.metrics?.crossed ?? false;
-    const wristHot = (i: number) => crossed || (i === 15 ? f.gestures.punchL : i === 16 ? f.gestures.punchR : false);
+    const special = f.gestures.special;
+    const wristHot = (i: number) =>
+      crossed || special || (i === 15 ? f.gestures.punchL : i === 16 ? f.gestures.punchR : false);
     for (const i of MARKERS) {
       const l = lms[i];
       if (!l || l.visibility < 0.5) continue;
@@ -256,6 +289,28 @@ export class CameraPreview {
         ctx.font = "bold 12px system-ui, sans-serif";
         ctx.fillText(i === 15 ? "L" : "R", p.x + 10, p.y - 7);
       }
+    }
+  }
+
+  /** Detector boxes (9.04), mirrored like the skeleton, labelled; the held item's label is drawn hot. */
+  private drawBoxes(ctx: CanvasRenderingContext2D, boxes: ObjectBox[], item: ItemId | null, w: number, h: number): void {
+    ctx.lineWidth = 2;
+    ctx.font = "bold 11px system-ui, sans-serif";
+    ctx.textBaseline = "bottom";
+    for (const b of boxes) {
+      const x = (1 - b.x - b.w) * w;
+      const y = b.y * h;
+      const bw = b.w * w;
+      const bh = b.h * h;
+      const held = item !== null && ITEMS[item].cocoLabel === b.label;
+      ctx.strokeStyle = held ? COLOR_MARKER : COLOR_POSE;
+      ctx.strokeRect(x, y, bw, bh);
+      const text = `${b.label} ${Math.round(b.score * 100)}`;
+      const tw = ctx.measureText(text).width + 6;
+      ctx.fillStyle = held ? COLOR_MARKER : COLOR_POSE;
+      ctx.fillRect(x, Math.max(0, y - 14), tw, 14);
+      ctx.fillStyle = held ? COLOR_LABEL : "#070B18";
+      ctx.fillText(text, x + 3, Math.max(14, y));
     }
   }
 }

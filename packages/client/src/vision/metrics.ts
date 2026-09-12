@@ -41,6 +41,8 @@ export interface Metrics {
   /** Largest rise of raw `side` within JAB_WINDOW_MS. */
   jabRiseL: number;
   jabRiseR: number;
+  /** Image distance between wrists 15 and 16 over S (9.04 laser: both hands together). */
+  wristGap: number;
   /** ARMS-style guard; always false until the hands plan. */
   guard: false;
 }
@@ -158,6 +160,7 @@ export function computeMetrics(
     sideR: R.side,
     jabRiseL: L.jabRise,
     jabRiseR: R.jabRise,
+    wristGap: dist2D(lw, rw) / S,
     guard: false,
   };
 }

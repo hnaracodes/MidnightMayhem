@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { punchGateRows, punchWhyNot } from "../src/harness/panel";
+import { objectsText, punchGateRows, punchWhyNot } from "../src/harness/panel";
 import type { PunchDiag } from "../src/vision/gestures/punch";
 import { DEPTH_ENTER_NO_HAND, EXT_ENTER, JAB_EXT } from "../src/vision/thresholds";
 
@@ -29,5 +29,12 @@ describe("harness punch gate rows", () => {
     );
     expect(punchWhyNot(diag({ active: true, path: "jab" }))).toBe("entered via jab, waiting on debounce");
     expect(punchWhyNot(diag({ active: true, out: true, path: "thrust" }))).toBe("punching via thrust");
+  });
+});
+
+describe("harness objects line (9.04)", () => {
+  it("shows off when the detector did not load and on with the latest ms otherwise", () => {
+    expect(objectsText({ objects: false, objectMs: 0 })).toBe("off");
+    expect(objectsText({ objects: true, objectMs: 12.34 })).toBe("on · 12.3 ms");
   });
 });

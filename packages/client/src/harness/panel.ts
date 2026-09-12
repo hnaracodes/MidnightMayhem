@@ -1,4 +1,4 @@
-import { INPUT_KEYS } from "@midnight/shared";
+import { INPUT_KEYS, ITEMS } from "@midnight/shared";
 import type { DebugFrame, PunchDiag, RecorderSample } from "../vision/VisionInputSource";
 import type { Metrics } from "../vision/metrics";
 import {
@@ -15,6 +15,11 @@ export interface Panel {
 export interface PanelOptions {
   /** The recorder behind the "Copy last N s" and "Download JSON" buttons. */
   dump?: () => RecorderSample[];
+}
+
+/** The "objects" performance line (9.04): "on · 12.3 ms" while the detector runs, "off" when it did not load. Exported for tests. */
+export function objectsText(stats: Pick<WorkerStats, "objects" | "objectMs">): string {
+  return stats.objects ? `on · ${stats.objectMs.toFixed(1)} ms` : "off";
 }
 
 /** One punch gate row: its label, live value text and whether it passes. Exported for tests. */
@@ -128,8 +133,10 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
   const perf = el("div", "card");
   perf.append(el("h2", undefined, "Performance"));
   const perfKv = el("div", "kv");
-  const fps = el("span"), ms = el("span"), delegate = el("span"), dropped = el("span");
-  for (const [k, v] of [["FPS", fps], ["pose ms", ms], ["delegate", delegate], ["dropped", dropped]] as const) {
+  const fps = el("span"), ms = el("span"), objectMs = el("span"), delegate = el("span"), dropped = el("span");
+  for (const [k, v] of [
+    ["FPS", fps], ["pose ms", ms], ["objects", objectMs], ["delegate", delegate], ["dropped", dropped],
+  ] as const) {
     perfKv.append(el("span", undefined, k), v);
   }
   perf.append(perfKv);
@@ -159,6 +166,8 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
     indEls.set(k, d);
     grid.append(d);
   }
+  const itemInd = el("div", "ind", "item");
+  grid.append(itemInd);
   ind.append(grid);
 
   // Gauges
@@ -278,6 +287,7 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
     update(f, stats) {
       fps.textContent = String(stats.fps);
       ms.textContent = stats.poseMs.toFixed(1);
+      objectMs.textContent = objectsText(stats);
       delegate.textContent = stats.delegate ?? "—";
       dropped.textContent = String(stats.dropped);
 
@@ -293,6 +303,8 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
         const d = indEls.get(k);
         if (d) d.toggleAttribute("data-on", f.frame[k]);
       }
+      itemInd.textContent = f.frame.item ? ITEMS[f.frame.item].label : "item";
+      itemInd.toggleAttribute("data-on", f.frame.item !== null);
 
       const m = f.metrics;
       for (const { g, val, fill } of gauges) {

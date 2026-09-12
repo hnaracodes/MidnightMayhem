@@ -68,4 +68,67 @@ describe("KeyboardInputSource", () => {
 
     expect(source.sample()).toBe(idle);
   });
+
+  describe("9.04: Q and the digit keys", () => {
+    it("Q holds special", async () => {
+      const source = new KeyboardInputSource();
+      await source.start();
+      fakeWindow.dispatchEvent(keyEvent("keydown", "KeyQ"));
+      expect(source.sample().special).toBe(true);
+      fakeWindow.dispatchEvent(keyEvent("keyup", "KeyQ"));
+      expect(source.sample().special).toBe(false);
+    });
+
+    it("holding 1 samples item molotov; releasing clears it", async () => {
+      const source = new KeyboardInputSource();
+      await source.start();
+      fakeWindow.dispatchEvent(keyEvent("keydown", "Digit1"));
+      expect(source.sample().item).toBe("molotov");
+      fakeWindow.dispatchEvent(keyEvent("keyup", "Digit1"));
+      expect(source.sample().item).toBeNull();
+    });
+
+    it("maps 1–5 to molotov, sword, shield, banana, flash", async () => {
+      const source = new KeyboardInputSource();
+      await source.start();
+      const expected = ["molotov", "sword", "shield", "banana", "flash"];
+      for (let i = 0; i < 5; i++) {
+        fakeWindow.dispatchEvent(keyEvent("keydown", `Digit${i + 1}`));
+        expect(source.sample().item).toBe(expected[i]);
+        fakeWindow.dispatchEvent(keyEvent("keyup", `Digit${i + 1}`));
+      }
+      expect(source.sample().item).toBeNull();
+    });
+
+    it("holding 1 then 3 is shield; releasing 1 while 3 is held keeps shield; releasing 3 clears", async () => {
+      const source = new KeyboardInputSource();
+      await source.start();
+      fakeWindow.dispatchEvent(keyEvent("keydown", "Digit1"));
+      fakeWindow.dispatchEvent(keyEvent("keydown", "Digit3"));
+      expect(source.sample().item).toBe("shield");
+      fakeWindow.dispatchEvent(keyEvent("keyup", "Digit1"));
+      expect(source.sample().item).toBe("shield");
+      fakeWindow.dispatchEvent(keyEvent("keyup", "Digit3"));
+      expect(source.sample().item).toBeNull();
+    });
+
+    it("repeated digit keydown keeps the frame identity", async () => {
+      const source = new KeyboardInputSource();
+      await source.start();
+      fakeWindow.dispatchEvent(keyEvent("keydown", "Digit2"));
+      const held = source.sample();
+      fakeWindow.dispatchEvent(keyEvent("keydown", "Digit2", true));
+      expect(source.sample()).toBe(held);
+    });
+
+    it("blur clears a held item and special", async () => {
+      const source = new KeyboardInputSource();
+      await source.start();
+      fakeWindow.dispatchEvent(keyEvent("keydown", "Digit4"));
+      fakeWindow.dispatchEvent(keyEvent("keydown", "KeyQ"));
+      fakeWindow.dispatchEvent(new Event("blur"));
+      expect(source.sample().item).toBeNull();
+      expect(source.sample().special).toBe(false);
+    });
+  });
 });

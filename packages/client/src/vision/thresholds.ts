@@ -60,6 +60,20 @@ export const JAB_WINDOW_MS = 250; // window for the side rise
 export const JAB_EXT = 0.9; // side above which the arm counts as straight out
 export const JAB_EXIT = JAB_EXT - 0.15; // side below which a jab-entered punch ends
 
+// ---- 9.04 object detection (held items) ----
+export const OBJECT_MODEL_URL = "/models/efficientdet_lite0.tflite"; // EfficientDet-Lite0 COCO detector, downloaded by vision:setup
+export const OBJECT_EVERY_N = 3; // the detector runs on every Nth pose frame; other frames report objects: null
+export const OBJECT_SCORE = 0.4; // detector score threshold; boxes below it are never reported
+export const HOLD_RADIUS = 0.35; // a box whose centre is within this of a wrist counts as held, in S
+export const HOLD_ON = 3; // consecutive equal candidates before an item turns on
+export const HOLD_OFF_MS = 600; // an item stays held until this long passes without a positive
+
+// ---- 9.04 laser (both arms thrust forward together) ----
+export const LASER_EXT = 0.55; // both extensions must be below this (arms pointing at the camera)
+export const LASER_GAP = 0.5; // wrists must be within this of each other, in S
+export const LASER_DEBOUNCE_ON = 2; // frames before special turns on
+export const LASER_DEBOUNCE_OFF = 3; // frames before special turns off
+
 // ---- 5.04 recorder (integrator amendment) ----
 export const RECORDER_SECONDS = 15; // seconds of { ts, metrics, gestures, frame, punch } samples kept for dump()
 

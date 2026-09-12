@@ -21,16 +21,30 @@ export interface PoseResult {
 
 export type WorkerInbound = { type: "init" } | { type: "frame"; bitmap: ImageBitmap; ts: number };
 
+/** One detected object (9.04): COCO label, score, and its box in image-normalised, un-mirrored units like the landmarks. */
+export interface ObjectBox {
+  label: string;
+  score: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 export type ResultMessage = {
   type: "result";
   ts: number;
   pose: PoseResult | null;
   poseMs: number;
   delegate: Delegate;
+  /** Boxes from the object detector, or null when it did not run on this frame (or is unavailable). */
+  objects: ObjectBox[] | null;
+  /** Detector inference time for this frame, ms; 0 when it did not run. */
+  objectMs: number;
 };
 
 export type WorkerOutbound =
-  | { type: "ready"; delegate: Delegate }
+  | { type: "ready"; delegate: Delegate; objects: boolean }
   | ResultMessage
   | { type: "error"; code: "model-load" };
 
@@ -47,9 +61,13 @@ export interface WorkerStats {
   fps: number;
   /** Inference time of the latest result, ms. */
   poseMs: number;
+  /** Detector inference time of the latest result that ran it, ms. */
+  objectMs: number;
   /** Frames rejected by sendFrame because one was already in flight. */
   dropped: number;
   delegate: Delegate | null;
+  /** Whether the worker loaded the object detector (false = pose-only play). */
+  objects: boolean;
 }
 
 export interface WorkerClientOptions {
@@ -65,7 +83,7 @@ const defaultNow = () => performance.now();
 
 /** Main-thread side of the pose worker. Never more than one frame in flight. */
 export class WorkerClient {
-  readonly stats: WorkerStats = { fps: 0, poseMs: 0, dropped: 0, delegate: null };
+  readonly stats: WorkerStats = { fps: 0, poseMs: 0, objectMs: 0, dropped: 0, delegate: null, objects: false };
 
   private readonly createWorker: () => WorkerLike;
   private readonly createBitmap: (video: HTMLVideoElement) => Promise<ImageBitmap>;
@@ -85,7 +103,7 @@ export class WorkerClient {
   }
 
   /** Spawns the worker and resolves once the model is loaded. */
-  start(): Promise<{ delegate: Delegate }> {
+  start(): Promise<{ delegate: Delegate; objects: boolean }> {
     return new Promise((resolve, reject) => {
       let worker: WorkerLike;
       try {
@@ -153,13 +171,14 @@ export class WorkerClient {
     reject?.(err);
   }
 
-  private handleMessage(msg: WorkerOutbound, resolve: (v: { delegate: Delegate }) => void): void {
+  private handleMessage(msg: WorkerOutbound, resolve: (v: { delegate: Delegate; objects: boolean }) => void): void {
     switch (msg.type) {
       case "ready":
         this.ready = true;
         this.rejectStart = null;
         this.stats.delegate = msg.delegate;
-        resolve({ delegate: msg.delegate });
+        this.stats.objects = msg.objects;
+        resolve({ delegate: msg.delegate, objects: msg.objects });
         return;
       case "error":
         this.failStart(new VisionInputError(msg.code));
@@ -167,6 +186,7 @@ export class WorkerClient {
       case "result": {
         this.inFlight = false;
         this.stats.poseMs = msg.poseMs;
+        if (msg.objects !== null) this.stats.objectMs = msg.objectMs;
         this.stats.delegate = msg.delegate;
         const t = this.now();
         this.resultTimes.push(t);
