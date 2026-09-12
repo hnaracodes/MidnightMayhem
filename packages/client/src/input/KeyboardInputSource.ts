@@ -4,6 +4,7 @@ import {
   type InputFrame,
   type InputKey,
   type InputSource,
+  type ItemId,
 } from "@midnight/shared";
 
 const KEY_MAP: Readonly<Record<string, InputKey>> = {
@@ -13,6 +14,16 @@ const KEY_MAP: Readonly<Record<string, InputKey>> = {
   KeyS: "block",
   KeyF: "punchL",
   KeyG: "punchR",
+  KeyQ: "special",
+};
+
+/** Digit1..Digit5 hold an item (9.04); the camera is additive on top of these. */
+const ITEM_KEYS: Readonly<Record<string, ItemId>> = {
+  Digit1: "molotov",
+  Digit2: "sword",
+  Digit3: "shield",
+  Digit4: "banana",
+  Digit5: "flash",
 };
 
 export class KeyboardInputSource implements InputSource {
@@ -23,11 +34,16 @@ export class KeyboardInputSource implements InputSource {
     if (event.repeat) return;
     const input = KEY_MAP[event.code];
     if (input) this.set(input, true);
+    const item = ITEM_KEYS[event.code];
+    if (item) this.setItem(item);
   };
 
   private readonly onKeyUp = (event: KeyboardEvent): void => {
     const input = KEY_MAP[event.code];
     if (input) this.set(input, false);
+    // Key up clears only if that digit is the current item, so a later digit survives an earlier release.
+    const item = ITEM_KEYS[event.code];
+    if (item && this.frame.item === item) this.setItem(null);
   };
 
   private readonly onBlur = (): void => {
@@ -58,6 +74,11 @@ export class KeyboardInputSource implements InputSource {
   private set(input: InputKey, value: boolean): void {
     if (this.frame[input] === value) return;
     this.frame = Object.freeze({ ...this.frame, [input]: value });
+  }
+
+  private setItem(item: ItemId | null): void {
+    if (this.frame.item === item) return;
+    this.frame = Object.freeze({ ...this.frame, item });
   }
 
   private clear(): void {
