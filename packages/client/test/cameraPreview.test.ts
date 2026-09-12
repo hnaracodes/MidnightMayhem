@@ -20,6 +20,7 @@ function diag(overrides: Partial<PunchDiag> = {}): PunchDiag {
   return {
     ext: 0.9, depth: 0, drop: 0, atHeight: true,
     extOk: false, depthOk: false, thrustOk: false, jabOk: false, active: false, out: false,
+    side: 0, jabRise: 0, path: null,
     ...overrides,
   };
 }

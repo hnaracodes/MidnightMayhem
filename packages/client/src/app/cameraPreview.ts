@@ -10,25 +10,12 @@
 import type { InputKey } from "@midnight/shared";
 import type { CalibrationPhase } from "../vision/calibration";
 import { COLOR_LABEL, COLOR_MARKER, COLOR_POSE } from "../vision/thresholds";
+import type { PunchDiag } from "../vision/gestures/punch";
+export type { PunchDiag };
 import type { DebugFrame, VisionInputSource } from "../vision/VisionInputSource";
 import type { Landmark } from "../vision/workerClient";
 
-/** Per-hand punch diagnostics; the vision lane adds `punch` to DebugFrame with exactly this shape. */
-export interface PunchDiag {
-  ext: number;
-  depth: number;
-  drop: number;
-  atHeight: boolean;
-  extOk: boolean;
-  depthOk: boolean;
-  thrustOk: boolean;
-  jabOk: boolean;
-  active: boolean;
-  out: boolean;
-}
-
-/** DebugFrame with the optional fields this preview reads; both are absent until the vision lane lands. */
-export type PreviewFrame = DebugFrame & { punch?: { L: PunchDiag; R: PunchDiag }; fps?: number };
+export type PreviewFrame = DebugFrame & { fps?: number };
 
 export const DOT_KEYS: readonly InputKey[] = ["left", "right", "jump", "punchL", "punchR", "block"];
 export const DOT_LABELS: readonly string[] = ["L", "R", "J", "PL", "PR", "B"];
