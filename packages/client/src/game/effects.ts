@@ -25,6 +25,7 @@ const FRAMES = {
   BLOCK_RING: 5,
   DUST: 8,
   SQUASH: 4,
+  /** Length of the KO collapse in ko-frames (koPose spans 0 → 30); the slowdown holds while it plays. */
   KO_SLOW: 30,
   TRAIL: 2,
   SHAKE: 6,
@@ -86,7 +87,6 @@ export class Effects {
   private readonly koCount: [number, number] = [0, 0];
   private koPending = false;
   private koPendingFrames = 0;
-  private slowFrames = 0;
   private readonly oobPulseFrames: [number, number] = [0, 0];
   private clockSec = 0;
 
@@ -125,7 +125,10 @@ export class Effects {
     return this.squashFrames[i] > 0 ? SQUASH_Y : 1;
   }
 
-  /** (integrator amendment) Frames since this fighter's KO ROUND_END; 0 when not KO'd. */
+  /**
+   * (integrator amendment) Ko-frames since this fighter's KO ROUND_END; 0 when not KO'd. Advances by `timeScale()`
+   * per render frame, so the 30-frame collapse spans ~120 render frames (2 s) while the slowdown holds.
+   */
   koFrames(i: PlayerIndex): number {
     return this.koActive[i] ? this.koCount[i] : 0;
   }
@@ -135,9 +138,15 @@ export class Effects {
     return this.landCount[i];
   }
 
-  /** (integrator amendment) 0.25 during the 30-frame KO slowdown, else 1. Scales the scene's render clock only. */
+  /**
+   * (integrator amendment) 0.25 while a KO collapse is playing (some `koFrames(i)` below 30), else 1. Scales the
+   * scene's render clock only; the collapse counter advances by the same factor so both end together.
+   */
   timeScale(): number {
-    return this.slowFrames > 0 ? KO_TIME_SCALE : 1;
+    for (const i of [0, 1] as const) {
+      if (this.koActive[i] && this.koCount[i] < FRAMES.KO_SLOW) return KO_TIME_SCALE;
+    }
+    return 1;
   }
 
   /** (integrator amendment) Punch trail: a 2-frame moon 30 % arc from the shoulder to the fist. Call on active ticks. */
@@ -157,14 +166,14 @@ export class Effects {
     this.clockSec += dtSec;
 
     if (this.freezeFrames > 0 && --this.freezeFrames === 0) this.frozenSnap = null;
+    const koStep = this.timeScale(); // read before advancing so the last slow frame lands exactly on KO_SLOW
     for (const i of [0, 1] as const) {
       if (this.flashFrames[i] > 0) this.flashFrames[i] -= 1;
       if (this.squashFrames[i] > 0) this.squashFrames[i] -= 1;
       if (this.landCount[i] < NO_LANDING) this.landCount[i] += 1;
-      if (this.koActive[i]) this.koCount[i] += 1;
+      if (this.koActive[i]) this.koCount[i] += koStep;
       if (this.oobPulseFrames[i] > 0) this.oobPulseFrames[i] -= 1;
     }
-    if (this.slowFrames > 0) this.slowFrames -= 1;
     if (this.koPending && ++this.koPendingFrames > FRAMES.KO_PENDING_MAX) this.koPending = false;
 
     for (let k = this.timed.length - 1; k >= 0; k -= 1) {
@@ -290,14 +299,11 @@ export class Effects {
     if (!this.koPending) return;
     if (state.phase !== "ROUND_END" && state.phase !== "MATCH_END") return; // displayed state still catching up
     this.koPending = false;
-    let started = false;
     for (const i of [0, 1] as const) {
       if (state.fighters[i].hp > 0 || this.koActive[i]) continue;
       this.koActive[i] = true;
-      this.koCount[i] = 0;
-      started = true;
+      this.koCount[i] = 0; // timeScale() drops to 0.25 until this reaches KO_SLOW
     }
-    if (started) this.slowFrames = FRAMES.KO_SLOW;
   }
 
   private readEdges(state: MatchState): void {
