@@ -44,13 +44,20 @@ export class WsClient {
         this.setStatus("open");
         resolve();
       };
-      socket.onerror = () => {
-        if (!opened) {
-          this.setStatus("closed");
-          reject(new Error("WebSocket connection failed"));
-        }
+      // A failed first connect must not be permanent (the server is often started after the tab): forget the
+      // dead socket so the next connect() opens a fresh one.
+      const failed = () => {
+        if (opened) return;
+        opened = true; // only reject once (error and close both fire)
+        if (this.socket === socket) { this.socket = null; this.connectPromise = null; }
+        this.setStatus("closed");
+        reject(new Error("WebSocket connection failed"));
       };
-      socket.onclose = () => this.setStatus("closed");
+      socket.onerror = failed;
+      socket.onclose = () => {
+        if (!opened) { failed(); return; }
+        this.setStatus("closed");
+      };
       socket.onmessage = (event) => this.dispatch(event.data);
     });
 

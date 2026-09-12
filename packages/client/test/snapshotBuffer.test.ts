@@ -30,11 +30,11 @@ describe("SnapshotBuffer", () => {
     expect(buffer.latest()).toBe(only);
   });
 
-  it("ignores a state whose tick is older than the newest", () => {
+  it("ignores a duplicate of the newest tick", () => {
     const buffer = new SnapshotBuffer();
     const newest = state(8, 400);
     buffer.push(newest, 200);
-    buffer.push(state(7, 100), 300);
+    buffer.push(state(8, 100), 300);
 
     expect(buffer.latest()).toBe(newest);
   });
@@ -71,10 +71,14 @@ describe("SnapshotBuffer rematch", () => {
     expect(buffer.sample(1200)?.tick).toBe(4);
   });
 
-  it("still ignores a genuinely older tick of the same match", () => {
+  it("push() starts over when a lower tick follows a mid-match abort (10.03 rule 8: a player left while FIGHTING)", () => {
+    // The socket is ordered, so a lower tick is always a restart; nothing else can produce one.
     const buffer = new SnapshotBuffer();
-    buffer.push(phased(200, "FIGHTING"), 1000);
-    buffer.push(phased(198, "FIGHTING"), 1033);
-    expect(buffer.latest()?.tick).toBe(200);
+    buffer.push(phased(3000, "FIGHTING"), 1000);
+    buffer.push(phased(3002, "FIGHTING"), 1033);
+    buffer.push(phased(2, "COUNTDOWN"), 1066);
+    buffer.push(phased(4, "COUNTDOWN"), 1100);
+    expect(buffer.latest()?.tick).toBe(4);
+    expect(buffer.sample(1200)?.tick).toBe(4);
   });
 });

@@ -42,6 +42,23 @@ describe("WsClient", () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it("retries with a fresh socket after a failed connect (server started after the tab)", async () => {
+    const client = new WsClient();
+    const first = client.connect("wss://example.test/ws");
+    FakeWebSocket.instances[0]!.onerror?.();
+    FakeWebSocket.instances[0]!.onclose?.();
+    await expect(first).rejects.toThrow();
+    expect(client.status).toBe("closed");
+
+    const second = client.connect("wss://example.test/ws");
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    FakeWebSocket.instances[1]!.open();
+    await second;
+    expect(client.status).toBe("open");
+    client.send({ type: "READY", ready: true });
+    expect(FakeWebSocket.instances[1]!.sent).toHaveLength(1);
+  });
+
   it("dispatches messages by type to every subscribed handler", async () => {
     const client = new WsClient();
     const first = vi.fn();

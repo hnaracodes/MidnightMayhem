@@ -111,16 +111,20 @@ async function enableCamera(): Promise<void> {
 // ---- Screens ----
 // Landing → Lobby (11.03): the landing owns the join form; the lobby renders from every LOBBY message.
 const result = new ResultOverlay(() => client.send({ type: "READY", ready: true }));
+let joining = false; // one HELLO per click: a double click / Enter+click must not send two
 const landing = new Landing({
   onEnter: async (name, roomId) => {
+    if (joining) return;
+    joining = true;
     showBanner(null);
     try {
       await client.connect();
       connected = true;
       client.send(roomId
-        ? { type: "HELLO", name, roomId }
-        : { type: "HELLO", name });
+        ? { type: "HELLO", name, roomId, protocolVersion: PROTOCOL_VERSION }
+        : { type: "HELLO", name, protocolVersion: PROTOCOL_VERSION });
     } catch {
+      joining = false;
       showBanner("Cannot reach the server");
     }
   },
@@ -206,8 +210,9 @@ function dumpVision(): void {
 }
 
 // ---- Network ----
+let fatal = false; // the server refused us for good (protocol mismatch): keep that banner over "connection lost"
 client.onStatus = (status) => {
-  if (status === "closed" && connected) {
+  if (status === "closed" && connected && !fatal) {
     pausedBanner = false;
     showBanner("Connection lost. Reload to rejoin.");
   }
@@ -234,10 +239,18 @@ client.on("LOBBY", (message) => {
   }
 });
 
-client.on("ERROR", (message) => showBanner(message.message));
+client.on("ERROR", (message) => {
+  if (message.code === "ALREADY_JOINED") return; // a duplicate HELLO; the first one seated us
+  if (message.code === "VERSION_MISMATCH") { fatal = true; showBanner("Client and server versions do not match. Reload the page."); return; }
+  // A rejected CONFIG sends no LOBBY, so the host's route board would keep the optimistic value: re-render from the last LOBBY.
+  if (message.code === "BAD_CONFIG") renderRoom();
+  showBanner(message.message);
+});
 client.on("OPPONENT_LEFT", () => {
   matchRunning = false;
   setMatchBanner(false);
+  // The next match restarts at tick 0 (10.03 rule 8); a buffer still holding the aborted match would drop it as "older".
+  session.buffer.reset();
   showBanner("Opponent left the room");
 });
 
