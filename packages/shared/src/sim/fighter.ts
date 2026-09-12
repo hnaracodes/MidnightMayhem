@@ -1,8 +1,9 @@
-import { BALANCE, WORLD, type MapId } from "../constants";
+import { BALANCE, PIT, WORLD, type MapId } from "../constants";
 import { risingEdges, type InputFrame } from "../input";
 import { playerIndices } from "./create";
 import { usePunchWithItem } from "./items";
 import { startLaser } from "./laser";
+import { groundYAt, platformAt, surfaceBelow } from "./maps";
 import type { Arm, FighterState, MatchState, PlayerIndex, SimEvent } from "./types";
 
 /**
@@ -57,20 +58,43 @@ function startPunch(s: MatchState, i: PlayerIndex, arm: Arm, events: SimEvent[])
   events.push({ type: "PUNCH", player: i, arm });
 }
 
-/** Flat-roof physics plus a LAND event on the touchdown tick. The map-aware body (gaps, platforms) is 10.01. */
-export function applyPhysics(f: FighterState, i: PlayerIndex, _map: MapId, events: SimEvent[]): void {
+/**
+ * Map-aware physics: walk off a gap or a platform edge and fall; land on the first surface the feet cross while
+ * moving down (platforms are one-way, so they are passed through from below). Reads only the fighter, the map id
+ * and constants. A fighter down a pit is frozen until `applyPits` respawns him; `y` is never clamped to the roof,
+ * reaching `PIT.Y` is the pit's business.
+ */
+export function applyPhysics(f: FighterState, i: PlayerIndex, map: MapId, events: SimEvent[]): void {
+  if (f.pitTicks > 0) return;
   f.x += f.vx;
+  if (f.x < 0) f.x = 0;
+  if (f.x > WORLD.WIDTH) f.x = WORLD.WIDTH;
+
+  if (f.grounded) {
+    const gy = groundYAt(map, f.x, f.y);
+    if (gy > f.y + 0.5) {
+      f.grounded = false; f.vy = 0; f.jumpTicks = 0; f.onPlatform = null;
+    }
+  }
   if (!f.grounded) {
+    const prevY = f.y;
     f.vy += BALANCE.GRAVITY;
     f.y += f.vy;
     f.jumpTicks++;
-    if (f.y >= WORLD.ROOF_Y) {
-      f.y = WORLD.ROOF_Y; f.vy = 0; f.grounded = true; f.jumpTicks = 0;
-      events.push({ type: "LAND", player: i });
+    if (f.vy > 0) {
+      const sy = surfaceBelow(map, f.x, prevY);
+      if (f.y >= sy) {
+        if (sy >= PIT.Y) {
+          // Nothing under the feet: stop at the pit line and let applyPits take over. Not a landing.
+          f.y = PIT.Y; f.vy = 0;
+        } else {
+          f.y = sy; f.vy = 0; f.grounded = true; f.jumpTicks = 0;
+          f.onPlatform = platformAt(map, f.x, sy);
+          events.push({ type: "LAND", player: i });
+        }
+      }
     }
   }
-  if (f.x < 0) f.x = 0;
-  if (f.x > WORLD.WIDTH) f.x = WORLD.WIDTH;
 }
 
 /** A fighter not currently acting faces its nearest living opponent. Ties keep facing; dead fighters keep facing. */
