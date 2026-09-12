@@ -58,12 +58,12 @@ export interface ComposeOpts {
   facing: 1 | -1;
   /** Rim on both edges and no dark-side dither (tunnel: lamps on both walls). */
   rimBoth: boolean;
-  flash?: number;
-  flashAlpha?: number;
+  flash?: number | undefined;
+  flashAlpha?: number | undefined;
   alpha: number;
   itemVisible: boolean;
   /** Render clock for the Claude Code prompt blink; 0 when absent. */
-  blinkMs?: number;
+  blinkMs?: number | undefined;
 }
 
 /** Thickness of the rasterised limbs in sprite px. */

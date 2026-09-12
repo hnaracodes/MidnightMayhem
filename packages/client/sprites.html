@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Midnight Mayhem — Sprite Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --night-0: #070B18;
+      --night-1: #101A33;
+      --night-2: #1E2B4D;
+      --steel-1: #3A404F;
+      --steel-2: #5B6375;
+      --moon: #E8F0FF;
+      --amber-1: #F2A03D;
+      --amber-2: #C2601B;
+      --danger: #E8434F;
+      font-family: system-ui, sans-serif;
+      background: var(--night-0);
+      color: var(--moon);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body { padding: 12px 16px 24px; }
+    h1 { font-size: 16px; margin: 0 0 8px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--amber-1); }
+    #controls {
+      display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center;
+      padding: 8px 12px; margin-bottom: 10px;
+      background: var(--night-1); border: 1px solid var(--night-2); border-radius: 6px; font-size: 13px;
+    }
+    #controls label { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+    #controls input[type="range"] { width: 120px; accent-color: var(--amber-1); }
+    #controls select, #controls button {
+      font: inherit; color: var(--moon); background: var(--night-0);
+      border: 1px solid var(--steel-2); border-radius: 4px; padding: 3px 8px;
+    }
+    #controls button { background: var(--amber-1); color: var(--night-0); font-weight: 700; cursor: pointer; }
+    #controls output { min-width: 2ch; color: var(--amber-1); font-variant-numeric: tabular-nums; }
+    #controls a { color: var(--amber-1); }
+    #perf { margin-left: auto; color: var(--steel-2); font-variant-numeric: tabular-nums; }
+    #game { width: 100%; margin: 0 auto; overflow-x: auto; }
+    #game canvas { display: block; margin: 0 auto; image-rendering: pixelated; }
+    #checklist {
+      margin: 12px auto 0; padding: 10px 14px; font-size: 13px;
+      background: var(--night-1); border: 1px solid var(--night-2); border-radius: 6px;
+    }
+    #checklist h2 { font-size: 13px; margin: 0 0 6px; color: var(--steel-2); text-transform: uppercase; letter-spacing: 0.06em; }
+    #checklist ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 4px 20px; }
+    #checklist label { display: flex; gap: 8px; align-items: baseline; }
+    #checklist input { accent-color: var(--amber-1); }
+    #checklist p { margin: 8px 0 0; color: var(--steel-2); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Sprite preview · owner gate 11.01</h1>
+  <div id="controls">
+    <label><input id="facing" type="checkbox" /> Flip facing</label>
+    <label><input id="rimBoth" type="checkbox" /> Tunnel rim (both edges)</label>
+    <label>Item on every cell
+      <select id="item">
+        <option value="">none</option>
+        <option value="molotov">molotov</option>
+        <option value="sword">sword</option>
+        <option value="shield">shield</option>
+        <option value="banana">banana</option>
+        <option value="flash">flash</option>
+      </select>
+    </label>
+    <label>Cycle speed <input id="speed" type="range" min="0" max="200" value="100" /> <output id="speedOut">100</output>%</label>
+    <button id="flash" type="button">Flash</button>
+    <a id="rigLink" href="?rig=vector">Compare with the vector rig</a>
+    <span id="perf">update: — ms / fighter</span>
+  </div>
+  <div id="game"></div>
+  <section id="checklist">
+    <h2>Look checklist (11.01) — nothing here is stored</h2>
+    <ul>
+      <li><label><input type="checkbox" /> Every cell populated; four visibly different characters</label></li>
+      <li><label><input type="checkbox" /> Drifter: shaggy hair, beard, ragged coat, rope belt, wrist wraps</label></li>
+      <li><label><input type="checkbox" /> Conductor: peaked cap and badge, two button columns, watch chain, white gloves</label></li>
+      <li><label><input type="checkbox" /> Stoker: bald, goggles up, brows, stubble, coal smudge, red neckerchief, bare arms</label></li>
+      <li><label><input type="checkbox" /> Claude Code: sunburst head, terminal torso with a blinking prompt, white gloves, sneakers</label></li>
+      <li><label><input type="checkbox" /> Items visible in the hand; backpack rides on the back</label></li>
+      <li><label><input type="checkbox" /> Warm rim on the screen-right edge; feet planted on the ledge</label></li>
+      <li><label><input type="checkbox" /> Facing left is a clean mirror</label></li>
+    </ul>
+    <p>Reply "sprites approved" or list corrections.</p>
+  </section>
+  <script type="module" src="/src/spritePreview.ts"></script>
+</body>
+</html>
