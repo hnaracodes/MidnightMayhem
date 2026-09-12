@@ -97,7 +97,8 @@ function resetGestures(p: Pipeline): void {
   p.punchL.reset();
   p.punchR.reset();
   p.laser.reset();
-  p.hold.reset();
+  // The hold tracker deliberately survives a dropped pose frame: HOLD_OFF_MS times it out instead, so a held
+  // item does not need a fresh HOLD_ON run after every one-frame tracking loss (review finding).
   clearMetricBuffers(p.buffers);
   const g = p.gestures;
   g.left = g.right = g.jump = g.punchL = g.punchR = g.block = g.special = false;
@@ -210,6 +211,7 @@ export class VisionInputSource implements InputSource {
     }
     this.worker.stop();
     resetGestures(this.pipeline);
+    this.pipeline.hold.reset();
     this.pipeline.smoothed = null;
     this.pipeline.smoothedWorld = null;
     this.pipeline.frame = EMPTY_FRAME;
