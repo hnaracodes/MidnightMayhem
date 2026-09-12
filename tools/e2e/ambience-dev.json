@@ -35,6 +35,24 @@
       "shot": ".shots/ambience-hud-4p.png"
     },
     {
+      "goto": "http://localhost:5181/dev/hud.html?players=4&teams=2v2&low=3"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/ambience-hud-4p-low.png"
+    },
+    {
+      "goto": "http://localhost:5181/dev/hud.html?players=2&low=0&phase=COUNTDOWN"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": ".shots/ambience-hud-2p-banner.png"
+    },
+    {
       "goto": "http://localhost:5181/dev/stage.html?car=STANDARD&map=roof"
     },
     {

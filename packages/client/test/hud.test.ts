@@ -381,7 +381,7 @@ describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
     expect(name.x).toBeGreaterThan(rest.x);
     expect(name.x).toBeLessThan(rest.x + rest.w);
     expect(name.style.color).toBe("#F2A03D");
-    expect(shown(texts, "EQUIPPED")[0]!.style.color).toBe("#E8F0FF");
+    expect(shown(texts, "EQUIPPED")[0]!.style.color).toBe("#E9E2CF"); // 12.05: bone ink
     for (let k = 0; k < TOAST.HOLD + TOAST.OUT - 1; k += 1) hud.update(s, DT); // frames 11..109: the last visible one
     expect(shown(texts, "EQUIPPED")).toHaveLength(1);
     hud.update(s, DT);
@@ -435,5 +435,49 @@ describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
     const rest = toastLayout(2, 1);
     expect(name.x).toBeGreaterThan(rest.x);
     expect(name.x).toBeLessThanOrEqual(rest.x + rest.w);
+  });
+});
+
+// ---- 12.05 ----
+
+import { BALANCE } from "@midnight/shared";
+import { HUD_FONT, LOW_HP_FRACTION, bannerFade, barGlowAlpha, lowHpPulse } from "../src/game/hud";
+
+describe("12.05 HUD restyle helpers", () => {
+  it("rule 1: the bar glow grows as health drops", () => {
+    expect(barGlowAlpha(BALANCE.MAX_HP)).toBeCloseTo(0.1, 6);
+    expect(barGlowAlpha(BALANCE.MAX_HP / 2)).toBeCloseTo(0.3, 6);
+    expect(barGlowAlpha(1)).toBeGreaterThan(0.48);
+    expect(barGlowAlpha(0)).toBeCloseTo(0.5, 6);
+    expect(LOW_HP_FRACTION).toBe(0.25);
+  });
+
+  it("rule 5: the heartbeat stays in 0..1, repeats every 1.2 s and has two beats per cycle", () => {
+    let peaks = 0;
+    let prev = lowHpPulse(-0.01), prev2 = lowHpPulse(-0.02);
+    for (let t = 0; t < 1.2; t += 0.005) {
+      const v = lowHpPulse(t);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+      if (prev > prev2 && prev >= v && prev > 0.3) peaks += 1;
+      prev2 = prev; prev = v;
+    }
+    expect(peaks).toBe(2);
+    expect(lowHpPulse(0.3)).toBeCloseTo(lowHpPulse(1.5), 6);
+  });
+
+  it("rule 6: the banner blooms from dark to full over 0.28 s with no scale", () => {
+    expect(bannerFade(0)).toEqual({ alpha: 0, tint: P.void0 });
+    const mid = bannerFade(0.1);
+    expect(mid.alpha).toBeGreaterThan(0);
+    expect(mid.alpha).toBeLessThan(1);
+    expect(mid.tint).toBeGreaterThan(P.void0);
+    expect(bannerFade(0.28)).toEqual({ alpha: 1, tint: 0xffffff });
+    expect(bannerFade(5)).toEqual({ alpha: 1, tint: 0xffffff });
+  });
+
+  it("rule 2: the HUD uses the landing's condensed stack, no network fonts", () => {
+    expect(HUD_FONT).toContain("Avenir Next Condensed");
+    expect(HUD_FONT).not.toMatch(/https?:/);
   });
 });
