@@ -1,106 +1,171 @@
 /**
- * The Conductor: peaked cap with a brass badge, navy uniform buttoned in two brass columns, moon collar,
- * watch chain across the lower coat, coat tails off the back, white gloves, polished shoes.
- * Navy, brass, white only. No outer outline in the grids (compose.ts adds it).
+ * The Conductor (13.03): peaked cap with a lighter crown, dark band and forward brim, a brass-and-moon badge,
+ * a moon collar, epaulettes, two columns of three brass buttons, a watch chain sagging across the lower coat,
+ * white gloves, polished shoes with a moon highlight. Navy, brass, white only. Authored facing right at the 1 px
+ * art grid for the 105 px body; no outer outline in the grids (compose.ts adds it).
+ * Drafted with a throwaway raster script and hand-tuned; the grids are the source of truth.
  */
 import { P } from "../../palette";
-import { darken, type Part } from "../grid";
+import { materialPalette, type Part } from "../grid";
+import { rampFrom } from "../shade";
 import type { CharacterParts } from "../compose";
 
-const NAVY_DARK = darken(P.conductorKey, 0.62);
+const SKIN = 0xE9C9AE;
 const TROUSER = 0x16224A;
 const SHOE = 0x0C1226;
 
+const NAVY_RAMP = rampFrom(P.conductorKey);
+
+/** Glyph quads run highlight, base, shade, core. */
 const PAL: Record<string, number | null> = {
-  k: P.conductorKey,
-  K: NAVY_DARK,
-  s: 0xE9C9AE,
-  S: darken(0xE9C9AE, 0.8),
-  "1": P.conductorGlove,
-  "2": TROUSER,
-  "3": SHOE,
+  ...materialPalette("1234", NAVY_RAMP),
+  ...materialPalette("5678", rampFrom(SKIN)),
+  ...materialPalette("9!@#", rampFrom(P.conductorGlove)),
+  ...materialPalette("$%^&", rampFrom(SHOE)),
 };
 
 const part = (grid: string[], anchor: { x: number; y: number }): Part => ({ grid, anchor, palette: PAL });
 
 const head = part([
-  "...kkkkkkkkkk..",
-  "..kkkkkkkkkkkk.",
-  "..kkkkkkkkkkkk.",
-  "..KKKKKKKKaKKKK",
-  "....KKKKKKKKKKK",
-  "....sssssssss..",
-  "...sssssssssss.",
-  "...sssohsssohs.",
-  "...ssssssssssS.",
-  "...sssssssssss.",
-  "....ssssoosss..",
-  "....ssssssss...",
-  ".....ssssss....",
-  "......ssss.....",
-], { x: 7, y: 3 });
-
+  "............211111111...........",
+  ".........111111111111111........",
+  ".......2222111111111111111......",
+  ".....32222221111111111111222....",
+  ".....22222222221212121212222....",
+  "....3322222222222222222wh2222...",
+  "....3333322222222222222hA2223...",
+  "....3333332222222222222222233...",
+  "....333333333333333333333333333o",
+  "....444444444444444444444444444o",
+  ".........7666665555555oooooooooo",
+  ".........766666655777777777.....",
+  "........7766666665656565666.....",
+  "........77666666665ho656ho6.....",
+  "........77766666666oo666oo6.....",
+  "........7777666666666666667.....",
+  "........77777677776666666667....",
+  "........87777777776666666678....",
+  "........8777777777666666677.....",
+  ".........87777777767666777......",
+  ".........88777777777oooo77......",
+  "..........887777777777777.......",
+  "..........888887777777778.......",
+  "...........8888877777778........",
+  "............87766666668.........",
+  ".............776666666..........",
+  ".............776666666..........",
+  ".............776666666..........",
+  ".............776666666..........",
+], { x: 15, y: 6 });
 const headKo = part([
-  ".kkkkkkkkkk....",
-  "kkkkkkkkkkkk...",
-  "kkkkkkkkkkkk...",
-  "KKKKKKKKaKKKK..",
-  "..KKKKKKKKKKK..",
-  "....sssssssss..",
-  "...sssssssssss.",
-  "...ssosossosos.",
-  "...sssosssossS.",
-  "...ssosossosos.",
-  "....sssoooss...",
-  "....ssssssss...",
-  ".....ssssss....",
-  "......ssss.....",
-], { x: 7, y: 3 });
-
+  "................................",
+  "................................",
+  ".........111111111..............",
+  "......111111111111111...........",
+  "....2222211111111111112.........",
+  "..22222212111111111111122.......",
+  "..32222222222121212122222.......",
+  ".3322222222222222222wh2222......",
+  ".3333222222222222222hA2222......",
+  ".3333323222222222222222223......",
+  ".333333333333333333333333333333o",
+  ".444444444444444444444444444444o",
+  "........7766666665oooooooooooooo",
+  "........77666666665o5656o66.....",
+  "........7776666666o6o66o6o6.....",
+  "........7777666666666666667.....",
+  "........77777677776666666667....",
+  "........87777777776666666678....",
+  "........8777777777666666677.....",
+  ".........8777777776o6667o7......",
+  ".........88777777777oooo77......",
+  "..........887777777777777.......",
+  "..........888887777777778.......",
+  "...........8888877777778........",
+  "............87766666668.........",
+  ".............776666666..........",
+  ".............776666666..........",
+  ".............776666666..........",
+  ".............776666666..........",
+], { x: 15, y: 6 });
 const torso = part([
-  ".kkkkhhkkkkk.",
-  "KKkkkkhkkkkkk",
-  "KKkkkkkkkkkkk",
-  "KKkkkakkkakkk",
-  "KKkkkkkkkkkkk",
-  "KKkkkkkkkkkkk",
-  "KKkkkakkkakkk",
-  "KKkkkkkkkkkkk",
-  "KKkkkkkkkkkkk",
-  "KKkkkakkkakkk",
-  "KKkkkkkkkkkkk",
-  ".Kkkkkkkkkkk.",
-  ".Kkkkkkkkkkk.",
-  ".Kkkakkkakkk.",
-  ".Kkkkaaakkkk.",
-  ".Kkkkkkkkkkk.",
-  "KKkkkkkkkkkkk",
-  "KK.kkkkkkkkk.",
-  "K..kkkkkkkk..",
-], { x: 6, y: 18 });
-
+  "....221114hhhhhhh411111....",
+  "..aaaaaaa4hhhhhhh4aaaaaaa..",
+  "..AAAAAAA14hhhhh41AAAAAAA..",
+  "...32212124hhhhh42121212...",
+  "..3322222224hhh4222222222..",
+  "..3322222224hhh4222222222..",
+  "..33222222222322222222222..",
+  "..33222222222322222222222..",
+  "..33222222222322222222223..",
+  "..3322222ha223222ha222232..",
+  "..3332222AA223222AA222233..",
+  "..33232222222322222222233..",
+  "..33332222222322222222233..",
+  "..33332222222322222222233..",
+  "..33332222222322222222233..",
+  "..33332222222322222222233..",
+  "..3333222ha223222ha222233..",
+  "..3333222AA223222AA222233..",
+  "..43333232323332323232333..",
+  "..33332323232323232323233..",
+  "..44333333333333333333333..",
+  "..44333333333333333333333..",
+  "..44333333333333333333333..",
+  "..4433333ha333333ha333333..",
+  "..4433333AA333333AA333334..",
+  "..44333333333333333333343..",
+  "..44333A33333333333A33344..",
+  "..44333a33333333333a33344..",
+  "..444333Aa3333333aA333344..",
+  "..44343333A33333A33333344..",
+  "..444433333aAaAa333333344..",
+  "..44443333333333333333344..",
+  "..44443333333333333333344..",
+  "..44443333333333333333344..",
+  "..44444343434343434343444..",
+  "..44443434343434343434344..",
+  "..44444444444444444444444..",
+  "..44444444444444444444444..",
+  "...........................",
+  "...........................",
+], { x: 13, y: 38 });
 const handOpen = part([
-  ".111.",
-  "11111",
-  "11111",
-  "11111",
-  ".111.",
-], { x: 2, y: 2 });
-
+  "...........",
+  "...99999...",
+  ".!!999999!.",
+  ".!!!99999!.",
+  "@!!!!!!!!@!",
+  "@@!!!!!!!@!",
+  "#@@!!!!!!!@",
+  ".@@@@@!@@@.",
+  ".##@@@@@@@.",
+  "...###@#...",
+  "...........",
+], { x: 4, y: 4 });
 const handFist = part([
-  ".1111",
-  "11111",
-  "1ooo1",
-  "11111",
-  ".111.",
-], { x: 2, y: 2 });
-
+  "...........",
+  "...99999...",
+  ".!!999999!.",
+  ".!!!99999!.",
+  "@!!!@!@!!!!",
+  "@@!ooooo!!!",
+  "#@@!!!!!!#@",
+  ".@@@@@!@@#.",
+  ".##@@@@@@@.",
+  "...###@#...",
+  "...........",
+], { x: 4, y: 4 });
 const foot = part([
-  ".oooo..",
-  "333333.",
-  "3h33333",
-  "3333333",
-], { x: 2, y: 4 });
+  "..oooooo.......",
+  "^^^^^^^^^^%%...",
+  "^^^^^^^^^^^%...",
+  "^^^^^^^^^^^hh^.",
+  "&^&^&^&^&^^^^h.",
+  "&&&&&&&&&&^^^^^",
+  "&&&&&&&&&&&&&&&",
+  "&&&&&&&&&&&&&&&",
+], { x: 4, y: 8 });
 
 export const CONDUCTOR_PARTS: CharacterParts = {
   head,
@@ -111,7 +176,10 @@ export const CONDUCTOR_PARTS: CharacterParts = {
   foot,
   extras: { "1": P.conductorGlove, "2": TROUSER, "3": SHOE },
   limbColor: P.conductorKey,
-  limbShade: NAVY_DARK,
+  limbShade: NAVY_RAMP[2],
   legColor: TROUSER,
   cuff: P.amber1,
+  limbRamp: NAVY_RAMP,
+  limbShadeRamp: rampFrom(NAVY_RAMP[2]),
+  legRamp: rampFrom(TROUSER),
 };

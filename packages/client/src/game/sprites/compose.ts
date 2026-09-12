@@ -37,7 +37,8 @@ export const CANVAS = { w: 176, h: 152, ox: 48, oy: 40 } as const;
 
 /**
  * 13.01 placeholders: the 11.01 grids were authored at 3 world px per art px for a 150 px body; at 1 px per art
- * px and a 105 px body every part is 3 × 0.7 = 2.1 old pixels wide. 13.03 replaces these with hand-authored art.
+ * px and a 105 px body every part is 3 × 0.7 = 2.1 old pixels wide. 13.03 authored the Drifter and the Conductor
+ * at the art grid; the Stoker, Claude Code and the items are still scaled placeholders (owner scope, 2026-09-12).
  */
 const PLACEHOLDER_K = 2.1;
 function scaleParts(p: CharacterParts): CharacterParts {
@@ -83,11 +84,13 @@ export interface CharacterParts {
 }
 
 export const CHARACTER_PARTS: Record<CharacterId, CharacterParts> = {
-  drifter: scaleParts(DRIFTER_PARTS),
-  conductor: scaleParts(CONDUCTOR_PARTS),
+  drifter: DRIFTER_PARTS,
+  conductor: CONDUCTOR_PARTS,
   stoker: scaleParts(STOKER_PARTS),
   claude: scaleParts(CLAUDE_PARTS),
 };
+/** Characters whose grids are 13.01 placeholders rather than 13.03 art (tests relax the authored-detail rules for them). */
+export const PLACEHOLDER_CHARACTERS: ReadonlySet<CharacterId> = new Set(["stoker", "claude"]);
 
 /** The held-item sprites at the art grid (13.01 placeholders from `parts/items.ts`). */
 export const ITEM_SPRITES: Record<ItemId, Part> = Object.fromEntries(
