@@ -134,7 +134,16 @@ export class ArenaScene extends Phaser.Scene {
     const state = sampled ?? (attracting ? this.stepAttract(delta) : null);
     if (!attracting) this.attract = null;
     this.drawnState = state;
-    if (!state) return;
+    if (!state) {
+      // Between the landing and the first snapshot (the lobby): a bare stage, no fighters, timers still run out.
+      this.ensureViews(0);
+      this.shadow.clear();
+      this.debug.clear();
+      this.effects.update(dt);
+      this.itemFx.update(dt);
+      this.dazzle.setAlpha(0);
+      return;
+    }
     const newest = attracting ? state : (session.buffer.latest() ?? state);
     if (newest.tick !== this.newestTick) {
       this.newestTick = newest.tick;

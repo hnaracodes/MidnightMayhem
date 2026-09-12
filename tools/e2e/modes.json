@@ -1,0 +1,342 @@
+{
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "steps": [
+    {
+      "page": 0
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Alice"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODET"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "click": "#lobby .route-row[data-field=mode] button[data-value=\"timed\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "page": 1
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Bob"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODET"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 1
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 0
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 2
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Carol"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODED"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "click": "#lobby .route-row[data-field=mode] button[data-value=\"deathmatch\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "page": 3
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Dan"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODED"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 3
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 2
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 0
+    },
+    {
+      "wait": 4200
+    },
+    {
+      "page": 0
+    },
+    {
+      "shot": ".shots/integration-modes-timed.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "[window.__arena.latest().config.mode, window.__arena.latest().roundTicks, window.__arena.latest().phase]"
+    },
+    {
+      "page": 2
+    },
+    {
+      "shot": ".shots/integration-modes-deathmatch.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "[window.__arena.latest().config.mode, window.__arena.latest().roundTicks, window.__arena.latest().phase]"
+    },
+    {
+      "page": 2
+    },
+    {
+      "wait": 3000
+    },
+    {
+      "eval": "[window.__arena.latest().roundTicks, window.__arena.latest().phase, window.__arena.latest().tick]"
+    },
+    {
+      "page": 4
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Eve"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODE3"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "click": "#lobby .route-row[data-field=players] button[data-value=\"3\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "click": "#lobby .route-row[data-field=map] button[data-value=\"platforms\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "page": 5
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Fay"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODE3"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 6
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Gus"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "MODE3"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 6
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 5
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 4
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 4
+    },
+    {
+      "wait": 3800
+    },
+    {
+      "page": 4
+    },
+    {
+      "shot": ".shots/integration-modes-3p.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 4
+    },
+    {
+      "hold": [
+        "KeyW",
+        60
+      ]
+    },
+    {
+      "wait": 700
+    },
+    {
+      "wait": 400
+    },
+    {
+      "page": 4
+    },
+    {
+      "shot": ".shots/integration-modes-3p-platform.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), Math.round(f.y), f.onPlatform])"
+    },
+    {
+      "page": 4
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    }
+  ]
+}

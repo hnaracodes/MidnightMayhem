@@ -1,0 +1,428 @@
+{
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "steps": [
+    {
+      "page": 0
+    },
+    {
+      "goto": "http://localhost:5181/?debug=1"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Alice"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT4P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "click": "#lobby .route-row[data-field=players] button[data-value=\"4\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "click": "#lobby .route-row[data-field=teams] button[data-value=\"2v2\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "click": "#lobby .route-row[data-field=map] button[data-value=\"chaos\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "click": "#lobby .route-row[data-field=mode] button[data-value=\"deathmatch\"]"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "page": 0
+    },
+    {
+      "click": "#lobby .item[data-item=flash]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 0
+    },
+    {
+      "click": "#lobby .item[data-item=molotov]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 1
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Bob"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT4P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 1
+    },
+    {
+      "click": "#lobby .item[data-item=sword]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 2
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Carol"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT4P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 2
+    },
+    {
+      "click": "#lobby .item[data-item=banana]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 3
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Dan"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT4P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 3
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 2
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 1
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 0
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/integration-4p-countdown.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 2300
+    },
+    {
+      "shot": ".shots/integration-4p-fight-start.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 0
+    },
+    {
+      "eval": "[window.__arena.fighters(), window.__arena.latest().config]"
+    },
+    {
+      "page": 0
+    },
+    {
+      "down": "Digit1"
+    },
+    {
+      "wait": 200
+    },
+    {
+      "shot": ".shots/integration-4p-equip.png",
+      "selector": "canvas"
+    },
+    {
+      "up": "Digit1"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "hold": [
+        "KeyF",
+        60
+      ]
+    },
+    {
+      "wait": 300
+    },
+    {
+      "shot": ".shots/integration-4p-throw.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 900
+    },
+    {
+      "shot": ".shots/integration-4p-fire.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 1
+    },
+    {
+      "hold": [
+        "KeyQ",
+        60
+      ]
+    },
+    {
+      "wait": 350
+    },
+    {
+      "page": 1
+    },
+    {
+      "shot": ".shots/integration-4p-charge.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 230
+    },
+    {
+      "page": 1
+    },
+    {
+      "shot": ".shots/integration-4p-beam.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 500
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "page": 3
+    },
+    {
+      "down": "KeyA"
+    },
+    {
+      "wait": 2000
+    },
+    {
+      "shot": ".shots/integration-4p-pit.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 950
+    },
+    {
+      "shot": ".shots/integration-4p-respawn.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), Math.round(f.y), f.hp, f.pitTicks, f.invuln])"
+    },
+    {
+      "page": 2
+    },
+    {
+      "hold": [
+        "Digit4",
+        200
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "hold": [
+        "KeyF",
+        60
+      ]
+    },
+    {
+      "wait": 1200
+    },
+    {
+      "page": 2
+    },
+    {
+      "shot": ".shots/integration-4p-peel.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "page": 2
+    },
+    {
+      "down": "KeyA"
+    },
+    {
+      "wait": 9000
+    },
+    {
+      "page": 0
+    },
+    {
+      "shot": ".shots/integration-4p-ko.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 0
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "page": 3
+    },
+    {
+      "up": "KeyA"
+    },
+    {
+      "page": 2
+    },
+    {
+      "up": "KeyA"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "page": 0
+    },
+    {
+      "eval": "[window.__arena.latest().phase, window.__arena.latest().winner, window.__arena.latest().fighters.map(f => f.hp)]"
+    },
+    {
+      "page": 0
+    },
+    {
+      "waitFor": "#result h1",
+      "timeout": 20000
+    },
+    {
+      "text": "#result h1"
+    },
+    {
+      "text": "#result h2"
+    },
+    {
+      "page": 0
+    },
+    {
+      "shot": ".shots/integration-4p-result.png"
+    },
+    {
+      "page": 3
+    },
+    {
+      "text": "#result h1"
+    },
+    {
+      "page": 0
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    },
+    {
+      "page": 1
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    }
+  ]
+}

@@ -1,33 +1,321 @@
 {
-  "viewport": { "width": 960, "height": 540 },
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
   "steps": [
-    { "page": 0 },
-    { "goto": "http://localhost:5199/?debug=1" },
-    { "fill": ["#lobby input >> nth=0", "Alice"] },
-    { "fill": ["#lobby input >> nth=1", "E2E1"] },
-    { "click": "text=Join" },
-    { "waitFor": "button:text-is(\"Ready\")" },
-    { "page": 1 },
-    { "goto": "http://localhost:5199/" },
-    { "fill": ["#lobby input >> nth=0", "Bob"] },
-    { "fill": ["#lobby input >> nth=1", "E2E1"] },
-    { "click": "text=Join" },
-    { "waitFor": "button:text-is(\"Ready\")" },
-    { "click": "button:text-is(\"Ready\")" },
-    { "page": 0 },
-    { "click": "button:text-is(\"Ready\")" },
-    { "wait": 1500 },
-    { "shot": ".shots/e2e/countdown.png", "selector": "canvas" },
-    { "wait": 2500 },
-    { "shot": ".shots/e2e/fight-start.png", "selector": "canvas" },
-    { "hold": ["KeyD", 1200] },
-    { "press": "KeyF" },
-    { "wait": 120 },
-    { "shot": ".shots/e2e/punch.png", "selector": "canvas" },
-    { "page": 1 },
-    { "hold": ["KeyS", 300] },
-    { "press": "KeyW" },
-    { "wait": 200 },
-    { "shot": ".shots/e2e/p2-jump.png", "selector": "canvas" }
+    {
+      "page": 0
+    },
+    {
+      "goto": "http://localhost:5181/?debug=1"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Alice"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT2P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 1
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Bob"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT2P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 0
+    },
+    {
+      "click": "#lobby .item[data-item=flash]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 1
+    },
+    {
+      "click": "#lobby .item[data-item=sword]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 1
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 0
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/integration-2p-countdown.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 2300
+    },
+    {
+      "shot": ".shots/integration-2p-fight-start.png",
+      "selector": "canvas"
+    },
+    {
+      "hold": [
+        "KeyD",
+        1200
+      ]
+    },
+    {
+      "hold": [
+        "KeyF",
+        60
+      ]
+    },
+    {
+      "wait": 120
+    },
+    {
+      "shot": ".shots/integration-2p-punch.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "page": 1
+    },
+    {
+      "hold": [
+        "Digit2",
+        200
+      ]
+    },
+    {
+      "wait": 100
+    },
+    {
+      "page": 1
+    },
+    {
+      "shot": ".shots/integration-2p-equip-sword.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 500
+    },
+    {
+      "page": 1
+    },
+    {
+      "hold": [
+        "KeyA",
+        600
+      ]
+    },
+    {
+      "wait": 200
+    },
+    {
+      "down": "KeyS"
+    },
+    {
+      "page": 0
+    },
+    {
+      "hold": [
+        "KeyF",
+        60
+      ]
+    },
+    {
+      "wait": 130
+    },
+    {
+      "shot": ".shots/integration-2p-parry.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "page": 1
+    },
+    {
+      "up": "KeyS"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 1
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "page": 0
+    },
+    {
+      "hold": [
+        "Digit3",
+        200
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "shot": ".shots/integration-2p-shield-bubble.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 1
+    },
+    {
+      "hold": [
+        "KeyG",
+        60
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "hold": [
+        "KeyG",
+        60
+      ]
+    },
+    {
+      "wait": 150
+    },
+    {
+      "page": 1
+    },
+    {
+      "shot": ".shots/integration-2p-shield-cracked.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 400
+    },
+    {
+      "hold": [
+        "KeyG",
+        60
+      ]
+    },
+    {
+      "wait": 200
+    },
+    {
+      "page": 1
+    },
+    {
+      "shot": ".shots/integration-2p-shield-break.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "page": 1
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "page": 0
+    },
+    {
+      "hold": [
+        "Digit5",
+        200
+      ]
+    },
+    {
+      "wait": 500
+    },
+    {
+      "hold": [
+        "KeyF",
+        60
+      ]
+    },
+    {
+      "wait": 250
+    },
+    {
+      "page": 1
+    },
+    {
+      "shot": ".shots/integration-2p-flash-victim.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 0
+    },
+    {
+      "shot": ".shots/integration-2p-flash-thrower.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 0
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    },
+    {
+      "page": 1
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    }
   ]
 }

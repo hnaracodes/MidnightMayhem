@@ -47,12 +47,17 @@ If the page loads but the camera button reports no camera, the URL is `http`, no
 
 ## Join flow
 
-1. Host: type a name, leave the room code blank, click **Join**. A room code appears at the top.
-2. Guest: type a name, type that room code, click **Join** (or press Enter in the code field).
+1. Host: type a name, leave the room code blank, click **Board the train**. The lobby shows the room code.
+   On the route board pick players (2–4), teams (2v2 needs four), mode (rounds, timed, deathmatch), map (roof,
+   gaps, platforms, chaos) and items on/off. Every change un-readies the room.
+2. Guests: type a name, type that room code, click **Board the train** (or press Enter in the code field).
+   Everyone picks a character and two items under **Your seat** (the tile says which real object to bring).
 3. Whoever uses the webcam clicks **Enable camera**. The button reads **Starting camera…**, then a
    full-screen prompt says `Stand still, arms at your sides` with a progress bar and a mirrored preview
    with your skeleton. Hold still about 1.5 s; the bar fills and the prompt disappears.
-4. The camera button now reads **Camera on** (disabled). Both players click **Ready**. The countdown starts.
+4. The camera button now reads **Camera on** (disabled). Everyone clicks **Ready** (it reads *Waiting for N
+   more* until every seat is taken). The countdown starts; the result screen names the winner (or the team) and
+   offers **Rematch**.
 5. During the match the overlay shrinks to a compact top-left box: hidden while tracking is good, showing
    `Tracking lost — step back into view` plus the preview when you leave frame, and a **Recalibrate**
    button while it is visible. Losing tracking idles your fighter; stepping back in recalibrates.
@@ -67,10 +72,9 @@ If the page loads but the camera button reports no camera, the URL is `http`, no
 
 ## `?debug=1`
 
-Draws each fighter's hurtbox (moon) and active punch hitbox (red) and a text line:
-`tick N  age N ms  clock -N ms  update N ms  rtt n/a  PHASE`. `age` is the ms since the newest snapshot,
-`clock` the render clock's lag behind it. The client does not send `PING` yet, so `rtt` reads `n/a`; use
-`age` as the latency proxy. `window.__mm` exposes `session`, `latest()`, `sender` and `calibration()`.
+Draws each fighter's hurtbox (moon), active punch hitbox (red), laser beam (amber), hazards, projectiles and
+platform outlines, and a text line: `tick N  age N ms  clock -N ms  update N ms  rtt N ms  PHASE  map/mode`. `age` is the ms since the newest snapshot,
+`clock` the render clock's lag behind it. `rtt` comes from the debug PING loop. `window.__mm` exposes `session`, `latest()`, `sender` and `calibration()`.
 
 ## Keyboard map
 
@@ -78,8 +82,12 @@ Draws each fighter's hurtbox (moon) and active punch hitbox (red) and a text lin
 |---|---|
 | A / D | walk left / right |
 | W | jump |
-| S | block |
-| F / G | punch left / right |
+| S | block (hold; the first 10 ticks with a sword parry) |
+| F / G | punch left / right (throws the molotov or banana, swings the sword, pops the flash) |
+| Q | laser (12 s cooldown, the ring under your bar refills) |
+| 1 – 5 | hold an item: molotov, sword, shield, banana, flash (only the two in your loadout, once per round) |
+| V | camera preview |
+| M | mute (remembered across reloads) |
 
 Keys clear on window blur. Clicking away from the window shows `Paused — click to resume`; click back.
 

@@ -1,0 +1,78 @@
+{
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "steps": [
+    {
+      "page": 0
+    },
+    {
+      "goto": "http://localhost:5181/?debug=1"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "shot": ".shots/integration-landing.png"
+    },
+    {
+      "eval": "[window.__arena.attract(), window.__arena.fighters(), window.__arena.drawn() && window.__arena.drawn().tick, window.__arena.updateMs()]"
+    },
+    {
+      "wait": 4000
+    },
+    {
+      "shot": ".shots/integration-landing-attract.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "[window.__arena.drawn().phase, window.__arena.drawn().fighters.map(f => Math.round(f.x)), window.__arena.updateMs()]"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Alice"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "LAND1"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "wait": 800
+    },
+    {
+      "shot": ".shots/integration-lobby.png"
+    },
+    {
+      "eval": "[window.__arena.attract(), window.__arena.fighters(), window.__arena.drawn()]"
+    },
+    {
+      "hold": [
+        "KeyM",
+        60
+      ]
+    },
+    {
+      "eval": "[window.__mm.session.muted, localStorage.getItem('midnight-mayhem:muted'), !!window.__mm.session.sfx]"
+    },
+    {
+      "hold": [
+        "KeyM",
+        60
+      ]
+    },
+    {
+      "eval": "[window.__mm.session.muted, localStorage.getItem('midnight-mayhem:muted')]"
+    }
+  ]
+}
