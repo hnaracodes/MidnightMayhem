@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import { MAPS, WORLD } from "@midnight/shared";
-import { createBackgrounds, scrollBackgrounds, type Layers } from "../src/game/backgrounds";
+import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "../src/game/backgrounds";
 import { Motion } from "../src/game/stage/motion";
+import { P } from "../src/game/palette";
 
 /** Chainable no-op for every Phaser setter we do not care about; the few we read are real fields. */
 class FakeObject {
@@ -44,9 +45,14 @@ class FakeGraphics extends FakeObject {
   clear(): this { this.rects = []; return this; }
 }
 
+type FakeRect = FakeObject & { fillColor: number };
+type TweenConfig = { targets: object; duration?: number; x?: number; alpha?: number; roofSpeed?: number };
+
 function stubScene() {
   const graphics: FakeGraphics[] = [];
   const objects: FakeObject[] = [];
+  const rectangles: FakeRect[] = [];
+  const tweens: TweenConfig[] = [];
   const textures = new Set<string>();
   const track = <T extends FakeObject>(o: T): T => { objects.push(o); return o; };
   const scene = {
@@ -54,13 +60,17 @@ function stubScene() {
       graphics: () => { const g = new FakeGraphics(); graphics.push(g); return track(g); },
       tileSprite: (x: number, y: number) => track(new FakeObject(x, y)),
       image: (x: number, y: number) => track(new FakeObject(x, y)),
-      rectangle: (x: number, y: number) => track(new FakeObject(x, y)),
+      rectangle: (x: number, y: number, _w: number, _h: number, fillColor: number) => {
+        const r = Object.assign(new FakeObject(x, y), { fillColor }) as FakeRect;
+        rectangles.push(r);
+        return track(r);
+      },
       circle: (x: number, y: number) => track(new FakeObject(x, y)),
       container: (x: number, y: number) => track(new FakeObject(x, y)),
     },
     make: { graphics: () => new FakeGraphics() },
     textures: { exists: (key: string) => textures.has(key) },
-    tweens: { add: () => ({}), killTweensOf: () => undefined },
+    tweens: { add: (cfg: TweenConfig) => { tweens.push(cfg); return {}; }, killTweensOf: () => undefined },
   };
   // generateTexture is a no-op on the proxy; record keys so a second call does not regenerate.
   const made = scene.make.graphics;
@@ -69,7 +79,7 @@ function stubScene() {
     (g as unknown as { generateTexture: (key: string) => void }).generateTexture = (key) => { textures.add(key); };
     return g;
   };
-  return { scene: scene as unknown as Phaser.Scene, graphics, objects };
+  return { scene: scene as unknown as Phaser.Scene, graphics, objects, rectangles, tweens };
 }
 
 const DT = 1 / 60;
@@ -195,5 +205,44 @@ describe("Motion", () => {
     expect(a.timeline()).toEqual(b.timeline());
     expect(a.timeline().some((e) => e.kind === "lightning")).toBe(true);
     expect(a.timeline().some((e) => e.kind === "spark")).toBe(true);
+  });
+});
+
+describe("applyTrainCar", () => {
+  it("still runs the 4.04 transitions; the tunnel whoosh and exit flash are additive and fire once per entry", () => {
+    const { scene, rectangles, tweens } = stubScene();
+    const layers = createBackgrounds(scene);
+    expect(layers.roofSpeed).toBe(240);
+    scrollBackgrounds(layers, DT);
+    expect(layers.roofSpeed).toBe(240);
+
+    const sweeps = () => rectangles.filter((r) => r.fillColor === P.night0 && r.x === WORLD.WIDTH);
+    const flashes = () => rectangles.filter((r) => r.fillColor === P.moon && r.alpha === 0.1);
+
+    applyTrainCar(scene, layers, "TUNNEL");
+    expect(sweeps()).toHaveLength(1);
+    const sweepTween = tweens.find((t) => t.targets === sweeps()[0]);
+    expect(sweepTween).toMatchObject({ x: 0, duration: 300 });
+    // The existing fade still happens: darkness to 0.78, tunnel wall to 1, sky tiles to 0, roof speed tween.
+    expect(tweens.find((t) => t.targets === layers.dark)).toMatchObject({ alpha: 0.78, duration: 400 });
+    expect(tweens.find((t) => t.targets === layers.tunnel)).toMatchObject({ alpha: 1, duration: 400 });
+    expect(tweens.find((t) => t.targets === layers.moon)).toMatchObject({ alpha: 0, duration: 400 });
+    expect(tweens.find((t) => t.targets === layers)).toMatchObject({ roofSpeed: 240 });
+
+    // Idempotent: re-applying the tunnel does not sweep again.
+    applyTrainCar(scene, layers, "TUNNEL");
+    expect(sweeps()).toHaveLength(1);
+    expect(flashes()).toHaveLength(0);
+
+    applyTrainCar(scene, layers, "FINAL_CAR");
+    expect(flashes()).toHaveLength(1);
+    expect(tweens.find((t) => t.targets === flashes()[0])).toMatchObject({ alpha: 0, duration: 120 });
+    expect(tweens.filter((t) => t.targets === layers).at(-1)).toMatchObject({ roofSpeed: 180 });
+    expect(tweens.filter((t) => t.targets === layers.track).at(-1)).toMatchObject({ alpha: 1 });
+
+    // Standard from the final car: no whoosh, no exit flash.
+    applyTrainCar(scene, layers, "STANDARD");
+    expect(sweeps()).toHaveLength(1);
+    expect(flashes()).toHaveLength(1);
   });
 });
