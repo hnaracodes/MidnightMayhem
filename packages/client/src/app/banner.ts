@@ -9,3 +9,13 @@ export function showBanner(text: string | null): void {
   banner.textContent = text ?? "";
   banner.hidden = text === null;
 }
+
+export const PAUSED_BANNER = "Paused — switch back to this tab to resume";
+
+/**
+ * Phase 6 rule 5: input pauses only while the document is hidden. Window blur is deliberately not a pause
+ * (two windows on one laptop blur each other on every click); only a hidden tab stops the sender.
+ */
+export function pausedByVisibility(state: DocumentVisibilityState): boolean {
+  return state === "hidden";
+}

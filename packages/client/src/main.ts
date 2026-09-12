@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION, type LobbyPlayer } from "@midnight/shared";
-import { showBanner } from "./app/banner";
+import { PAUSED_BANNER, pausedByVisibility, showBanner } from "./app/banner";
 import { CalibrationOverlay } from "./app/calibrationOverlay";
 import { type CameraButton, Lobby } from "./app/lobby";
 import { ResultOverlay } from "./app/result";
@@ -20,7 +20,6 @@ const inputSender = new InputSender(client, inputSource);
 session.localSource = inputSource;
 
 const sourceChoice = selectSource();
-const PAUSED_BANNER = "Paused — click to resume";
 const CAMERA_MESSAGES: Record<VisionErrorCode, string> = {
   "camera-denied": "Camera permission was denied. Allow the camera for this site and try again. Keyboard still works.",
   "no-camera": "No usable camera was found. Keyboard still works.",
@@ -114,7 +113,9 @@ const lobby = new Lobby({
 void inputSource.start();
 lobby.renderJoin();
 
-// ---- Pause on blur / hidden (Phase 6 rule 5) ----
+// ---- Pause only while the tab is hidden (Phase 6 rule 5) ----
+// Window blur must NOT pause: two windows on one laptop blur each other on every click, which froze the
+// camera player. The keyboard source already clears its keys on blur, which is all a keyboard player needs.
 let pausedBanner = false;
 function setPaused(paused: boolean): void {
   if (paused) {
@@ -127,9 +128,7 @@ function setPaused(paused: boolean): void {
     pausedBanner = false;
   }
 }
-window.addEventListener("blur", () => setPaused(true));
-window.addEventListener("focus", () => setPaused(false));
-document.addEventListener("visibilitychange", () => setPaused(document.visibilityState === "hidden"));
+document.addEventListener("visibilitychange", () => setPaused(pausedByVisibility(document.visibilityState)));
 
 // ---- Network ----
 client.onStatus = (status) => {

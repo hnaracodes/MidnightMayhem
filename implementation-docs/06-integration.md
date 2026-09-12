@@ -18,7 +18,7 @@ Phases 3, 4, 5 complete.
 2. The overlay shows during calibration and whenever the phase is `lost` or `calibrating` mid-match (top-left, small, non-blocking), so a lost player knows why their fighter stopped.
 3. `?input=keyboard` skips the camera button entirely; `?input=vision` auto-clicks it after join (for the demo runbook).
 4. Cosmetic hint: each render frame the scene computes rising edges of `session.localSource.sample()`; on `punchL`/`punchR` edge, if the local fighter in the newest snapshot is not punching, not in hitstun and not blocking, the scene draws the local rig in the punch `startup` pose (elapsed 0→3 over 4 frames) until a snapshot shows an `action`, or for at most 6 frames, then falls back to the snapshot. Never draws the active pose, never spawns effects.
-5. `blur`/`visibilitychange` hidden: stop sending (sender pauses), send one all-false frame, show a "paused" banner; resume on focus.
+5. `visibilitychange` → `hidden` only: stop sending (sender pauses), send one all-false frame, show a "paused" banner; resume when the document is visible again. Window `blur`/`focus` never pause: two windows on one laptop blur each other on every click, which froze the camera player in the first real test. `KeyboardInputSource` still clears its keys on blur, which is all a keyboard player needs. (integrator amendment)
 
 ## Invariants
 - Keyboard remains merged in; camera failure never blocks Ready.
@@ -29,5 +29,5 @@ Phases 3, 4, 5 complete.
 - Owner gate on two laptops over LAN HTTPS: one player on webcam, one on keyboard, full best of 3; then swap. Camera denied on one laptop still allows a keyboard match. Cover the camera mid-match → overlay shows lost, fighter idles, uncover → recalibrates and play resumes.
 
 ## Done when
-- [x] rules 1, 2, 3, 5 headless-checked with the fake camera (`tools/shot.mjs`, `fakeCamera: true`): overlay calibrating → lost, "Camera on", camera-vs-keyboard countdown into FIGHTING with keyboard still merged, `?input=keyboard` / `?input=vision`, blur → paused banner → focus clears
+- [x] rules 1, 2, 3, 5 headless-checked with the fake camera (`tools/shot.mjs`, `fakeCamera: true`): overlay calibrating → lost, "Camera on", camera-vs-keyboard countdown into FIGHTING with keyboard still merged, `?input=keyboard` / `?input=vision`, hidden → paused banner → visible clears, and blur does not pause
 - [ ] two-laptop gate passed
