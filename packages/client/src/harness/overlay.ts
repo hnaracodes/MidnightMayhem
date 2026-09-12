@@ -1,6 +1,13 @@
 import type { DebugFrame } from "../vision/VisionInputSource";
 import { COLOR_LABEL, COLOR_MARKER, COLOR_POSE } from "../vision/thresholds";
-import type { Landmark } from "../vision/workerClient";
+import type { Landmark, ObjectBox } from "../vision/workerClient";
+import { ITEMS } from "@midnight/shared";
+import { cocoToItem } from "../vision/objects";
+
+/** The detector runs every OBJECT_EVERY_N frames; boxes stay on screen this long so they do not flicker. */
+const BOX_HOLD_MS = 300;
+const COLOR_BOX = "#7CF29A";
+const COLOR_BOX_HELD = "#F2A03D";
 
 /** MediaPipe pose connections we draw: torso, arms, legs, nose to eyes. */
 const BONES: [number, number][] = [
@@ -19,6 +26,31 @@ export function createOverlay(canvas: HTMLCanvasElement, size: () => { w: number
   if (!ctx) throw new Error("2d context unavailable");
 
   const px = (l: Landmark, w: number, h: number) => ({ x: (1 - l.x) * w, y: l.y * h });
+  let lastBoxes: ObjectBox[] = [];
+  let lastBoxesTs = -Infinity;
+
+  /** Detector boxes in mirrored coordinates: label · score, amber when it is the item currently held. */
+  const drawBoxes = (f: DebugFrame, w: number, h: number): void => {
+    if (f.objects !== null) {
+      lastBoxes = f.objects;
+      lastBoxesTs = f.ts;
+    } else if (f.ts - lastBoxesTs > BOX_HOLD_MS) {
+      lastBoxes = [];
+    }
+    ctx.lineWidth = 2;
+    ctx.font = "bold 13px system-ui, sans-serif";
+    for (const b of lastBoxes) {
+      const item = cocoToItem(b.label);
+      const held = item !== null && f.frame.item === item;
+      const x = (1 - b.x - b.w) * w;
+      const y = b.y * h;
+      ctx.strokeStyle = held ? COLOR_BOX_HELD : COLOR_BOX;
+      ctx.strokeRect(x, y, b.w * w, b.h * h);
+      const text = `${item ? ITEMS[item].label : b.label} ${(b.score * 100).toFixed(0)}%${held ? " · held" : ""}`;
+      ctx.fillStyle = held ? COLOR_BOX_HELD : COLOR_BOX;
+      ctx.fillText(text, x + 4, Math.max(14, y - 5));
+    }
+  };
 
   return {
     draw(f) {
@@ -28,6 +60,7 @@ export function createOverlay(canvas: HTMLCanvasElement, size: () => { w: number
         canvas.height = h;
       }
       ctx.clearRect(0, 0, w, h);
+      drawBoxes(f, w, h);
       const lms = f.landmarks;
       if (!lms) return;
 
