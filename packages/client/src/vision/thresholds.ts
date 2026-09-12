@@ -14,7 +14,8 @@ export const MODEL_URL = "/models/pose_landmarker_lite.task"; // served from pub
 // ---- 5.02 calibration ----
 export const CALIBRATION_MS = 1500; // consecutive stable frames needed to capture the baseline
 export const STABLE_MOVE = 0.02; // max shoulder-midpoint movement (image units) between stable frames
-export const RELOST_MS = 1000; // pose absent for longer than this discards the baseline
+export const RELOST_MS = 1000; // pose absent for longer than this is `lost`; a ready baseline survives it (owner, 2026-09-12)
+export const RESTORE_TOLERANCE = 0.15; // a restored baseline is replaced when the first still window's S differs by more than this fraction
 export const MIN_VIS = 0.5; // landmark visibility below this counts as not seen
 
 // ---- 5.03 walk (lean) ----

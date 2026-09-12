@@ -1,0 +1,80 @@
+- generic [ref=f8e40]:
+  - generic [ref=f8e41]:
+    - heading "Room RXMTY" [level=1] [ref=f8e42]:
+      - generic [ref=f8e43]: Room
+      - strong [ref=f8e44]: RXMTY
+    - list [ref=f8e45]:
+      - listitem [ref=f8e46]:
+        - generic [ref=f8e48]:
+          - heading "Hruday host" [level=3] [ref=f8e49]:
+            - text: Hruday
+            - generic [ref=f8e50]: host
+          - paragraph [ref=f8e51]: THE DRIFTER
+          - paragraph [ref=f8e52]: bottle + backpack
+        - generic "not ready" [ref=f8e53]
+      - listitem [ref=f8e54]:
+        - paragraph [ref=f8e55]: Empty seat, share the room code
+    - generic [ref=f8e56]:
+      - button "Enable camera" [ref=f8e57] [cursor=pointer]
+      - button "Waiting for 1 more" [disabled] [ref=f8e58]
+  - generic [ref=f8e59]:
+    - heading "Route" [level=2] [ref=f8e60]
+    - generic [ref=f8e61]:
+      - generic [ref=f8e62]:
+        - generic [ref=f8e63]: Players
+        - group "Players" [ref=f8e64]:
+          - button "2" [pressed] [ref=f8e65] [cursor=pointer]
+          - button "3" [ref=f8e66] [cursor=pointer]
+          - button "4" [ref=f8e67] [cursor=pointer]
+      - generic [ref=f8e68]:
+        - generic [ref=f8e69]: Teams
+        - group "Teams" [ref=f8e70]:
+          - button "free-for-all" [disabled] [pressed] [ref=f8e71]
+          - button "2v2" [disabled] [ref=f8e72]
+      - generic [ref=f8e73]:
+        - generic [ref=f8e74]: Mode
+        - group "Mode" [ref=f8e75]:
+          - button "rounds" [pressed] [ref=f8e76] [cursor=pointer]
+          - button "timed" [ref=f8e77] [cursor=pointer]
+          - button "deathmatch" [ref=f8e78] [cursor=pointer]
+      - generic [ref=f8e79]:
+        - generic [ref=f8e80]: Map
+        - group "Map" [ref=f8e81]:
+          - button "roof" [pressed] [ref=f8e82] [cursor=pointer]
+          - button "gaps" [ref=f8e83] [cursor=pointer]
+          - button "platforms" [ref=f8e84] [cursor=pointer]
+          - button "chaos" [ref=f8e85] [cursor=pointer]
+      - generic [ref=f8e86]:
+        - generic [ref=f8e87]: Items
+        - group "Items" [ref=f8e88]:
+          - button "on" [pressed] [ref=f8e89] [cursor=pointer]
+          - button "off" [ref=f8e90] [cursor=pointer]
+    - paragraph [ref=f8e91]: 2 players, free-for-all, best of 3 on Roof, items on
+    - heading "Your seat" [level=2] [ref=f8e92]
+    - generic [ref=f8e93]:
+      - group "Character" [ref=f8e94]:
+        - button "THE DRIFTER" [pressed] [ref=f8e95] [cursor=pointer]
+        - button "THE CONDUCTOR" [ref=f8e98] [cursor=pointer]
+        - button "THE STOKER" [ref=f8e101] [cursor=pointer]
+        - button "CLAUDE CODE" [ref=f8e104] [cursor=pointer]
+      - group "Two items" [ref=f8e107]:
+        - button "Molotov 2 uses bring a water bottle" [pressed] [ref=f8e108] [cursor=pointer]:
+          - generic [ref=f8e109]: Molotov
+          - generic "2 uses" [ref=f8e110]
+          - generic [ref=f8e113]: bring a water bottle
+        - button "Racket sword 10 seconds bring a tennis racket" [ref=f8e114] [cursor=pointer]:
+          - generic [ref=f8e115]: Racket sword
+          - generic "10 seconds" [ref=f8e116]: 10s
+          - generic [ref=f8e117]: bring a tennis racket
+        - button "Backpack shield 3 uses bring a backpack" [pressed] [ref=f8e118] [cursor=pointer]:
+          - generic [ref=f8e119]: Backpack shield
+          - generic "3 uses" [ref=f8e120]
+          - generic [ref=f8e124]: bring a backpack
+        - button "Banana peel 1 uses bring a banana" [ref=f8e125] [cursor=pointer]:
+          - generic [ref=f8e126]: Banana peel
+          - generic "1 uses" [ref=f8e127]
+          - generic [ref=f8e129]: bring a banana
+        - button "Phone flash 1 uses bring a phone" [ref=f8e130] [cursor=pointer]:
+          - generic [ref=f8e131]: Phone flash
+          - generic "1 uses" [ref=f8e132]
+          - generic [ref=f8e134]: bring a phone

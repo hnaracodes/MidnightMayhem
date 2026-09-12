@@ -93,7 +93,7 @@ source.onDebug((f) => {
 });
 
 $("calibrate").addEventListener("click", () => {
-  void source.calibrate();
+  void source.recalibrate();
 });
 
 function showError(err: unknown): void {

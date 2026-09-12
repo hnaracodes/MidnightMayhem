@@ -1,0 +1,37 @@
+- generic [ref=f8e4]:
+  - heading "MIDNIGHT MAYHEM" [level=1] [ref=f8e5]
+  - paragraph [ref=f8e6]: Four of you, one roof, no brakes.
+  - generic [ref=f8e7]:
+    - generic [ref=f8e8]:
+      - generic [ref=f8e9]: Your name
+      - textbox "Your name" [ref=f8e10]: Hruday
+    - generic [ref=f8e11]:
+      - generic [ref=f8e12]: Room code
+      - textbox "Room code" [ref=f8e13]:
+        - /placeholder: new room
+    - button "Board the train" [ref=f8e14] [cursor=pointer]
+  - generic [ref=f8e15]:
+    - generic [ref=f8e16]:
+      - term [ref=f8e17]: A/D
+      - definition [ref=f8e18]: walk
+    - generic [ref=f8e19]:
+      - term [ref=f8e20]: W
+      - definition [ref=f8e21]: jump
+    - generic [ref=f8e22]:
+      - term [ref=f8e23]: S
+      - definition [ref=f8e24]: block
+    - generic [ref=f8e25]:
+      - term [ref=f8e26]: F/G
+      - definition [ref=f8e27]: punch
+    - generic [ref=f8e28]:
+      - term [ref=f8e29]: Q
+      - definition [ref=f8e30]: laser
+    - generic [ref=f8e31]:
+      - term [ref=f8e32]: 1–5
+      - definition [ref=f8e33]: items
+    - generic [ref=f8e34]:
+      - term [ref=f8e35]: V
+      - definition [ref=f8e36]: preview
+    - generic [ref=f8e37]:
+      - term [ref=f8e38]: M
+      - definition [ref=f8e39]: mute

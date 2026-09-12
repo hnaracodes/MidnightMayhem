@@ -1,5 +1,6 @@
 import { EMPTY_FRAME, type InputFrame, type InputSource, type ItemId } from "@midnight/shared";
 import type { DetectorId } from "./backends/ObjectBackend";
+import { loadBaseline, saveBaseline, type StorageLike } from "./baselineStore";
 import { type Baseline, Calibration, type CalibrationPhase } from "./calibration";
 import { frameLoop, openCamera } from "./camera";
 import { classify, type GestureFlags } from "./classify";
@@ -208,12 +209,23 @@ export function processLandmarks(
 export interface VisionInputSourceOptions {
   /** Which object detector the worker loads (9.07); defaults to DETECTOR_DEFAULT. */
   detector?: DetectorId;
+  /** Where the last baseline is remembered between page loads; defaults to localStorage, null disables. */
+  store?: StorageLike | null;
+}
+
+function defaultStore(): StorageLike | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 export class VisionInputSource implements InputSource {
   private readonly worker = new WorkerClient();
   private readonly pipeline = createPipeline();
   private readonly detector: DetectorId;
+  private readonly store: StorageLike | null;
 
   private videoEl: HTMLVideoElement | null = null;
   private stream: MediaStream | null = null;
@@ -224,6 +236,8 @@ export class VisionInputSource implements InputSource {
 
   constructor(opts: VisionInputSourceOptions = {}) {
     this.detector = opts.detector ?? DETECTOR_DEFAULT;
+    this.store = opts.store === undefined ? defaultStore() : opts.store;
+    this.pipeline.calibration.onCapture((b) => saveBaseline(this.store, b));
   }
 
   /** The hidden, mirrored camera element this source owns. Hosts may attach it for a preview. */
@@ -244,6 +258,9 @@ export class VisionInputSource implements InputSource {
       this.stopLoop = frameLoop(video, (ts) => {
         this.worker.sendFrame(video, ts);
       });
+      // A remembered baseline makes the source ready at once; the first still window checks it (calibration.ts).
+      const remembered = loadBaseline(this.store);
+      if (remembered) this.pipeline.calibration.restore(remembered);
       await this.calibrate();
     } catch (err) {
       this.stop();
@@ -275,7 +292,14 @@ export class VisionInputSource implements InputSource {
     return this.pipeline.frame;
   }
 
+  /** Resolves when ready. Restored baselines resolve at once; a `recalibrate()` forces a fresh capture. */
   calibrate(): Promise<void> {
+    return this.pipeline.calibration.begin();
+  }
+
+  /** The Recalibrate button: discard whatever baseline is held (restored or captured) and capture a new one. */
+  recalibrate(): Promise<void> {
+    this.pipeline.calibration.provisional = false;
     return this.pipeline.calibration.begin();
   }
 

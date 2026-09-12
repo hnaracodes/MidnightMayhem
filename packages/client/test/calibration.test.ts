@@ -99,24 +99,81 @@ describe("Calibration", () => {
     expect(c.state().phase).not.toBe("ready");
   });
 
-  it("absence beyond RELOST_MS discards the baseline and recalibrates on return", () => {
+  it("absence beyond RELOST_MS goes lost but keeps the baseline; the body coming back is ready at once (no recalibration)", () => {
     const c = new Calibration();
     void c.begin();
     let t = feed(c, 0, CALIBRATION_MS + 3 * FRAME_MS, standing);
     expect(c.state().phase).toBe("ready");
+    const baseline = c.baseline;
 
     t = feed(c, t, RELOST_MS / 2, () => null);
     expect(c.state().phase).toBe("ready");
-    expect(c.baseline).not.toBeNull();
+    expect(c.baseline).toBe(baseline);
 
     t = feed(c, t, RELOST_MS, () => null);
     expect(c.state()).toEqual({ phase: "lost", progress: 0 });
-    expect(c.baseline).toBeNull();
+    expect(c.baseline).toBe(baseline);
 
     c.update(standing(), t);
+    expect(c.state()).toEqual({ phase: "ready", progress: 1 });
+    expect(c.baseline).toBe(baseline);
+  });
+
+  it("absence during calibration still restarts the capture from nothing", () => {
+    const c = new Calibration();
+    void c.begin();
+    let t = feed(c, 0, CALIBRATION_MS / 2, standing);
     expect(c.state().phase).toBe("calibrating");
-    feed(c, t + FRAME_MS, CALIBRATION_MS + 3 * FRAME_MS, standing);
+    t = feed(c, t, RELOST_MS + FRAME_MS, () => null);
+    expect(c.state().phase).toBe("lost");
+    expect(c.baseline).toBeNull();
+    c.update(standing(), t);
+    expect(c.state().phase).toBe("calibrating");
+  });
+
+  it("restore() is ready at once with the stored baseline and resolves begin() without a capture", async () => {
+    const c = new Calibration();
+    const stored = { S: 0.2, leanZero: 0, hipY: 0.6, shoulderY: 0.35, noseY: 0.2, eyeY: 0.18, armLen: 0.4 };
+    c.restore(stored);
+    expect(c.state()).toEqual({ phase: "ready", progress: 1 });
+    expect(c.baseline).toEqual(stored);
+    await c.begin(); // resolves immediately: nothing to capture
     expect(c.state().phase).toBe("ready");
+    expect(c.baseline).toEqual(stored);
+  });
+
+  it("a restored baseline is kept when the first still window measures within RESTORE_TOLERANCE of it", () => {
+    const c = new Calibration();
+    // standing() has S = 0.2 and armLen ≈ 0.4; a stored baseline 10 % off is close enough
+    const stored = { S: 0.22, leanZero: 0, hipY: 0.6, shoulderY: 0.35, noseY: 0.2, eyeY: 0.18, armLen: 0.44 };
+    c.restore(stored);
+    feed(c, 0, CALIBRATION_MS + 3 * FRAME_MS, standing);
+    expect(c.state().phase).toBe("ready");
+    expect(c.baseline).toEqual(stored);
+    expect(c.provisional).toBe(false);
+  });
+
+  it("a restored baseline is replaced when the first still window measures more than RESTORE_TOLERANCE off (someone else, or a new distance)", () => {
+    const c = new Calibration();
+    const stored = { S: 0.3, leanZero: 0, hipY: 0.6, shoulderY: 0.35, noseY: 0.2, eyeY: 0.18, armLen: 0.6 };
+    c.restore(stored);
+    // fidgeting in between never produces a window; only a full still window decides
+    let t = feed(c, 0, 10 * FRAME_MS, () => standing({ 11: { x: 0.4 + Math.random() * 0.1 } }));
+    expect(c.baseline).toEqual(stored);
+    feed(c, t, CALIBRATION_MS + 3 * FRAME_MS, standing);
+    expect(c.state().phase).toBe("ready");
+    expect(c.baseline!.S).toBeCloseTo(0.2, 5);
+    expect(c.provisional).toBe(false);
+  });
+
+  it("a completed capture notifies onCapture with the baseline (what the source persists)", async () => {
+    const c = new Calibration();
+    const seen: unknown[] = [];
+    c.onCapture((b) => seen.push(b));
+    void c.begin();
+    feed(c, 0, CALIBRATION_MS + 3 * FRAME_MS, standing);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual(c.baseline);
   });
 
   it("begin while ready recalibrates and resolves again", async () => {

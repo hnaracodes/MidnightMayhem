@@ -220,6 +220,34 @@ describe("vision pipeline: calibration", () => {
   });
 });
 
+describe("vision pipeline: remembered baseline (owner rule 2026-09-12)", () => {
+  it("a restored baseline is ready on the first frame, metrics flow at once, and a still window that agrees keeps it", () => {
+    const drv = new Driver();
+    const stored = { S: 0.2, leanZero: 0, hipY: 0.6, shoulderY: 0.35, noseY: 0.2, eyeY: 0.18, armLen: 0.4 };
+    drv.pipeline.calibration.restore(stored);
+    void drv.pipeline.calibration.begin();
+    const first = drv.step(body());
+    expect(first.calibration.phase).toBe("ready");
+    expect(first.metrics).not.toBeNull();
+    const rest = drv.hold(CALIBRATION_MS + 4 * FRAME_MS, body());
+    expect(allFalseFrames(rest)).toBe(true);
+    expect(drv.pipeline.calibration.baseline).toEqual(stored);
+    expect(drv.pipeline.calibration.provisional).toBe(false);
+  });
+
+  it("losing the body mid-match and coming back is ready at once with the same baseline", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const baseline = drv.pipeline.calibration.baseline;
+    drv.hold(RELOST_MS + 3 * FRAME_MS, null);
+    expect(drv.phase()).toBe("lost");
+    const back = drv.step(body());
+    expect(back.calibration.phase).toBe("ready");
+    expect(back.metrics).not.toBeNull();
+    expect(drv.pipeline.calibration.baseline).toBe(baseline);
+  });
+});
+
 describe("vision pipeline: walk", () => {
   it("leaning right past LEAN_ENTER walks right, holds inside the band, stops below LEAN_EXIT", () => {
     const drv = new Driver();
@@ -498,12 +526,12 @@ describe("vision pipeline: dropout", () => {
     expect(allEmptySingleton(gone)).toBe(true);
     expect(gone[0]?.landmarks).toBeNull();
     expect(drv.phase()).toBe("lost");
-    expect(drv.pipeline.calibration.baseline).toBeNull();
+    expect(drv.pipeline.calibration.baseline).not.toBeNull(); // kept (owner rule 2026-09-12)
     expect(drv.pipeline.frame).toBe(EMPTY_FRAME);
 
-    // Coming back re-runs calibration on its own, then works again.
+    // Coming back is ready at once with the kept baseline, then works again.
     const back = drv.step(body());
-    expect(back.calibration.phase).toBe("calibrating");
+    expect(back.calibration.phase).toBe("ready");
     expect(allFalseFrames(drv.hold(CALIBRATION_MS + 4 * FRAME_MS, body()))).toBe(true);
     expect(drv.phase()).toBe("ready");
     const again = drv.hold(600, body({ lean: LEAN_ENTER + 0.1 }));
