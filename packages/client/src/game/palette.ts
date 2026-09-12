@@ -1,0 +1,38 @@
+/** Palette tokens from HackCMU 2026/design/00-art-direction.md. Shared by every Phase 4 lane; keep byte-identical. */
+export const P = {
+  night0: 0x070B18,
+  night1: 0x101A33,
+  night2: 0x1E2B4D,
+  steel0: 0x232733,
+  steel1: 0x3A404F,
+  steel2: 0x5B6375,
+  moon: 0xE8F0FF,
+  amber1: 0xF2A03D,
+  amber2: 0xC2601B,
+  danger: 0xE8434F,
+  drifterKey: 0x8A6B4A,
+  drifterSkin: 0xC9A27E,
+  conductorKey: 0x1B2A5C,
+  conductorGlove: 0xE6E6EA,
+  outline: 0x05070F,
+  white: 0xFFFFFF,
+} as const;
+
+export const CSS_P = {
+  night0: "#070B18",
+  night1: "#101A33",
+  night2: "#1E2B4D",
+  steel0: "#232733",
+  steel1: "#3A404F",
+  steel2: "#5B6375",
+  moon: "#E8F0FF",
+  amber1: "#F2A03D",
+  amber2: "#C2601B",
+  danger: "#E8434F",
+  drifterKey: "#8A6B4A",
+  drifterSkin: "#C9A27E",
+  conductorKey: "#1B2A5C",
+  conductorGlove: "#E6E6EA",
+  outline: "#05070F",
+  white: "#FFFFFF",
+} as const;
