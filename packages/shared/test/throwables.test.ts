@@ -154,6 +154,45 @@ describe("3. fire damage", () => {
     s.fighters[1]!.x = h.x + ARSENAL.FIRE_W / 2 + WORLD.HURTBOX_W / 2 + 1; s.fighters[0]!.x = 100;
     expect(hits(run(s, 60).events, 1)).toHaveLength(0);
   });
+  it("fire on a cargo rack burns the fighter standing on the rack, not the one on the roof beneath it", () => {
+    const s = createMatch({ players: 2, teams: "ffa", mode: "deathmatch", map: "platforms", items: true });
+    s.phase = "FIGHTING";
+    const rackY = 330;
+    spawnHazard(s, "fire", 1, 240, rackY, []);
+    s.fighters[0]!.x = 240; s.fighters[0]!.y = WORLD.ROOF_Y;
+    s.fighters[1]!.x = 240; s.fighters[1]!.y = rackY;
+    const { s: end, events } = run(s, 60);
+    expect(hits(events, 0)).toHaveLength(0);
+    expect(end.fighters[0]!.hp).toBe(BALANCE.MAX_HP);
+    expect(hits(events, 1)).toHaveLength(3);
+    expect(end.fighters[1]!.hp).toBe(BALANCE.MAX_HP - 3 * ARSENAL.FIRE_DAMAGE);
+  });
+  it("a peel on a rack does not slip a walker on the roof beneath it", () => {
+    const s = createMatch({ players: 2, teams: "ffa", mode: "deathmatch", map: "platforms", items: true });
+    s.phase = "FIGHTING";
+    spawnHazard(s, "peel", 1, 240, 330, []);
+    s.hazards[0]!.age = ARSENAL.PEEL_OWNER_IMMUNE + 1;
+    s.fighters[0]!.x = 200; s.fighters[0]!.y = WORLD.ROOF_Y; s.fighters[1]!.x = 800;
+    const { s: end, events } = run(s, 30, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]);
+    expect(hits(events, 0)).toHaveLength(0);
+    expect(end.fighters[0]!.hitstun).toBe(0);
+    expect(end.hazards).toHaveLength(1);
+  });
+  it("a shield absorbs the first three fire ticks (HAZARD_HIT damage 0), breaks, then hp goes down", () => {
+    const s = createMatch({ players: 2, teams: "ffa", mode: "deathmatch", map: "roof", items: true });
+    s.phase = "FIGHTING";
+    spawnHazard(s, "fire", 0, 480, WORLD.ROOF_Y, []);
+    s.fighters[1]!.x = 480; s.fighters[1]!.item = { kind: "shield", uses: 3 }; s.fighters[0]!.x = 100;
+    const { s: mid, events } = run(s, 3 * ARSENAL.FIRE_EVERY);
+    expect(events.filter((e) => e.type === "SHIELD_ABSORB")).toHaveLength(3);
+    expect(events.filter((e) => e.type === "ITEM_BREAK")).toHaveLength(1);
+    expect(hits(events, 1).map((e) => (e as { damage: number }).damage)).toEqual([0, 0, 0]);
+    expect(mid.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+    expect(mid.fighters[1]!.item).toBeNull();
+    const after = run(mid, ARSENAL.FIRE_EVERY);
+    expect(hits(after.events, 1).map((e) => (e as { damage: number }).damage)).toEqual([ARSENAL.FIRE_DAMAGE]);
+    expect(after.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP - ARSENAL.FIRE_DAMAGE);
+  });
 });
 
 describe("4. uses", () => {

@@ -96,6 +96,6 @@ export function resolveLaser(s: MatchState, events: SimEvent[]): void {
       target.knockbackVx = attacker.facing * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
       target.vx = 0;
     }
-    events.push({ type: "LASER_HIT", attacker: h.attacker, target: h.target, damage: h.damage, blocked: h.blocked });
+    events.push({ type: "LASER_HIT", attacker: h.attacker, target: h.target, damage: absorbed ? 0 : h.damage, blocked: h.blocked });
   }
 }

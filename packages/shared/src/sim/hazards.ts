@@ -20,10 +20,13 @@ export function spawnHazard(s: MatchState, kind: Hazard["kind"], owner: PlayerIn
   events.push({ type: "HAZARD_SPAWN", id: h.id, kind, x });
 }
 
-/** Grounded, hittable, and standing on the hazard strip. */
-function standingOn(s: MatchState, i: PlayerIndex, rect: Rect): boolean {
+/**
+ * Grounded, hittable, and standing on the hazard strip: the feet must rest on the hazard's own surface (a fighter on
+ * the roof under a rack hazard has a hurtbox that overlaps the strip but is not standing in it).
+ */
+function standingOn(s: MatchState, i: PlayerIndex, h: Hazard, rect: Rect): boolean {
   const f = s.fighters[i]!;
-  return canBeHit(f) && f.grounded && overlaps(hurtbox(f), rect);
+  return canBeHit(f) && f.grounded && Math.abs(f.y - h.y) <= 0.5 && overlaps(hurtbox(f), rect);
 }
 
 /** Fire: every FIRE_EVERY ticks of age, FIRE_DAMAGE to everyone standing in it (owner included), no hitstun. */
@@ -31,9 +34,9 @@ function burn(s: MatchState, h: Hazard, events: SimEvent[]): void {
   if (h.age % ARSENAL.FIRE_EVERY !== 0) return;
   const rect = hazardRect(h);
   for (const i of playerIndices(s)) {
-    if (!standingOn(s, i, rect)) continue;
-    applyDamage(s, i, ARSENAL.FIRE_DAMAGE, "hazard", h.owner, events);
-    events.push({ type: "HAZARD_HIT", id: h.id, kind: h.kind, target: i, damage: ARSENAL.FIRE_DAMAGE });
+    if (!standingOn(s, i, h, rect)) continue;
+    const { absorbed } = applyDamage(s, i, ARSENAL.FIRE_DAMAGE, "hazard", h.owner, events);
+    events.push({ type: "HAZARD_HIT", id: h.id, kind: h.kind, target: i, damage: absorbed ? 0 : ARSENAL.FIRE_DAMAGE });
   }
 }
 
@@ -42,7 +45,7 @@ function slip(s: MatchState, h: Hazard, events: SimEvent[]): boolean {
   const rect = hazardRect(h);
   for (const i of playerIndices(s)) {
     const f = s.fighters[i]!;
-    if (f.vx === 0 || f.hitstun !== 0 || !standingOn(s, i, rect)) continue;
+    if (f.vx === 0 || f.hitstun !== 0 || !standingOn(s, i, h, rect)) continue;
     if (i === h.owner && h.age <= ARSENAL.PEEL_OWNER_IMMUNE) continue;
     f.hitstun = ARSENAL.SLIP_STUN;
     f.knockbackVx = 0;
