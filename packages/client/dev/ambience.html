@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Midnight Mayhem — Ambience Preview</title>
+  <link rel="icon" href="data:," />
+  <style>
+    html, body { margin: 0; background: #070B18; color: #E8F0FF; font: 13px/1.4 system-ui, sans-serif; }
+    #ambience { width: 960px; height: 540px; }
+    #ambience canvas { display: block; }
+    #help { padding: 8px 12px; color: #5B6375; }
+    kbd, code { color: #E8F0FF; }
+  </style>
+</head>
+<body>
+  <div id="ambience"></div>
+  <p id="help">Dev preview (not built), 12.04. Every action in isolation on the real stage, light rig, effects and item FX.
+    Keys: <kbd>1</kbd> punch, <kbd>2</kbd> sword, <kbd>3</kbd> laser, <kbd>4</kbd> throw, <kbd>5</kbd> jump, <kbd>6</kbd> block, <kbd>7</kbd> shield,
+    <kbd>8</kbd> flash, <kbd>9</kbd> hit, <kbd>0</kbd> KO, <kbd>W</kbd> walk; <kbd>C</kbd> next character; <kbd>S</kbd> toggle 1× / 0.25×; <kbd>Space</kbd> pause; <kbd>.</kbd> step.
+    <code>window.__ambience.play(action, character?, speed?)</code>, <code>seek(frame)</code>, <code>step(n?)</code>, <code>pause()</code>, <code>frame()</code>, <code>state()</code>. <code>?fps=</code> slows the loop.</p>
+  <script type="module" src="/src/dev/ambiencePreview.ts"></script>
+</body>
+</html>

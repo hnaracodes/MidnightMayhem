@@ -3,6 +3,7 @@ import { BALANCE, WORLD, type FighterState, type MatchState, type PlayerIndex, t
 import { P } from "./palette";
 import { PIXEL, snapPt } from "./pixel";
 import type { LightSink } from "./stage/lighting";
+import { Lcg } from "./backgrounds";
 
 /**
  * 4.06 — Effects and feel. Reacts to `SimEvent`s and state reads; never predicts and never mutates the state.
@@ -33,6 +34,11 @@ const FRAMES = {
   SHAKE: 6,
   /** Pulse hold after an OOB_DAMAGE event: longer than the 30-tick gap between events, so the pulse never gaps. */
   OOB_PULSE: 40,
+  /** 12.04 rule 7: spark burst and shockwave ring on a clean hit; rule 6: the flash beat; the camera nudge. */
+  SPARKS: 6,
+  RING: 6,
+  FLASH_BEAT: 6,
+  NUDGE: 4,
   /** Laser and fire flashes: a shorter white than a clean punch, no hit-stop (the beam and the fire keep moving). */
   FLASH_BURN: 3,
 } as const;
@@ -45,6 +51,13 @@ const SHAKE_MIN_DAMAGE = BALANCE.PUNCH_DAMAGE; // a clean punch shakes; chip nev
 const CHEST_ABOVE_FEET = 90;
 /** 12.02 rule 7: a clean hit lights the roof around the impact for four frames. */
 const IMPACT_LIGHT = { r: 90, intensity: 0.7, frames: 4 } as const;
+/** 12.04 rule 7: seven specks fanned ±35° around the punch direction, 18–42 px, from a seeded rng. */
+const SPARK = { count: 7, fanDeg: 35, lenMin: 18, lenMax: 42, seed: 0x5a1c } as const;
+const RING = { r0: 10, r1: 46, width: 2 } as const;
+const NUDGE_PX = 2;
+/** 12.04 rule 8: landing dust by fall speed, and the heavy-landing light. */
+const LANDING = { slow: 3, fast: 9, scaleMin: 0.6, scaleMax: 1.4, heavy: 7, lightR: 80, lightFrames: 4 } as const;
+const SCUFF = { behind: 14, scale: 0.6 } as const;
 const IMPACT_OFFSET = 20;
 const TRAIL_WIDTH = 10;
 const WALK_DUST_EVERY_TICKS = 10;
@@ -99,8 +112,25 @@ export class Effects {
   private readonly oobPulseFrames: Per<number> = per(0);
   private clockSec = 0;
 
+  private readonly rng = new Lcg(SPARK.seed);
+  private readonly prevVy: Per<number> = per(0);
+  private readonly flashBeatFrames: Per<number> = per(0);
+  private nudgeFrames = 0;
+  private nudgeDx = 0;
+
   /** 12.02: `lights` is optional so the tests and previews can run without a rig. */
   constructor(private readonly scene: Phaser.Scene, private readonly lights: LightSink | null = null) {}
+
+  /** 12.04 rule 6: frames left of the flash's overhead-arm beat for a fighter. */
+  flashBeat(i: PlayerIndex): number {
+    return this.flashBeatFrames[i];
+  }
+
+  /** 12.04 rule 9: rim weight of a fighter, 1 normally and 1 → 0 over the KO collapse. */
+  koRim(i: PlayerIndex): number {
+    if (!this.koActive[i]) return 1;
+    return 1 - Math.min(1, this.koCount[i] / FRAMES.KO_SLOW);
+  }
 
   /**
    * Drain this frame's events and read the sampled state. Call once per render frame before the readers.
@@ -177,6 +207,8 @@ export class Effects {
 
   /** Advance every timer by one render frame; `dtSec` only drives the 2 Hz vignette pulse. */
   update(dtSec: number): void {
+    for (const i of PLAYERS) if (this.flashBeatFrames[i] > 0) this.flashBeatFrames[i] -= 1;
+    this.stepNudge();
     this.clockSec += dtSec;
 
     if (this.freezeFrames > 0 && --this.freezeFrames === 0) this.frozenSnap = null;
@@ -238,6 +270,12 @@ export class Effects {
           this.flashFrames[event.target] = FRAMES.FLASH_WHITE + FRAMES.FLASH_DANGER;
           this.flashBlocked[event.target] = false;
           this.spawn(FRAMES.IMPACT, (g, t) => drawImpact(g, at, t));
+          // 12.04 rule 7: sparks along the punch direction, a shockwave ring on the grid, a nudge opposite the knockback
+          const punchDir = -toward;
+          const specks = sparkSpecks(this.rng, punchDir);
+          this.spawn(FRAMES.SPARKS, (g, t) => drawSparks(g, at, specks, t));
+          this.spawn(FRAMES.RING, (g, t) => drawRing(g, at, t));
+          this.nudge(toward * NUDGE_PX);
           this.lights?.pulse({ x: at.x, y: at.y, r: IMPACT_LIGHT.r, color: P.amber1, intensity: IMPACT_LIGHT.intensity }, IMPACT_LIGHT.frames);
           if (event.damage >= SHAKE_MIN_DAMAGE) this.shake();
         }
@@ -285,6 +323,22 @@ export class Effects {
     );
   }
 
+  /** 12.04 rule 7: a short camera nudge, decaying over NUDGE frames, independent of the shake effect. */
+  private nudge(dx: number): void {
+    this.nudgeFrames = FRAMES.NUDGE;
+    this.nudgeDx = dx;
+  }
+
+  private stepNudge(): void {
+    const cam = this.scene.cameras.main;
+    if (this.nudgeFrames <= 0) {
+      if (cam.scrollX !== 0) cam.scrollX = 0;
+      return;
+    }
+    cam.scrollX = this.nudgeDx * (this.nudgeFrames / FRAMES.NUDGE);
+    this.nudgeFrames -= 1;
+  }
+
   // ---- state reads ----
 
   private readLandings(state: MatchState): void {
@@ -292,11 +346,15 @@ export class Effects {
       const f = state.fighters[i];
       if (!f) continue;
       if (!this.prevGrounded[i] && f.grounded) {
-        this.dust(f.x, f.y);
+        // 12.04 rule 8: the puff scales with the last airborne fall speed; a heavy landing flickers the light
+        const speed = Math.abs(this.prevVy[i]);
+        this.dust(f.x, f.y, landingScale(speed));
+        if (speed >= LANDING.heavy) this.lights?.pulse({ x: f.x, y: f.y, r: LANDING.lightR, color: P.lamp, intensity: 0.5 }, LANDING.lightFrames);
         this.squashFrames[i] = FRAMES.SQUASH;
         this.landCount[i] = 0;
       }
       this.prevGrounded[i] = f.grounded;
+      if (!f.grounded) this.prevVy[i] = f.vy;
     }
   }
 
@@ -314,7 +372,8 @@ export class Effects {
         this.walkDustTick[i] = state.tick - 1; // this tick already counts as one walked
       } else if (state.tick - since >= WALK_DUST_EVERY_TICKS) {
         this.walkDustTick[i] = state.tick;
-        this.dust(f.x, f.y);
+        // 12.04 rule 8: a trailing scuff behind the trailing foot
+        this.dust(f.x - Math.sign(f.vx) * SCUFF.behind, f.y, SCUFF.scale);
       }
     }
   }
@@ -367,8 +426,8 @@ export class Effects {
     this.timed.push({ g, frame: 0, total, draw, fresh: true });
   }
 
-  private dust(x: number, y: number): void {
-    this.spawn(FRAMES.DUST, (g, t) => drawDust(g, snapPt({ x, y }), t));
+  private dust(x: number, y: number, scale = 1): void {
+    this.spawn(FRAMES.DUST, (g, t) => drawDust(g, snapPt({ x, y }), t, scale));
   }
 
   private drawVignette(): void {
@@ -412,13 +471,49 @@ function drawBlockRing(g: Graphics, at: Pt, t: number): void {
   g.strokeCircle(at.x, at.y, 12 + 16 * t);
 }
 
-function drawDust(g: Graphics, feet: Pt, t: number): void {
+function drawDust(g: Graphics, feet: Pt, t: number, scale = 1): void {
   g.clear();
   g.fillStyle(P.steel2, 0.8 * (1 - t));
   for (const puff of DUST_PUFFS) {
-    const r = puff.r + 6 * t;
-    g.fillCircle(feet.x + puff.dx - 20 * t, feet.y + puff.dy - 4 * t, r);
+    const r = (puff.r + 6 * t) * scale;
+    g.fillCircle(feet.x + (puff.dx - 20 * t) * scale, feet.y + (puff.dy - 4 * t) * scale, r);
   }
+}
+
+/** 12.04 rule 8: landing puff scale from the fall speed, 0.6 at a hop to 1.4 at a full-height drop. Pure. */
+export function landingScale(speed: number): number {
+  const k = Math.max(0, Math.min(1, (speed - LANDING.slow) / (LANDING.fast - LANDING.slow)));
+  return LANDING.scaleMin + (LANDING.scaleMax - LANDING.scaleMin) * k;
+}
+
+interface Speck { ux: number; uy: number; len: number }
+
+/** 12.04 rule 7: the specks of one burst, fanned around the punch direction (±x), from the seeded rng. Pure. */
+export function sparkSpecks(rng: Lcg, dirX: number): Speck[] {
+  const out: Speck[] = [];
+  for (let k = 0; k < SPARK.count; k += 1) {
+    const deg = rng.range(-SPARK.fanDeg, SPARK.fanDeg);
+    const rad = (deg * Math.PI) / 180;
+    out.push({ ux: Math.cos(rad) * dirX, uy: Math.sin(rad), len: rng.range(SPARK.lenMin, SPARK.lenMax) });
+  }
+  return out;
+}
+
+function drawSparks(g: Graphics, at: Pt, specks: Speck[], t: number): void {
+  g.clear();
+  g.fillStyle(P.lamp, 1 - t);
+  for (const s of specks) {
+    const d = s.len * (0.2 + 0.8 * t);
+    const p = snapPt({ x: at.x + s.ux * d, y: at.y + s.uy * d + 10 * t * t });
+    g.fillRect(p.x, p.y, PIXEL, PIXEL);
+  }
+}
+
+function drawRing(g: Graphics, at: Pt, t: number): void {
+  g.clear();
+  g.lineStyle(RING.width, P.bone, 0.9 * (1 - t));
+  const c = snapPt(at);
+  g.strokeCircle(c.x, c.y, Math.max(PIXEL, Math.round((RING.r0 + (RING.r1 - RING.r0) * t) / PIXEL) * PIXEL));
 }
 
 function drawArc(g: Graphics, shoulder: Pt, fist: Pt): void {

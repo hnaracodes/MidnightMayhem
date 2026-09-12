@@ -6,14 +6,14 @@
  * Local space: origin at the feet, +x toward facing, +y down. Angles in degrees, 0 = straight down,
  * 90 = forward (toward facing), 180 = up. Authored facing right; facing left flips every x offset.
  */
-import { BALANCE, WORLD, type FighterState } from "@midnight/shared";
+import { ARSENAL, BALANCE, THROW, WORLD, type FighterState } from "@midnight/shared";
 import { CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
 
 export interface Pt { x: number; y: number }
 export interface Arm { shoulder: Pt; elbow: Pt; wrist: Pt; fist: Pt }
 export interface Leg { hip: Pt; knee: Pt; foot: Pt }
 
-export type RigState = "idle" | "walk" | "jump" | "punch" | "block" | "hit" | "ko" | "offbounds" | "win";
+export type RigState = "idle" | "walk" | "jump" | "punch" | "laser" | "throw" | "block" | "hit" | "ko" | "offbounds" | "win";
 
 export interface Clock {
   /** Render time in ms; drives the idle bob, block shudder and win bob. */
@@ -23,6 +23,8 @@ export interface Clock {
   /** Render frames since landing; consumed by the draw-time squash, passed through untouched here. */
   landFrames: number;
   win?: boolean;
+  /** 12.04 rule 6: a render-side pose beat with no sim action (the flash's overhead arm), frames left. */
+  beat?: { kind: "flash"; frames: number } | undefined;
 }
 
 export interface Joints {
@@ -55,6 +57,23 @@ const WALK_ARM_SWING = 13;
 const BLOCK_FIST = { B: { x: 14, dy: -4 }, F: { x: 26, dy: 4 } } as const;
 /** Active punch fist target in local space. Must sit inside the sim punch hitbox with the fist radius to spare. */
 const PUNCH_FIST: Pt = { x: 63, y: -104 };
+/** 12.04 rule 3: a sword punch strikes higher and winds up higher. */
+const SWORD_FIST = { x: 63, y: -118 };
+/** 12.04 rule 1: the kamehameha — cupped hands at the back hip, then a two-palm thrust inside the beam band. */
+const LASER_CUP = { x: -18, y: -60 };
+const LASER_THRUST = { x: 58, y: -80 };
+const LASER = { leanBack: 18, headDown: 10, hipDrop: 4, backFoot: 6, leanThrust: 22, frontFoot: 8, headUp: 6, release: 3, trembleHz: 14, shudderHz: 12, overshoot: 4 } as const;
+/** 12.04 rule 2: the throw — arm back and up while charging, a snap forward on release. */
+const THROW_WIND = { x: -22, y: -26, xT: -10, yT: -8 };
+const THROW_RELEASE_FIST = { x: 52, y: -110 };
+const THROW_SNAP_TICKS = 2;
+/** 12.04 rules 3–6: recovery overshoot past guard, takeoff crouch, apex stretch, brace and flash-beat targets. */
+const OVERSHOOT_PX = 3;
+const TAKEOFF_TICKS = 2;
+const TAKEOFF_CROUCH = 3;
+const APEX_STRETCH = 0.04;
+const BRACE_FIST = { x: 30, dy: -10 };
+const FLASH_BEAT_DEG = 175;
 
 const rad = (deg: number): number => (deg * Math.PI) / 180;
 const dir = (deg: number): Pt => ({ x: Math.sin(rad(deg)), y: Math.cos(rad(deg)) });
@@ -64,6 +83,8 @@ const lerpPt = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: 
 const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 const ease = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2);
+/** Cubic ease-out: fast start, soft settle (12.04 recoveries). */
+const easeOut = (t: number): number => 1 - (1 - t) ** 3;
 
 interface Torso { hip: Pt; neck: Pt; head: Pt; shoulder: Pt; lean: number }
 
@@ -187,7 +208,9 @@ interface LocalPose {
 export function rigState(f: FighterState, koActive: boolean): RigState {
   if (koActive) return "ko";
   if (f.hitstun > 0) return "hit";
+  if (f.action?.kind === "laser") return "laser";
   if (f.action?.kind === "punch") return "punch";
+  if (f.action?.kind === "throw") return "throw";
   if (!f.grounded) return "jump";
   if (f.blocking) return "block";
   if (f.x <= 0 || f.x >= WORLD.WIDTH) return "offbounds";
@@ -232,6 +255,12 @@ function walkPose(rig: CharacterRig, f: FighterState): LocalPose {
   return p;
 }
 
+/** Scales the neck, shoulder and head away from the hip (12.04 rule 4). */
+function stretchTorso(t: Torso, k: number): Torso {
+  const from = (p: Pt): Pt => add(t.hip, scale(add(p, scale(t.hip, -1)), k));
+  return { ...t, neck: from(t.neck), head: from(t.head), shoulder: from(t.shoulder) };
+}
+
 interface AirSub { thighF: number; shinF: number; thighB: number; shinB: number; armF: number; armB: number; reach: number; lean: number }
 // design/02 jump row. Arm angles use this file's convention (90 = forward, 180 = up): "arms up 30°" is 30° above
 // forward = 120; "arms out 20°" is 20° below forward = 70. Rising: knees tucked to 70°.
@@ -250,8 +279,10 @@ function lerpSub(a: AirSub, b: AirSub, t: number): AirSub {
 function jumpPose(rig: CharacterRig, f: FighterState): LocalPose {
   const k = clamp((Math.abs(f.vy) - AIR_THRESHOLD) / AIR_BLEND, 0, 1);
   const sub = f.vy < 0 ? lerpSub(APEX, RISING, k) : lerpSub(APEX, FALLING, k);
-  const hip = { x: 0, y: -hipHeight(rig) };
-  const t = torso(hip, rig.torsoLean + sub.lean);
+  // 12.04 rule 4: a crouch on the first airborne ticks, a stretch of the torso at the apex
+  const takeoff = f.vy < 0 && f.jumpTicks < TAKEOFF_TICKS;
+  const hip = { x: 0, y: -hipHeight(rig) + (takeoff ? TAKEOFF_CROUCH : 0) };
+  const t = stretchTorso(torso(hip, rig.torsoLean + sub.lean), 1 + APEX_STRETCH * (1 - k));
   return {
     alpha: 1,
     t,
@@ -266,44 +297,164 @@ function jumpPose(rig: CharacterRig, f: FighterState): LocalPose {
 
 function punchPose(rig: CharacterRig, f: FighterState): LocalPose {
   const action = f.action;
-  if (!action || action.kind === "laser") return standing(rig); // laser pose is 09.05/11.05
+  if (!action || action.kind !== "punch") return standing(rig);
   const { PUNCH_STARTUP: s, PUNCH_ACTIVE: a, PUNCH_RECOVERY: r } = BALANCE;
   const e = action.elapsed;
+  const sword = action.sword;
+  const target = sword ? SWORD_FIST : PUNCH_FIST;
   // the player's left arm is the back arm when facing right and the front arm when facing left
   const arm: "F" | "B" = (action.arm === "L") === (f.facing === 1) ? "B" : "F";
   const other: "F" | "B" = arm === "F" ? "B" : "F";
   let lean: number;
   let footDx = { F: 0, B: 0 };
-  if (e < s) lean = rig.torsoLean - 3 * (e / s);
+  // 12.04 rule 3: a harder coil in startup, an overshoot past guard in recovery
+  if (e < s) lean = rig.torsoLean - 5 * (e / s);
   else if (e < s + a) { lean = rig.torsoLean + 8; footDx = { F: 6, B: 0 }; }
   else { const t = ease(clamp((e - s - a) / r, 0, 1)); lean = rig.torsoLean + 8 * (1 - t); footDx = { F: 6 * (1 - t), B: 0 }; }
   const p = standing(rig, 0, footDx, lean);
   const g = guardTargets(rig, p.t.shoulder);
   if (e < s) {
     const t = e / s;
-    p.arms[arm] = armTo(p.t.shoulder, add(g[arm], { x: -10 * t, y: -2 * t }));
+    const wind = sword ? { x: -10 * t, y: -24 * t } : { x: -14 * t, y: -4 * t };
+    p.arms[arm] = armTo(p.t.shoulder, add(g[arm], wind));
   } else if (e < s + a) {
-    p.arms[arm] = armStraightTo(p.t.shoulder, PUNCH_FIST);
+    p.arms[arm] = armStraightTo(p.t.shoulder, target);
     p.arms[other] = armTo(p.t.shoulder, add(g[other], { x: -6, y: 0 }));
   } else {
     const t = ease(clamp((e - s - a) / r, 0, 1));
-    const active = armTo(p.t.shoulder, PUNCH_FIST); // clamped to reach from the resting shoulder
-    p.arms[arm] = lerpArm(active, armTo(p.t.shoulder, g[arm]), t);
+    const active = armTo(p.t.shoulder, target); // clamped to reach from the resting shoulder
+    const overshoot = { x: -OVERSHOOT_PX * Math.sin(Math.PI * t), y: 0 };
+    p.arms[arm] = lerpArm(active, armTo(p.t.shoulder, add(g[arm], overshoot)), t);
     p.arms[other] = armTo(p.t.shoulder, add(g[other], { x: -6 * (1 - t), y: 0 }));
   }
   p.punchingArm = arm;
   return p;
 }
 
-function blockPose(rig: CharacterRig, ms: number): LocalPose {
+/** 12.04 rule 1: where the laser is in its three stages, from `elapsed` against the 9.05 boundaries. Pure. */
+export function laserStage(elapsed: number): { stage: "charge" | "release" | "hold" | "recover"; t: number } {
+  const { LASER_CHARGE: c, LASER_ACTIVE: a, LASER_RECOVERY: r } = ARSENAL;
+  if (elapsed < c) return { stage: "charge", t: clamp(elapsed / c, 0, 1) };
+  if (elapsed < c + LASER.release) return { stage: "release", t: (elapsed - c) / LASER.release };
+  if (elapsed < c + a) return { stage: "hold", t: (elapsed - c - LASER.release) / Math.max(1, a - LASER.release) };
+  return { stage: "recover", t: clamp((elapsed - c - a) / r, 0, 1) };
+}
+
+/** The kamehameha (12.04 rule 1). Hands stay open; `laserHands` is the cupped point the ring and beam anchor to. */
+function laserPose(rig: CharacterRig, f: FighterState, ms: number): LocalPose {
+  const elapsed = f.action?.kind === "laser" ? f.action.elapsed : 0;
+  const { stage, t } = laserStage(elapsed);
+  if (stage === "charge") {
+    const p = standing(rig, LASER.hipDrop * t, { F: 0, B: -LASER.backFoot * t }, rig.torsoLean - LASER.leanBack * t, LASER.headDown * t);
+    const tremble = Math.sin((ms * 2 * Math.PI * LASER.trembleHz) / 1000) * t * t;
+    const g = guardTargets(rig, p.t.shoulder);
+    const cupF = { x: LASER_CUP.x + 2 + tremble, y: LASER_CUP.y - 2 - tremble };
+    const cupB = { x: LASER_CUP.x - 2 - tremble, y: LASER_CUP.y + 2 + tremble };
+    p.arms.F = armTo(p.t.shoulder, lerpPt(g.F, cupF, ease(t)));
+    p.arms.B = armTo(p.t.shoulder, lerpPt(g.B, cupB, ease(t)));
+    return p;
+  }
+  const thrust = (shudder: number): LocalPose => {
+    const p = standing(rig, 0, { F: LASER.frontFoot, B: 0 }, rig.torsoLean + LASER.leanThrust, -LASER.headUp);
+    p.arms.F = armStraightTo(p.t.shoulder, { x: LASER_THRUST.x, y: LASER_THRUST.y + shudder });
+    p.arms.B = armStraightTo(p.t.shoulder, { x: LASER_THRUST.x - 2, y: LASER_THRUST.y + 3 + shudder });
+    return p;
+  };
+  if (stage === "release") return thrust(0);
+  if (stage === "hold") return thrust(Math.sin((ms * 2 * Math.PI * LASER.shudderHz) / 1000) >= 0 ? 0.5 : -0.5);
+  // recover: a fast ease-out back to guard, the lean passing the rest lean by up to −4 around t ≈ 0.6
+  const e = easeOut(t);
+  const lean = lerp(rig.torsoLean + LASER.leanThrust, rig.torsoLean, e) - LASER.overshoot * Math.sin(Math.PI * t);
+  const p = standing(rig, 0, { F: LASER.frontFoot * (1 - e), B: 0 }, lean, -LASER.headUp * (1 - e));
+  const from = thrust(0);
+  const g = guardTargets(rig, p.t.shoulder);
+  p.arms.F = lerpArm(from.arms.F, armTo(p.t.shoulder, g.F), e);
+  p.arms.B = lerpArm(from.arms.B, armTo(p.t.shoulder, g.B), e);
+  return p;
+}
+
+/** 12.04 rule 2: where a throw is, from the 9.08 action (charge phase, then release ticks and recovery). Pure. */
+export function throwStage(action: { phase: "charge" | "release"; charge: number; elapsed: number }): { stage: "windup" | "release" | "recover"; t: number } {
+  if (action.phase === "charge") return { stage: "windup", t: clamp(action.charge / THROW.CHARGE_MAX, 0, 1) };
+  if (action.elapsed < THROW.RELEASE_TICKS) return { stage: "release", t: clamp(action.elapsed / THROW_SNAP_TICKS, 0, 1) };
+  return { stage: "recover", t: clamp((action.elapsed - THROW.RELEASE_TICKS) / THROW.RECOVERY, 0, 1) };
+}
+
+function throwPose(rig: CharacterRig, f: FighterState): LocalPose {
+  const action = f.action;
+  if (!action || action.kind !== "throw") return standing(rig);
+  const { stage, t } = throwStage(action);
+  const arm: "F" | "B" = (action.arm === "L") === (f.facing === 1) ? "B" : "F";
+  const other: "F" | "B" = arm === "F" ? "B" : "F";
+  if (stage === "windup") {
+    const p = standing(rig, 0, { F: 0, B: -4 * t }, rig.torsoLean - 6 * t);
+    const g = guardTargets(rig, p.t.shoulder);
+    const back = add(p.t.shoulder, { x: THROW_WIND.x + THROW_WIND.xT * t, y: THROW_WIND.y + THROW_WIND.yT * t });
+    p.arms[arm] = armTo(p.t.shoulder, lerpPt(g[arm], back, ease(Math.min(1, t * 3))));
+    p.arms[other] = armTo(p.t.shoulder, g[other]);
+    return p;
+  }
+  const snapped = (): LocalPose => {
+    const p = standing(rig, 0, { F: 6, B: 0 }, rig.torsoLean + 14);
+    const g = guardTargets(rig, p.t.shoulder);
+    p.arms[arm] = armStraightTo(p.t.shoulder, THROW_RELEASE_FIST);
+    p.arms[other] = armTo(p.t.shoulder, add(g[other], { x: -6, y: 0 }));
+    return p;
+  };
+  if (stage === "release") {
+    const from = standing(rig, 0, { F: 0, B: -4 }, rig.torsoLean - 6);
+    const gf = guardTargets(rig, from.t.shoulder);
+    from.arms[arm] = armTo(from.t.shoulder, add(from.t.shoulder, { x: THROW_WIND.x + THROW_WIND.xT, y: THROW_WIND.y + THROW_WIND.yT }));
+    from.arms[other] = armTo(from.t.shoulder, gf[other]);
+    const to = snapped();
+    const k = ease(t);
+    return {
+      alpha: 1,
+      t: lerpTorso(from.t, to.t, k),
+      arms: { F: lerpArm(from.arms.F, to.arms.F, k), B: lerpArm(from.arms.B, to.arms.B, k) },
+      legs: { F: lerpLeg(from.legs.F, to.legs.F, k), B: lerpLeg(from.legs.B, to.legs.B, k) },
+      punchingArm: null,
+    };
+  }
+  const e = ease(t);
+  const p = standing(rig, 0, { F: 6 * (1 - e), B: 0 }, rig.torsoLean + 14 * (1 - e));
+  const g = guardTargets(rig, p.t.shoulder);
+  const from = snapped();
+  const overshoot = { x: -OVERSHOOT_PX * Math.sin(Math.PI * t), y: 0 };
+  p.arms[arm] = lerpArm(from.arms[arm], armTo(p.t.shoulder, add(g[arm], overshoot)), e);
+  p.arms[other] = armTo(p.t.shoulder, add(g[other], { x: -6 * (1 - e), y: 0 }));
+  return p;
+}
+
+function lerpTorso(a: Torso, b: Torso, t: number): Torso {
+  return { hip: lerpPt(a.hip, b.hip, t), neck: lerpPt(a.neck, b.neck, t), head: lerpPt(a.head, b.head, t), shoulder: lerpPt(a.shoulder, b.shoulder, t), lean: lerp(a.lean, b.lean, t) };
+}
+
+function blockPose(rig: CharacterRig, ms: number, shield = false): LocalPose {
   const shudder = Math.sin((ms * 2 * Math.PI * 12) / 1000) >= 0 ? 0.5 : -0.5;
   const p = standing(rig, 0, { F: 0, B: 0 }, rig.torsoLean - 4);
   const sh = add(p.t.shoulder, { x: shudder, y: 0 });
   // both forearms vertical in front of the face, fists at eye height, offset so both gloves read
   const eye = p.t.head.y - 2;
   p.arms.B = armVertical(sh, { x: BLOCK_FIST.B.x + shudder, y: eye + BLOCK_FIST.B.dy });
-  p.arms.F = armVertical(sh, { x: BLOCK_FIST.F.x + shudder, y: eye + BLOCK_FIST.F.dy });
+  // 12.04 rule 5: with a shield the front forearm is raised higher and further forward (the barrier is held)
+  const front = shield ? BRACE_FIST : BLOCK_FIST.F;
+  p.arms.F = armVertical(sh, { x: front.x + shudder, y: eye + front.dy });
   return p;
+}
+
+/** 12.04 rule 6: the flash beat — the front arm overhead for a few render frames on a grounded, un-acted pose. */
+function applyBeat(p: LocalPose, beat: Clock["beat"]): LocalPose {
+  if (!beat || beat.frames <= 0) return p;
+  const t = torso(p.t.hip, p.t.lean - 4);
+  p.t = t;
+  p.arms.F = armTo(t.shoulder, add(t.shoulder, scale(dir(FLASH_BEAT_DEG), ARM_REACH * 0.95)));
+  return p;
+}
+
+/** The cupped point of the laser (12.04 rule 1): midway between the fists, where the charge ring orbits and the beam caps. */
+export function laserHands(j: Joints): Pt {
+  return lerpPt(j.arms.F.fist, j.arms.B.fist, 0.5);
 }
 
 function hitPose(rig: CharacterRig, hitstun: number): LocalPose {
@@ -370,12 +521,14 @@ export function computePose(f: FighterState, clock: Clock): Joints {
     case "ko": p = koPose(rig, clock.koFrames); break;
     case "hit": p = hitPose(rig, f.hitstun); break;
     case "punch": p = punchPose(rig, f); break;
+    case "laser": p = laserPose(rig, f, clock.renderMs); break;
+    case "throw": p = throwPose(rig, f); break;
     case "jump": p = jumpPose(rig, f); break;
-    case "block": p = blockPose(rig, clock.renderMs); break;
+    case "block": p = blockPose(rig, clock.renderMs, f.item?.kind === "shield"); break;
     case "offbounds": p = offboundsPose(rig); break;
-    case "walk": p = walkPose(rig, f); break;
+    case "walk": p = applyBeat(walkPose(rig, f), clock.beat); break;
     case "win": p = winPose(rig, clock.renderMs); break;
-    default: p = idlePose(rig, clock.renderMs);
+    default: p = applyBeat(idlePose(rig, clock.renderMs), clock.beat);
   }
   const W = (l: Pt): Pt => ({ x: f.x + f.facing * l.x, y: f.y + l.y });
   const WA = (a: Arm): Arm => ({ shoulder: W(a.shoulder), elbow: W(a.elbow), wrist: W(a.wrist), fist: W(a.fist) });

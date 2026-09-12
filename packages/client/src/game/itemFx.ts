@@ -631,7 +631,7 @@ function drawBeam(g: Graphics, a: Anchor, frame: number): void {
   g.fillRect(x, y - thickness / 2, w, thickness);
   g.fillStyle(P.moon, fade);
   g.fillRect(x, y - (thickness * BEAM_CORE_FRACTION) / 2, w, thickness * BEAM_CORE_FRACTION);
-  g.fillCircle(a.origin.x, y, thickness / 2);
+  g.fillCircle(a.at.x, y, thickness / 2); // 12.04 rule 1: the cap sits at the palms
 }
 
 /** `fx_impact` recipe from 4.06 rule 1: 8 radial amber lines plus a moon core, scale 0.6 → 1.3, fading. */

@@ -21,7 +21,8 @@ import { ItemFx, type HandPoint } from "./itemFx";
 import { CSS_P, P } from "./palette";
 import { RenderClock, advanceHint, hintedFighter, type PunchHint } from "./punchHint";
 import { drawFighter, drawShadow } from "./rig/draw";
-import { computePose, type Clock } from "./rig/pose";
+import { computePose, laserHands, type Clock } from "./rig/pose";
+import { mix } from "./sprites/grid";
 import { session } from "./session";
 import { SpriteFighter } from "./sprites/SpriteFighter";
 import { Lighting } from "./stage/lighting";
@@ -41,6 +42,8 @@ const ATTRACT_MAX_STEPS = 5;
 /** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
 const CHEST_ABOVE_FEET = 60;
 const FRAME_BUDGET_LABEL = "6 ms";
+/** 12.04 rule 9: how far into gloom a fallen fighter sinks (the 12.02 floor). */
+const KO_GLOOM = 0.25;
 
 /** Dev hook: the headless driver reads the measured update cost and the current hint through it. */
 declare global {
@@ -238,6 +241,7 @@ export class ArenaScene extends Phaser.Scene {
       koFrames: this.effects.koFrames(i),
       landFrames: this.effects.landFrames(i),
       win: isWinner(state, i),
+      beat: this.effects.flashBeat(i) > 0 ? { kind: "flash", frames: this.effects.flashBeat(i) } : undefined,
     };
     const joints = computePose(posedFighter(fighter), clock);
     const alpha = fighterAlpha(fighter);
@@ -247,6 +251,12 @@ export class ArenaScene extends Phaser.Scene {
     if (alpha > 0 && ground < PIT.Y) drawShadow(this.shadow, fighter.x, ground, Math.max(0, ground - fighter.y));
     const fill = this.effects.fillFor(i);
     const rim = this.lighting.rimFor(fighter.x, fighter.y - CHEST_ABOVE_FEET);
+    // 12.04 rule 9: a KO'd fighter loses its rim light and sinks into gloom over the collapse
+    const koRim = this.effects.koRim(i);
+    if (koRim < 1) {
+      rim.color = mix(rim.color, P.night1, 1 - koRim);
+      rim.gloom = Math.max(rim.gloom, KO_GLOOM * (1 - koRim));
+    }
     if (view.kind === "sprite") {
       view.sprite.setVisible(alpha > 0);
       view.sprite.setDepth(depth);
@@ -260,7 +270,8 @@ export class ArenaScene extends Phaser.Scene {
         itemVisible: !this.itemFx.materialising(i),
         blinkMs: renderMs,
       });
-      this.hands[i] = view.sprite.hand();
+      // 12.04 rule 1: the laser's ring and beam cap anchor to the cupped hands, not the front fist
+      this.hands[i] = fighter.action?.kind === "laser" ? laserHands(joints) : view.sprite.hand();
     } else {
       const g = view.g;
       g.clear();
@@ -275,7 +286,7 @@ export class ArenaScene extends Phaser.Scene {
         windSpeed: this.layers.roofSpeed,
         ...fill,
       });
-      this.hands[i] = { ...joints.arms.F.fist };
+      this.hands[i] = fighter.action?.kind === "laser" ? laserHands(joints) : { ...joints.arms.F.fist };
     }
     if (joints.punchingArm && isActivePunch(fighter)) {
       const arm = joints.arms[joints.punchingArm];

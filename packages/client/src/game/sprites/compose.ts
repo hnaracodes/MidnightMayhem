@@ -101,7 +101,8 @@ export function jointToSprite(joint: Pt, f: FighterState): { x: number; y: numbe
   };
 }
 
-const FIST_STATES: ReadonlySet<RigState> = new Set(["punch", "block", "hit"]);
+/** 12.04: the laser keeps open palms (the cupped hands and the thrust); a throw grips (holding covers it anyway). */
+const FIST_STATES: ReadonlySet<RigState> = new Set(["punch", "block", "hit", "throw"]);
 
 /** Which hand part a state uses; holding an item always grips. */
 function handPart(parts: CharacterParts, state: RigState, holding: boolean): Part {
