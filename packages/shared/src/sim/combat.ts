@@ -1,5 +1,6 @@
 import { ARSENAL, BALANCE, WORLD } from "../constants";
 import { playerIndices } from "./create";
+import { absorbWithShield } from "./items";
 import type { FighterState, MatchState, PlayerIndex, Rect, SimEvent } from "./types";
 
 export function hurtbox(f: FighterState): Rect {
@@ -19,8 +20,9 @@ export function isActivePunch(f: FighterState): boolean {
 
 export function punchHitbox(f: FighterState): Rect | null {
   if (!isActivePunch(f)) return null;
-  const x = f.facing === 1 ? f.x + BALANCE.PUNCH_GAP : f.x - BALANCE.PUNCH_GAP - BALANCE.PUNCH_REACH;
-  return { x, y: f.y - BALANCE.PUNCH_HITBOX_TOP, w: BALANCE.PUNCH_REACH, h: BALANCE.PUNCH_HITBOX_H };
+  const reach = f.action?.kind === "punch" && f.action.sword ? ARSENAL.SWORD_REACH : BALANCE.PUNCH_REACH;
+  const x = f.facing === 1 ? f.x + BALANCE.PUNCH_GAP : f.x - BALANCE.PUNCH_GAP - reach;
+  return { x, y: f.y - BALANCE.PUNCH_HITBOX_TOP, w: reach, h: BALANCE.PUNCH_HITBOX_H };
 }
 
 /** Jump i-frames (airborne, jumpTicks within the window, inclusive) or respawn i-frames after a pit. */
@@ -60,19 +62,27 @@ export function advancePunches(s: MatchState): void {
 export type DamageSource = "punch" | "laser" | "hazard" | "oob" | "pit";
 
 /**
- * The single place hp goes down. Shield absorption is wired here by 09.01; until then it just subtracts and
- * reports `absorbed: false`.
+ * The single place hp goes down. A held shield absorbs punch, laser and hazard damage in full (hp unchanged,
+ * `absorbed: true`); OOB and pit damage always go through.
  */
 export function applyDamage(
-  s: MatchState, target: PlayerIndex, damage: number, _source: DamageSource, _attacker: PlayerIndex | null, _events: SimEvent[],
+  s: MatchState, target: PlayerIndex, damage: number, source: DamageSource, _attacker: PlayerIndex | null, events: SimEvent[],
 ): { absorbed: boolean } {
   const f = s.fighters[target];
   if (!f) return { absorbed: false };
+  if ((source === "punch" || source === "laser" || source === "hazard") && absorbWithShield(s, target, events)) {
+    return { absorbed: true };
+  }
   f.hp = Math.max(0, f.hp - damage);
   return { absorbed: false };
 }
 
-interface PendingHit { attacker: PlayerIndex; target: PlayerIndex; damage: number; blocked: boolean }
+interface PendingHit { attacker: PlayerIndex; target: PlayerIndex; damage: number; blocked: boolean; parried: boolean }
+
+/** Blocking with a sword inside the first PARRY_WINDOW ticks of the block turns the hit back on the attacker. */
+function isParry(target: FighterState): boolean {
+  return target.blocking && target.item?.kind === "sword" && target.blockTicks < ARSENAL.PARRY_WINDOW;
+}
 
 /**
  * Two passes: collect every hit this tick, then apply. Same-tick trades land for both. Every attacker is tried
@@ -90,13 +100,22 @@ export function resolvePunches(s: MatchState, events: SimEvent[]): void {
       if (!overlaps(box, hurtbox(target))) continue;
       attacker.action.landed = true;
       const blocked = target.blocking;
-      pending.push({ attacker: i, target: t, damage: blocked ? BALANCE.CHIP_DAMAGE : BALANCE.PUNCH_DAMAGE, blocked });
+      const full = attacker.action.sword ? ARSENAL.SWORD_DAMAGE : BALANCE.PUNCH_DAMAGE;
+      pending.push({ attacker: i, target: t, damage: blocked ? BALANCE.CHIP_DAMAGE : full, blocked, parried: isParry(target) });
       break;
     }
   }
   for (const h of pending) {
     const target = s.fighters[h.target]!;
     const attacker = s.fighters[h.attacker]!;
+    if (h.parried) {
+      attacker.action = null;
+      attacker.hitstun = ARSENAL.PARRY_STUN;
+      attacker.knockbackVx = 0;
+      attacker.vx = 0;
+      events.push({ type: "PARRY", player: h.target, attacker: h.attacker });
+      continue;
+    }
     const { absorbed } = applyDamage(s, h.target, h.damage, "punch", h.attacker, events);
     if (!h.blocked && !absorbed) {
       target.action = null;
@@ -105,6 +124,6 @@ export function resolvePunches(s: MatchState, events: SimEvent[]): void {
       target.knockbackVx = attacker.facing * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
       target.vx = 0;
     }
-    events.push({ type: "HIT", attacker: h.attacker, target: h.target, damage: h.damage, blocked: h.blocked });
+    events.push({ type: "HIT", attacker: h.attacker, target: h.target, damage: absorbed ? 0 : h.damage, blocked: h.blocked });
   }
 }
