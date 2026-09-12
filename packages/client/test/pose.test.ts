@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { BALANCE, WORLD, createMatch, punchHitbox, type FighterState } from "@midnight/shared";
-import { computePose, rigState, type Clock, type Joints } from "../src/game/rig/pose";
+import { ARSENAL, BALANCE, WORLD, createMatch, punchHitbox, type FighterState } from "@midnight/shared";
+import { computePose, rigState, slashStage, type Clock, type Joints } from "../src/game/rig/pose";
 import { BODY_SCALE, RIG } from "../src/game/rig/characters";
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
@@ -229,7 +229,7 @@ describe("design/02 block: both fists in front of the face", () => {
 
 // ---- 12.04 action animation ----
 
-import { ARSENAL, THROW } from "@midnight/shared";
+import { THROW } from "@midnight/shared";
 import { laserHands, laserStage, throwStage } from "../src/game/rig/pose";
 
 describe("12.04 rule 1: the kamehameha", () => {
@@ -302,7 +302,7 @@ describe("12.04 rule 1: the kamehameha", () => {
 
 describe("12.04 rule 2: throws", () => {
   const throwing = (over: Partial<{ phase: "charge" | "release"; charge: number; elapsed: number }>): Joints =>
-    computePose(fighter({ item: { kind: "molotov", uses: 2 }, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 0, elapsed: 0, released: false, ...over } }), clock);
+    computePose(fighter({ item: { kind: "molotov", uses: 2, ticksLeft: null }, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 0, elapsed: 0, released: false, ...over } }), clock);
   const guard = computePose(fighter(), clock);
 
   it("winds the front arm back and up while charging, snaps it ahead on release, settles to guard", () => {
@@ -331,8 +331,6 @@ describe("12.04 rules 3–6: punch overshoot, jump weight, brace, flash beat", (
     expect(Math.abs(end.arms[arm].fist.x - guard.arms[arm].fist.x)).toBeLessThan(1);
     const wind = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: BALANCE.PUNCH_STARTUP - 1, landed: false, sword: false } }), clock);
     expect(wind.arms[wind.punchingArm!].fist.x).toBeLessThan(guard.arms[wind.punchingArm!].fist.x - 6 * BODY_SCALE);
-    const sword = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: BALANCE.PUNCH_STARTUP, landed: false, sword: true } }), clock);
-    expect(sword.arms[sword.punchingArm!].fist.y).toBeLessThan(WORLD.ROOF_Y - 110 * BODY_SCALE);
   });
   it("takeoff crouches the hip and the apex stretches the torso", () => {
     const takeoff = computePose(fighter({ grounded: false, vy: -9, jumpTicks: 0 }), clock);
@@ -344,7 +342,7 @@ describe("12.04 rules 3–6: punch overshoot, jump weight, brace, flash beat", (
   });
   it("the shield brace raises the front fist and the flash beat raises it overhead", () => {
     const plain = computePose(fighter({ blocking: true }), clock);
-    const brace = computePose(fighter({ blocking: true, item: { kind: "shield", uses: 3 } }), clock);
+    const brace = computePose(fighter({ blocking: true, item: { kind: "shield", uses: 3, ticksLeft: null } }), clock);
     expect(brace.arms.F.fist.y).toBeLessThan(plain.arms.F.fist.y);
     expect(brace.arms.F.fist.x).toBeGreaterThan(plain.arms.F.fist.x);
     const beat = computePose(fighter(), { ...clock, beat: { kind: "flash", frames: 4 } });
@@ -399,5 +397,60 @@ describe("9.10: laser and throw stances on the move", () => {
     expect(walkingThrow.lean).toBe(stillThrow.lean);
     expect(walkingThrow.legs.F.foot.x).not.toBe(stillThrow.legs.F.foot.x);
     for (const leg of [walkingThrow.legs.F, walkingThrow.legs.B]) expect(leg.foot.y).toBeCloseTo(WORLD.ROOF_Y, 6);
+  });
+});
+
+describe("9.10 slash poses", () => {
+  const chop = (elapsed: number) => fighter({ action: { kind: "slash", style: "chop", elapsed, landed: false } });
+  const sweep = (elapsed: number) => fighter({ action: { kind: "slash", style: "sweep", elapsed, landed: false } });
+
+  it("rigState maps a SlashAction to its style", () => {
+    expect(rigState(chop(0), false)).toBe("chop");
+    expect(rigState(sweep(0), false)).toBe("sweep");
+    expect(rigState(fighter({ ...chop(0), hitstun: 3 }), false)).toBe("hit");
+  });
+
+  it("slashStage walks startup → active → recover on the ARSENAL timings", () => {
+    expect(slashStage("chop", 0).stage).toBe("startup");
+    expect(slashStage("chop", ARSENAL.CHOP_STARTUP).stage).toBe("active");
+    expect(slashStage("chop", ARSENAL.CHOP_STARTUP + ARSENAL.CHOP_ACTIVE).stage).toBe("recover");
+    expect(slashStage("sweep", ARSENAL.SWEEP_STARTUP).stage).toBe("active");
+    expect(slashStage("sweep", ARSENAL.SWEEP_STARTUP + ARSENAL.SWEEP_ACTIVE + ARSENAL.SWEEP_RECOVERY).t).toBe(1);
+  });
+
+  it("chop: the front fist goes overhead in startup, then drops below the shoulder through the active frames", () => {
+    const wound = computePose(chop(ARSENAL.CHOP_STARTUP - 1), clock);
+    expect(wound.arms.F.fist.y).toBeLessThan(wound.arms.F.shoulder.y - 20 * BODY_SCALE);
+    const struck = computePose(chop(ARSENAL.CHOP_STARTUP + ARSENAL.CHOP_ACTIVE - 1), clock);
+    expect(struck.arms.F.fist.y).toBeGreaterThan(wound.arms.F.fist.y + 40 * BODY_SCALE);
+    expect(struck.arms.F.fist.x).toBeGreaterThan(struck.hip.x + 30 * BODY_SCALE);
+    expect(struck.punchingArm).toBe("F");
+    expect(struck.state).toBe("chop");
+  });
+
+  it("sweep: the front fist crosses behind the body then whips across the front at shoulder height", () => {
+    const back = computePose(sweep(ARSENAL.SWEEP_STARTUP - 1), clock);
+    expect(back.arms.F.fist.x).toBeLessThan(back.hip.x);
+    const front = computePose(sweep(ARSENAL.SWEEP_STARTUP + ARSENAL.SWEEP_ACTIVE - 1), clock);
+    expect(front.arms.F.fist.x).toBeGreaterThan(front.hip.x + 30 * BODY_SCALE);
+    expect(Math.abs(front.arms.F.fist.y - front.arms.F.shoulder.y)).toBeLessThan(30 * BODY_SCALE);
+    expect(front.state).toBe("sweep");
+  });
+
+  it("both slashes mirror with facing and settle back to guard by the end of recovery", () => {
+    const r = computePose(chop(ARSENAL.CHOP_STARTUP + 1), clock);
+    const l = computePose(fighter({ ...chop(ARSENAL.CHOP_STARTUP + 1), facing: -1 }), clock);
+    expect(l.arms.F.fist.x - l.hip.x).toBeCloseTo(-(r.arms.F.fist.x - r.hip.x), 5);
+    const done = computePose(chop(ARSENAL.CHOP_STARTUP + ARSENAL.CHOP_ACTIVE + ARSENAL.CHOP_RECOVERY), clock);
+    const idle = computePose(fighter(), clock);
+    expect(done.arms.F.fist.x).toBeCloseTo(idle.arms.F.fist.x, 0);
+    expect(done.arms.F.fist.y).toBeCloseTo(idle.arms.F.fist.y, 0);
+  });
+
+  it("a sword punch is a plain punch: same fist target as an unarmed one", () => {
+    const e = BALANCE.PUNCH_STARTUP + 1;
+    const plain = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: e, landed: false, sword: false } }), clock);
+    const armed = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: e, landed: false, sword: true } }), clock);
+    expect(armed.arms.F.fist).toEqual(plain.arms.F.fist);
   });
 });

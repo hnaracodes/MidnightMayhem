@@ -15,6 +15,8 @@ const KEY_MAP: Readonly<Record<string, InputKey>> = {
   KeyF: "punchL",
   KeyG: "punchR",
   KeyQ: "special",
+  KeyE: "chop",
+  KeyR: "sweep",
 };
 
 /** Digit1..Digit5 hold an item (9.04); the camera is additive on top of these. */

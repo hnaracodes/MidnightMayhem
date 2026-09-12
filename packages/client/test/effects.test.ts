@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import { BALANCE, WORLD, createMatch, type MatchState, type SimEvent } from "@midnight/shared";
-import { Effects } from "../src/game/effects";
+import { CHOP_HIT, Effects, isChopHit } from "../src/game/effects";
 import { P } from "../src/game/palette";
 import { PIXEL } from "../src/game/pixel";
 
@@ -500,5 +500,20 @@ describe("12.04 rules 7–9: impact juice, landing weight, KO rim", () => {
     expect(fx.koRim(1)).toBeLessThanOrEqual(1);
     frames(fx, state, 130); // the collapse plays over 30 ko-frames at the 0.25 time scale
     expect(fx.koRim(1)).toBe(0);
+  });
+});
+
+describe("9.10 chop hit", () => {
+  it("isChopHit reads the attacker's live slash action", () => {
+    expect(isChopHit({ action: { kind: "slash", style: "chop" } })).toBe(true);
+    expect(isChopHit({ action: { kind: "slash", style: "sweep" } })).toBe(false);
+    expect(isChopHit({ action: { kind: "punch" } })).toBe(false);
+    expect(isChopHit({ action: null })).toBe(false);
+    expect(isChopHit(undefined)).toBe(false);
+  });
+  it("a chop hit shakes harder and longer than a punch", () => {
+    expect(CHOP_HIT.SHAKE_SCALE).toBeGreaterThan(1);
+    expect(CHOP_HIT.NUDGE_SCALE).toBeGreaterThan(1);
+    expect(CHOP_HIT.EXTRA_HITSTOP).toBeGreaterThan(0);
   });
 });

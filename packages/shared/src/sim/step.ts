@@ -37,7 +37,7 @@ export function fightTick(s: MatchState, inputs: readonly InputFrame[], events: 
   // Advance existing actions first so a punch started this tick sits at elapsed 0 (startup)
   // and its first active tick is the 5th tick after the key edge (4 startup ticks, no hitbox).
   advancePunches(s);
-  tickCooldowns(s);
+  tickCooldowns(s, events);
   const players = playerIndices(s);
   for (const i of players) controlFighter(s, i, inputs[i] ?? EMPTY_FRAME, events);
   advanceThrowCharge(s, inputs);

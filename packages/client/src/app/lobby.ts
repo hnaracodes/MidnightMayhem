@@ -4,6 +4,7 @@ import {
 } from "@midnight/shared";
 import { Customize, HostControls, describeConfig } from "./setup";
 import { portrait } from "./sprites/portrait";
+import { pixelText } from "./pixelFont";
 
 interface LobbyHandlers {
   onReady(ready: boolean): void;
@@ -65,7 +66,7 @@ export class Lobby {
     const codeLabel = document.createElement("span");
     codeLabel.textContent = "Room";
     const codeValue = document.createElement("strong");
-    codeValue.textContent = roomId;
+    codeValue.append(pixelText(roomId, { cell: 6, tracking: 2 }));
     code.append(codeLabel, codeValue);
     code.setAttribute("aria-label", `Room ${roomId}`);
 
@@ -99,7 +100,7 @@ export class Lobby {
     const board = document.createElement("section");
     board.className = "board";
     const routeHead = document.createElement("h2");
-    routeHead.textContent = isHost ? "Route" : "Route, set by the host";
+    routeHead.append(pixelText(isHost ? "Route" : "Route, set by the host", { cell: 3, depth: 1 }));
     const route = document.createElement("div");
     // The server refuses a player count below the highest seated slot + 1 (10.03), so those are disabled.
     const highestSeated = players.reduce((top, p, i) => (p !== null ? i : top), -1);
@@ -108,7 +109,7 @@ export class Lobby {
     summary.className = "route-summary";
     summary.textContent = describeConfig(config);
     const seatHead = document.createElement("h2");
-    seatHead.textContent = "Your seat";
+    seatHead.append(pixelText("Your seat", { cell: 3, depth: 1 }));
     const pick = document.createElement("div");
     const taken = players
       .filter((p, i): p is LobbyPlayer => p !== null && i !== localIndex && i < config.players)

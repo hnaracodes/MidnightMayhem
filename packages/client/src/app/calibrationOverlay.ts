@@ -102,7 +102,7 @@ export class CalibrationOverlay {
 
     this.recalibrate = button("Recalibrate");
     this.recalibrate.addEventListener("click", () => {
-      void this.source?.calibrate();
+      void this.source?.recalibrate();
     });
     this.back = button("Back to lobby");
     this.back.addEventListener("click", () => {

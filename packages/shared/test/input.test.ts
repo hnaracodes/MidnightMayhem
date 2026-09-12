@@ -10,7 +10,7 @@ describe("InputFrame contract", () => {
   it("risingEdges reports only false->true transitions", () => {
     const prev: InputFrame = { ...EMPTY_FRAME, punchL: true, block: true };
     const next: InputFrame = { ...EMPTY_FRAME, punchL: true, punchR: true, jump: true };
-    expect(risingEdges(prev, next)).toEqual({ left: false, right: false, jump: true, punchL: false, punchR: true, block: false, special: false, item: null });
+    expect(risingEdges(prev, next)).toEqual({ left: false, right: false, jump: true, punchL: false, punchR: true, block: false, special: false, item: null, chop: false, sweep: false });
   });
   it("framesEqual compares every boolean key", () => {
     expect(framesEqual(EMPTY_FRAME, { ...EMPTY_FRAME })).toBe(true);

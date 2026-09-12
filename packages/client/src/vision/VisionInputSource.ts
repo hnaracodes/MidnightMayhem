@@ -1,5 +1,6 @@
 import { EMPTY_FRAME, type InputFrame, type InputSource, type ItemId } from "@midnight/shared";
 import type { DetectorId } from "./backends/ObjectBackend";
+import { loadBaseline, saveBaseline, type StorageLike } from "./baselineStore";
 import { type Baseline, Calibration, type CalibrationPhase } from "./calibration";
 import { frameLoop, openCamera } from "./camera";
 import { classify, type GestureFlags } from "./classify";
@@ -9,6 +10,8 @@ import { Block } from "./gestures/block";
 import { Jump } from "./gestures/jump";
 import { Laser } from "./gestures/laser";
 import { Punch, type PunchDiag } from "./gestures/punch";
+import { Slash, type SlashDiag } from "./gestures/slash";
+import { Windup, type WindupDiag } from "./gestures/windup";
 import { Walk } from "./gestures/walk";
 import {
   clearMetricBuffers, computeMetrics, createMetricBuffers, type MetricBuffers, type Metrics,
@@ -35,9 +38,15 @@ export interface DebugFrame {
   objects: ObjectBox[] | null;
   /** The debounced held item (9.04), or null. */
   item: ItemId | null;
+  /** 9.10 wind-up gates per arm; absent unless calibration is ready. */
+  windup?: { L: WindupDiag; R: WindupDiag };
+  /** 9.10 slash gates per arm; absent unless calibration is ready. */
+  slash?: { L: SlashDiag; R: SlashDiag };
 }
 
 export type { PunchDiag } from "./gestures/punch";
+export type { SlashDiag } from "./gestures/slash";
+export type { WindupDiag } from "./gestures/windup";
 
 /** One recorder sample (integrator amendment): what the harness saw at `ts`, safe to serialise. */
 export interface RecorderSample {
@@ -63,8 +72,14 @@ export interface Pipeline {
   readonly punchL: Punch;
   readonly punchR: Punch;
   readonly laser: Laser;
+  readonly windupL: Windup;
+  readonly windupR: Windup;
+  readonly slashL: Slash;
+  readonly slashR: Slash;
   readonly hold: HoldTracker;
   readonly gestures: GestureFlags;
+  /** What the local fighter holds per the arena's last snapshot (9.10); null when nothing or unknown. */
+  held: ItemId | null;
   smoothed: Landmark[] | null;
   smoothedWorld: Landmark[] | null;
   frame: Readonly<InputFrame>;
@@ -80,10 +95,16 @@ export function createPipeline(): Pipeline {
     punchL: new Punch("L"),
     punchR: new Punch("R"),
     laser: new Laser(),
+    windupL: new Windup("L"),
+    windupR: new Windup("R"),
+    slashL: new Slash("L"),
+    slashR: new Slash("R"),
     hold: new HoldTracker(),
     gestures: {
       left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null,
+      windupL: false, windupR: false, chop: false, sweep: false, slashL: false, slashR: false, held: null,
     },
+    held: null,
     smoothed: null,
     smoothedWorld: null,
     frame: EMPTY_FRAME,
@@ -98,12 +119,18 @@ function resetGestures(p: Pipeline): void {
   p.punchL.reset();
   p.punchR.reset();
   p.laser.reset();
+  p.windupL.reset();
+  p.windupR.reset();
+  p.slashL.reset();
+  p.slashR.reset();
   // The hold tracker deliberately survives a dropped pose frame: HOLD_OFF_MS times it out instead, so a held
   // item does not need a fresh HOLD_ON run after every one-frame tracking loss (review finding).
   clearMetricBuffers(p.buffers);
   const g = p.gestures;
   g.left = g.right = g.jump = g.punchL = g.punchR = g.block = g.special = false;
+  g.windupL = g.windupR = g.chop = g.sweep = g.slashL = g.slashR = false;
   g.item = null;
+  g.held = p.held;
 }
 
 /**
@@ -131,6 +158,8 @@ export function processLandmarks(
   const { phase, progress } = p.calibration.state();
   let metrics: Metrics | null = null;
   let punch: DebugFrame["punch"];
+  let windup: DebugFrame["windup"];
+  let slash: DebugFrame["slash"];
 
   if (phase === "ready" && baseline && p.smoothed && p.smoothedWorld) {
     metrics = computeMetrics(p.smoothed, p.smoothedWorld, baseline, ts, p.buffers, pose?.landmarks);
@@ -143,9 +172,20 @@ export function processLandmarks(
     g.punchL = p.punchL.update(metrics, ts);
     g.punchR = p.punchR.update(metrics, ts);
     g.special = p.laser.update(metrics, ts);
+    g.held = p.held;
+    g.windupL = p.windupL.update(metrics, ts, p.held);
+    g.windupR = p.windupR.update(metrics, ts, p.held);
+    const sL = p.slashL.update(metrics, ts, p.held);
+    const sR = p.slashR.update(metrics, ts, p.held);
+    g.chop = sL.chop || sR.chop;
+    g.sweep = sL.sweep || sR.sweep;
+    g.slashL = sL.exclusive;
+    g.slashR = sR.exclusive;
     g.item = objects !== null ? p.hold.update(heldItem(objects, p.smoothed, baseline.S), ts) : p.hold.peek(ts);
     p.frame = classify(g);
     punch = { L: p.punchL.diag(), R: p.punchR.diag() };
+    windup = { L: p.windupL.diag(), R: p.windupR.diag() };
+    slash = { L: p.slashL.diag(), R: p.slashR.diag() };
   } else {
     resetGestures(p);
     p.frame = EMPTY_FRAME;
@@ -161,18 +201,31 @@ export function processLandmarks(
     ...(punch ? { punch } : {}),
     objects,
     item: p.gestures.item,
+    ...(windup ? { windup } : {}),
+    ...(slash ? { slash } : {}),
   };
 }
 
 export interface VisionInputSourceOptions {
   /** Which object detector the worker loads (9.07); defaults to DETECTOR_DEFAULT. */
   detector?: DetectorId;
+  /** Where the last baseline is remembered between page loads; defaults to localStorage, null disables. */
+  store?: StorageLike | null;
+}
+
+function defaultStore(): StorageLike | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 export class VisionInputSource implements InputSource {
   private readonly worker = new WorkerClient();
   private readonly pipeline = createPipeline();
   private readonly detector: DetectorId;
+  private readonly store: StorageLike | null;
 
   private videoEl: HTMLVideoElement | null = null;
   private stream: MediaStream | null = null;
@@ -183,6 +236,8 @@ export class VisionInputSource implements InputSource {
 
   constructor(opts: VisionInputSourceOptions = {}) {
     this.detector = opts.detector ?? DETECTOR_DEFAULT;
+    this.store = opts.store === undefined ? defaultStore() : opts.store;
+    this.pipeline.calibration.onCapture((b) => saveBaseline(this.store, b));
   }
 
   /** The hidden, mirrored camera element this source owns. Hosts may attach it for a preview. */
@@ -203,6 +258,9 @@ export class VisionInputSource implements InputSource {
       this.stopLoop = frameLoop(video, (ts) => {
         this.worker.sendFrame(video, ts);
       });
+      // A remembered baseline makes the source ready at once; the first still window checks it (calibration.ts).
+      const remembered = loadBaseline(this.store);
+      if (remembered) this.pipeline.calibration.restore(remembered);
       await this.calibrate();
     } catch (err) {
       this.stop();
@@ -234,8 +292,23 @@ export class VisionInputSource implements InputSource {
     return this.pipeline.frame;
   }
 
+  /** Resolves when ready. Restored baselines resolve at once; a `recalibrate()` forces a fresh capture. */
   calibrate(): Promise<void> {
     return this.pipeline.calibration.begin();
+  }
+
+  /** The Recalibrate button: discard whatever baseline is held (restored or captured) and capture a new one. */
+  recalibrate(): Promise<void> {
+    this.pipeline.calibration.provisional = false;
+    return this.pipeline.calibration.begin();
+  }
+
+  /**
+   * 9.10: what the local fighter holds per the last snapshot (sim truth, not the detector). The arena calls
+   * this every snapshot; the wind-up runs only for a throwable and the slashes only for the sword.
+   */
+  setHeldItem(item: ItemId | null): void {
+    this.pipeline.held = item;
   }
 
   calibrationState(): { phase: CalibrationPhase; progress: number } {

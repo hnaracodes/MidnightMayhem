@@ -12,7 +12,7 @@ import { WORLD, type ItemId, type MatchState, type SimEvent } from "@midnight/sh
 export type SfxName =
   | "equip_molotov" | "equip_sword" | "equip_shield" | "equip_banana" | "equip_flash"
   | "laser_charge" | "laser_fire" | "laser_hit"
-  | "slash" | "parry" | "shield_absorb" | "shield_break"
+  | "slash" | "chop_hit" | "sweep_whoosh" | "parry" | "shield_absorb" | "shield_break"
   | "molotov_throw" | "fire_ignite" | "fire_loop_start" | "fire_loop_stop" | "peel_throw" | "slip" | "flash"
   | "punch_whiff" | "hit" | "block" | "jump" | "land" | "ko" | "round_start" | "round_end" | "match_end"
   | "pit_fall" | "ui_move" | "ui_select" | "countdown_tick";
@@ -260,6 +260,18 @@ const RECIPES: Record<SfxName, Recipe> = {
     noise(ctx, out, t0, { dur: 0.18, peak: 0.8, attack: 0.02, filter: "bandpass", f0: 3000, f1: 700, q: 1 });
     tone(ctx, out, t0, { type: "triangle", f0: 1400, f1: 300, dur: 0.16, peak: 0.12, attack: 0.01 });
     return 0.18;
+  },
+  // 9.10: a chop landing — a deep thud under a short metallic ring; a sweep — a long low whoosh.
+  chop_hit: (ctx, out, t0) => {
+    noise(ctx, out, t0, { dur: 0.12, peak: 0.9, attack: 0.004, filter: "lowpass", f0: 900, f1: 200 });
+    tone(ctx, out, t0, { type: "sine", f0: 140, f1: 45, dur: 0.28, peak: 0.6, attack: 0.004 });
+    tone(ctx, out, t0, { type: "triangle", f0: 1900, f1: 1200, dur: 0.14, peak: 0.1, attack: 0.002 });
+    return 0.28;
+  },
+  sweep_whoosh: (ctx, out, t0) => {
+    noise(ctx, out, t0, { dur: 0.3, peak: 0.7, attack: 0.06, filter: "bandpass", f0: 600, f1: 1800, q: 0.8 });
+    tone(ctx, out, t0, { type: "sine", f0: 220, f1: 420, dur: 0.24, peak: 0.08, attack: 0.05 });
+    return 0.3;
   },
   parry: (ctx, out, t0) => {
     // Clang: inharmonic pair with a click transient.
@@ -509,12 +521,17 @@ export class Sfx {
         case "PARRY": this.play("parry", { pan: panOf(e.player) }); break;
         case "SHIELD_ABSORB": this.play("shield_absorb", { pan: panOf(e.player) }); break;
         case "ITEM_BREAK": if (e.item === "shield") this.play("shield_break", { pan: panOf(e.player) }); break;
-        case "ITEM_USE": if (e.item === "sword") this.play("slash", { pan: panOf(e.player) }); break;
+        case "SLASH": this.play(e.style === "chop" ? "slash" : "sweep_whoosh", { pan: panOf(e.player) }); break;
         case "PROJECTILE_SPAWN": this.play(e.kind === "molotov" ? "molotov_throw" : "peel_throw", { pan: panOf(e.owner) }); break;
         case "HAZARD_SPAWN": if (e.kind === "fire") this.play("fire_ignite", { pan: clamp((e.x / WORLD.WIDTH) * 2 - 1, -1, 1) }); break;
         case "HAZARD_HIT": if (e.damage === 0) this.play("slip", { pan: panOf(e.target) }); break;
         case "FLASH": this.play("flash", { pan: panOf(e.player) }); break;
-        case "HIT": this.play(e.blocked ? "block" : "hit", { pan: panOf(e.target) }); break;
+        case "HIT": {
+          const a = state.fighters[e.attacker];
+          const chop = !e.blocked && a?.action?.kind === "slash" && a.action.style === "chop";
+          this.play(e.blocked ? "block" : chop ? "chop_hit" : "hit", { pan: panOf(e.target) });
+          break;
+        }
         case "JUMP": this.play("jump", { pan: panOf(e.player) }); break;
         case "LAND": this.play("land", { pan: panOf(e.player) }); break;
         case "ROUND_START": this.play("round_start"); break;

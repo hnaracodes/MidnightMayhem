@@ -1,4 +1,4 @@
-import { CALIBRATION_MS, MIN_VIS, RELOST_MS, STABLE_MOVE } from "./thresholds";
+import { CALIBRATION_MS, MIN_VIS, RELOST_MS, RESTORE_TOLERANCE, STABLE_MOVE } from "./thresholds";
 import type { Landmark } from "./workerClient";
 
 export type CalibrationPhase = "idle" | "calibrating" | "ready" | "lost";
@@ -39,8 +39,16 @@ export function poseVisible(landmarks: Landmark[] | null): landmarks is Landmark
   return true;
 }
 
+/**
+ * Captures the resting baseline over CALIBRATION_MS of still frames. Two owner rules (2026-09-12) keep the prompt
+ * out of the way without touching what is measured: a ready baseline survives `lost` (the body coming back is
+ * ready at once), and a baseline handed in by `restore` is used immediately and only replaced when the first
+ * still window measures more than RESTORE_TOLERANCE away in S. Only `begin` discards a baseline on purpose.
+ */
 export class Calibration {
   baseline: Baseline | null = null;
+  /** True while a restored baseline has not yet been checked against a still window. */
+  provisional = false;
 
   private phase: CalibrationPhase = "idle";
   private progress = 0;
@@ -49,6 +57,21 @@ export class Calibration {
   private lastShoulderMid: { x: number; y: number } | null = null;
   private lastSeenTs: number | null = null;
   private resolvers: (() => void)[] = [];
+  private captureCb: ((b: Baseline) => void) | null = null;
+
+  /** Called with every baseline a still window produces (a fresh capture or a replaced restore). */
+  onCapture(cb: (b: Baseline) => void): void {
+    this.captureCb = cb;
+  }
+
+  /** Adopts a stored baseline: ready now, verified against the first still window (see `provisional`). */
+  restore(baseline: Baseline): void {
+    this.startWindow();
+    this.baseline = baseline;
+    this.provisional = true;
+    this.phase = "ready";
+    this.progress = 1;
+  }
 
   state(): { phase: CalibrationPhase; progress: number } {
     return { phase: this.phase, progress: this.progress };
@@ -56,8 +79,11 @@ export class Calibration {
 
   /** Starts (or restarts) a capture. Resolves when the phase reaches `ready`. Safe to call at any time. */
   begin(): Promise<void> {
+    if (this.baseline && this.phase === "ready" && this.provisional) return Promise.resolve();
     this.baseline = null;
+    this.provisional = false;
     this.startWindow();
+    this.progress = 0;
     this.phase = "calibrating";
     return new Promise((resolve) => this.resolvers.push(resolve));
   }
@@ -66,10 +92,9 @@ export class Calibration {
     if (this.lastSeenTs === null) this.lastSeenTs = ts;
 
     if (!poseVisible(landmarks)) {
-      if (this.phase === "calibrating") this.startWindow();
+      if (this.phase === "calibrating") { this.startWindow(); this.progress = 0; }
       if ((this.phase === "calibrating" || this.phase === "ready") && ts - this.lastSeenTs > RELOST_MS) {
         this.phase = "lost";
-        this.baseline = null;
         this.progress = 0;
       }
       this.lastShoulderMid = null;
@@ -79,7 +104,8 @@ export class Calibration {
     this.lastSeenTs = ts;
     if (this.phase === "lost") {
       this.startWindow();
-      this.phase = "calibrating";
+      if (this.baseline) { this.phase = "ready"; this.progress = 1; }
+      else { this.phase = "calibrating"; this.progress = 0; }
     }
 
     const ls = landmarks[11] as Landmark;
@@ -88,7 +114,7 @@ export class Calibration {
     const moved = this.lastShoulderMid ? Math.hypot(mid.x - this.lastShoulderMid.x, mid.y - this.lastShoulderMid.y) : 0;
     this.lastShoulderMid = mid;
 
-    if (this.phase !== "calibrating") return;
+    if (this.phase !== "calibrating" && !(this.phase === "ready" && this.provisional)) return;
 
     const lh = landmarks[23] as Landmark;
     const rh = landmarks[24] as Landmark;
@@ -98,6 +124,7 @@ export class Calibration {
     const stable = moved < STABLE_MOVE && lw.y > hipMidY && rw.y > hipMidY;
     if (!stable) {
       this.startWindow();
+      if (this.phase === "calibrating") this.progress = 0;
       return;
     }
 
@@ -112,19 +139,19 @@ export class Calibration {
       armLen: (dist2D(lw, ls) + dist2D(rw, rs)) / 2,
     });
     const elapsed = ts - this.windowStart;
-    this.progress = Math.min(1, elapsed / CALIBRATION_MS);
+    if (this.phase === "calibrating") this.progress = Math.min(1, elapsed / CALIBRATION_MS);
     if (elapsed >= CALIBRATION_MS) this.finish();
   }
 
+  /** Clears the still window; callers set `progress` (a provisional check must not disturb a ready 1). */
   private startWindow(): void {
     this.window = [];
     this.windowStart = -1;
-    this.progress = 0;
   }
 
   private finish(): void {
     const pick = (k: keyof Baseline) => median(this.window.map((s) => s[k]));
-    this.baseline = {
+    const measured: Baseline = {
       S: pick("S"),
       leanZero: pick("leanZero"),
       hipY: pick("hipY"),
@@ -133,9 +160,16 @@ export class Calibration {
       eyeY: pick("eyeY"),
       armLen: pick("armLen"),
     };
+    this.window = [];
+    if (this.provisional && this.baseline) {
+      // A restored baseline stands unless the room has changed enough to matter.
+      this.provisional = false;
+      if (Math.abs(measured.S - this.baseline.S) <= RESTORE_TOLERANCE * this.baseline.S) return;
+    }
+    this.baseline = measured;
+    this.captureCb?.(measured);
     this.phase = "ready";
     this.progress = 1;
-    this.window = [];
     const resolvers = this.resolvers;
     this.resolvers = [];
     for (const r of resolvers) r();

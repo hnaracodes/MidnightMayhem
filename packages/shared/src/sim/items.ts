@@ -8,12 +8,22 @@ import { opponentsOf } from "./combat";
 import { startThrow } from "./projectiles";
 import type { Arm, MatchState, PlayerIndex, SimEvent } from "./types";
 
-/** Counts down laserCooldown, dazzle and invuln for every fighter (blockTicks is driven by controlFighter). */
-export function tickCooldowns(s: MatchState): void {
-  for (const f of s.fighters) {
+/** Counts down laserCooldown, dazzle, invuln and a timed item's ticksLeft for every fighter (blockTicks is driven by controlFighter). */
+export function tickCooldowns(s: MatchState, events: SimEvent[] = []): void {
+  for (let i = 0; i < s.fighters.length; i++) {
+    const f = s.fighters[i]!;
     if (f.laserCooldown > 0) f.laserCooldown--;
     if (f.dazzle > 0) f.dazzle--;
     if (f.invuln > 0) f.invuln--;
+    // 9.10: a timed item (sword) drains while held, KO'd or down a pit alike; at 0 the slot clears.
+    if (f.item && f.item.ticksLeft !== null) {
+      f.item.ticksLeft--;
+      if (f.item.ticksLeft <= 0) {
+        const kind = f.item.kind;
+        f.item = null;
+        events.push({ type: "ITEM_BREAK", player: i as PlayerIndex, item: kind });
+      }
+    }
   }
 }
 
@@ -39,15 +49,16 @@ export function applyEquip(s: MatchState, i: PlayerIndex, input: InputFrame, eve
   const item = input.item;
   if (item === null || item === f.prev.item) return;
   if (!canEquip(s, i, item)) return;
-  f.item = { kind: item, uses: ITEMS[item].uses };
+  f.item = { kind: item, uses: ITEMS[item].uses, ticksLeft: ITEMS[item].ttl ?? null };
   f.itemsUsed.push(item);
   events.push({ type: "ITEM_EQUIP", player: i, item });
 }
 
-/** Spends one use of the held item; at 0 the item breaks and the slot clears. */
+/** Spends one use of the held item; at 0 the item breaks and the slot clears. A timed item (ticksLeft) is free. */
 export function consumeUse(s: MatchState, i: PlayerIndex, events: SimEvent[]): void {
   const f = s.fighters[i];
   if (!f || !f.item) return;
+  if (f.item.ticksLeft !== null) return;
   const kind = f.item.kind;
   f.item.uses--;
   events.push({ type: "ITEM_USE", player: i, item: kind });
@@ -66,10 +77,8 @@ export function usePunchWithItem(s: MatchState, i: PlayerIndex, arm: Arm, events
   if (!f || !f.item) return false;
   switch (f.item.kind) {
     case "sword":
-      f.action = { kind: "punch", arm, elapsed: 0, landed: false, sword: true };
-      events.push({ type: "PUNCH", player: i, arm });
-      consumeUse(s, i, events);
-      return true;
+      // 9.10: a punch with a sword is a plain punch (slashes are `startSlash`); the timer, not uses, ends the sword.
+      return false;
     case "flash":
       // `landed: true` from the start: this swing can never connect.
       f.action = { kind: "punch", arm, elapsed: 0, landed: true, sword: false };
@@ -83,6 +92,15 @@ export function usePunchWithItem(s: MatchState, i: PlayerIndex, arm: Arm, events
     case "shield":
       return false;
   }
+}
+
+/** 9.10: a chop / sweep edge starts a SlashAction only with a sword in hand; otherwise the edge is ignored. */
+export function startSlash(s: MatchState, i: PlayerIndex, style: "chop" | "sweep", events: SimEvent[]): boolean {
+  const f = s.fighters[i];
+  if (!f || !f.item || f.item.kind !== "sword") return false;
+  f.action = { kind: "slash", style, elapsed: 0, landed: false };
+  events.push({ type: "SLASH", player: i, style });
+  return true;
 }
 
 /** A held shield absorbs the hit: SHIELD_ABSORB (with hits left) then the use is spent, possibly breaking it. */

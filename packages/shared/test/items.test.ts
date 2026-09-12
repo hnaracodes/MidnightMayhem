@@ -51,7 +51,7 @@ describe("items: equip", () => {
     let s = match();
     const r1 = step(s, [HOLD("sword"), EMPTY_FRAME]);
     expect(r1.events).toContainEqual({ type: "ITEM_EQUIP", player: 0, item: "sword" });
-    expect(r1.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    expect(r1.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ITEMS.sword.ttl });
     expect(r1.state.fighters[0]!.itemsUsed).toEqual(["sword"]);
     // holding the key does not re-equip
     s = stepN(r1.state, 3, [HOLD("sword"), EMPTY_FRAME]).s;
@@ -69,7 +69,7 @@ describe("items: equip", () => {
     s.phase = "FIGHTING";
     const r3 = step(s, [HOLD("sword"), EMPTY_FRAME]);
     expect(r3.events).toContainEqual({ type: "ITEM_EQUIP", player: 0, item: "sword" });
-    expect(r3.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    expect(r3.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ITEMS.sword.ttl });
   });
 
   it("2. refused while holding another item, in hitstun, outside the loadout, or with items off", () => {
@@ -122,59 +122,128 @@ describe("items: equip", () => {
     expect(s.phase).toBe("COUNTDOWN");
     const r = step(s, [HOLD("sword"), EMPTY_FRAME]);
     expect(r.events).toContainEqual({ type: "ITEM_EQUIP", player: 0, item: "sword" });
-    expect(r.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    expect(r.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ITEMS.sword.ttl });
     // holding the key through the countdown does not re-equip, and the item survives into FIGHTING
     let t = r.state;
     while (t.phase === "COUNTDOWN") t = step(t, [HOLD("sword"), EMPTY_FRAME]).state;
     expect(t.phase).toBe("FIGHTING");
-    expect(t.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    expect(t.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ITEMS.sword.ttl });
     expect(t.fighters[0]!.itemsUsed).toEqual(["sword"]);
   });
 });
 
-describe("items: sword", () => {
-  it("3. reaches 120 px for 10 damage, breaks on the 6th swing, 7th punch is normal", () => {
-    let s = equip(match(), 0, "sword");
+describe("items: sword (9.10)", () => {
+  const CHOP_TOTAL = ARSENAL.CHOP_STARTUP + ARSENAL.CHOP_ACTIVE + ARSENAL.CHOP_RECOVERY;
+  const SWEEP_TOTAL = ARSENAL.SWEEP_STARTUP + ARSENAL.SWEEP_ACTIVE + ARSENAL.SWEEP_RECOVERY;
+  const swing = (st: MatchState, key: Partial<InputFrame>, total: number, p1: InputFrame = EMPTY_FRAME) => {
+    const a = stepN(st, total, [F(key), p1]);
+    const b = step(a.s, [EMPTY_FRAME, p1]);
+    return { s: b.state, events: [...a.events, ...b.events] };
+  };
+
+  it("3a. a punch with a sword is a plain punch: PUNCH_DAMAGE, PUNCH_REACH, no ITEM_USE", () => {
+    const s = equip(match(), 0, "sword");
     s.fighters[1]!.x = s.fighters[0]!.x + 120;
-    // a normal punch from 120 px would miss
-    const plain = match();
-    plain.fighters[1]!.x = plain.fighters[0]!.x + 120;
-    expect(types(stepN(plain, PUNCH_TOTAL, [F({ punchL: true }), EMPTY_FRAME]).events, "HIT")).toHaveLength(0);
-
-    const swing = (st: MatchState) => {
-      const a = stepN(st, PUNCH_TOTAL, [F({ punchL: true }), EMPTY_FRAME]);
-      const b = step(a.s, NONE);
-      return { s: b.state, events: [...a.events, ...b.events] };
-    };
-
-    let r = swing(s);
+    expect(types(swing(s, { punchL: true }, PUNCH_TOTAL).events, "HIT")).toHaveLength(0);
+    const near = equip(match(), 0, "sword");
+    near.fighters[1]!.x = near.fighters[0]!.x + 60;
+    const r = swing(near, { punchL: true }, PUNCH_TOTAL);
     expect(types(r.events, "PUNCH")).toHaveLength(1);
-    expect(r.events).toContainEqual({ type: "ITEM_USE", player: 0, item: "sword" });
+    expect(types(r.events, "SLASH")).toHaveLength(0);
+    expect(types(r.events, "ITEM_USE")).toHaveLength(0);
+    expect(types(r.events, "HIT")[0]).toMatchObject({ attacker: 0, target: 1, damage: BALANCE.PUNCH_DAMAGE, blocked: false });
+    expect(r.s.fighters[0]!.item).toMatchObject({ kind: "sword" });
+  });
+
+  it("3b. chop: hits at CHOP_REACH, misses beyond, CHOP_DAMAGE, emits SLASH, does not consume", () => {
+    const s = equip(match(), 0, "sword");
+    s.fighters[1]!.x = s.fighters[0]!.x + ARSENAL.CHOP_GAP + ARSENAL.CHOP_REACH - 5 + WORLD.HURTBOX_W / 2;
+    const r = swing(s, { chop: true }, CHOP_TOTAL);
+    expect(r.events).toContainEqual({ type: "SLASH", player: 0, style: "chop" });
+    expect(types(r.events, "PUNCH")).toHaveLength(0);
+    expect(types(r.events, "ITEM_USE")).toHaveLength(0);
+    expect(types(r.events, "HIT")[0]).toMatchObject({ attacker: 0, target: 1, damage: ARSENAL.CHOP_DAMAGE, blocked: false });
+    expect(r.s.fighters[0]!.action).toBeNull();
+    expect(r.s.fighters[0]!.item).toMatchObject({ kind: "sword", uses: ITEMS.sword.uses });
+
+    const far = equip(match(), 0, "sword");
+    far.fighters[1]!.x = far.fighters[0]!.x + ARSENAL.CHOP_GAP + ARSENAL.CHOP_REACH + 5 + WORLD.HURTBOX_W / 2;
+    const m = swing(far, { chop: true }, CHOP_TOTAL);
+    expect(types(m.events, "SLASH")).toHaveLength(1);
+    expect(types(m.events, "HIT")).toHaveLength(0);
+  });
+
+  it("3c. chop crushes guard: a blocking target takes CHOP_GUARD_FRACTION of CHOP_DAMAGE, not chip", () => {
+    const s = equip(match(), 0, "sword");
+    s.fighters[1]!.x = s.fighters[0]!.x + 60;
+    // block long enough to be past the parry window (target has no sword anyway)
+    const pre = stepN(s, ARSENAL.PARRY_WINDOW + 1, [EMPTY_FRAME, F({ block: true })]).s;
+    const r = swing(pre, { chop: true }, CHOP_TOTAL, F({ block: true }));
     const hit = types(r.events, "HIT");
     expect(hit).toHaveLength(1);
-    expect(hit[0]).toMatchObject({ attacker: 0, target: 1, damage: ARSENAL.SWORD_DAMAGE, blocked: false });
-    expect(r.s.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses - 1 });
-    s = r.s;
-    // keep the target from being knocked out of reach
-    for (let k = 2; k <= 5; k++) {
-      s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = BALANCE.MAX_HP;
-      r = swing(s); s = r.s;
-      expect(types(r.events, "ITEM_BREAK")).toHaveLength(0);
-      expect(s.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses - k });
-    }
-    // 6th swing: breaks
-    s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = BALANCE.MAX_HP;
-    r = swing(s); s = r.s;
-    expect(r.events).toContainEqual({ type: "ITEM_BREAK", player: 0, item: "sword" });
-    expect(types(r.events, "HIT")[0]).toMatchObject({ damage: ARSENAL.SWORD_DAMAGE });
-    expect(s.fighters[0]!.item).toBeNull();
-    // 7th: a normal punch, misses at 120 px, no ITEM_USE
-    s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = BALANCE.MAX_HP;
-    r = swing(s);
-    expect(types(r.events, "PUNCH")).toHaveLength(1);
-    expect(types(r.events, "ITEM_USE")).toHaveLength(0);
+    expect(hit[0]).toMatchObject({ damage: Math.round(ARSENAL.CHOP_DAMAGE * ARSENAL.CHOP_GUARD_FRACTION), blocked: true });
+    expect(r.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP - Math.round(ARSENAL.CHOP_DAMAGE * ARSENAL.CHOP_GUARD_FRACTION));
+  });
+
+  it("3d. sweep: wide low hitbox hits at SWEEP_REACH, misses beyond, knockback SWEEP_PUSH x a punch", () => {
+    const s = equip(match(), 0, "sword");
+    s.fighters[1]!.x = s.fighters[0]!.x + ARSENAL.SWEEP_GAP + ARSENAL.SWEEP_REACH - 5 + WORLD.HURTBOX_W / 2;
+    const a = stepN(s, ARSENAL.SWEEP_STARTUP + 1, [F({ sweep: true }), EMPTY_FRAME]);
+    expect(a.events).toContainEqual({ type: "SLASH", player: 0, style: "sweep" });
+    expect(types(a.events, "HIT")[0]).toMatchObject({ attacker: 0, target: 1, damage: ARSENAL.SWEEP_DAMAGE, blocked: false });
+    expect(a.s.fighters[1]!.knockbackVx).toBeCloseTo(ARSENAL.SWEEP_PUSH * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS));
+    expect(a.s.fighters[1]!.hitstun).toBe(BALANCE.HITSTUN_TICKS);
+    const r = swing(s, { sweep: true }, SWEEP_TOTAL);
+    expect(r.s.fighters[0]!.action).toBeNull();
+
+    const far = equip(match(), 0, "sword");
+    far.fighters[1]!.x = far.fighters[0]!.x + ARSENAL.SWEEP_GAP + ARSENAL.SWEEP_REACH + 5 + WORLD.HURTBOX_W / 2;
+    expect(types(swing(far, { sweep: true }, SWEEP_TOTAL).events, "HIT")).toHaveLength(0);
+
+    // a punch's knockback is the baseline
+    const p = equip(match(), 0, "sword");
+    p.fighters[1]!.x = p.fighters[0]!.x + 60;
+    const ph = stepN(p, BALANCE.PUNCH_STARTUP + 1, [F({ punchL: true }), EMPTY_FRAME]);
+    expect(ph.s.fighters[1]!.knockbackVx).toBeCloseTo(BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
+  });
+
+  it("3e. no sword -> chop / sweep edges are ignored", () => {
+    const s = match();
+    s.fighters[1]!.x = s.fighters[0]!.x + 60;
+    const r = stepN(s, CHOP_TOTAL, [F({ chop: true, sweep: true }), EMPTY_FRAME]);
+    expect(types(r.events, "SLASH")).toHaveLength(0);
     expect(types(r.events, "HIT")).toHaveLength(0);
-    expect(r.s.fighters[0]!.action === null || r.s.fighters[0]!.action.kind !== "punch" || !r.s.fighters[0]!.action.sword).toBe(true);
+    expect(r.s.fighters[0]!.action).toBeNull();
+    const sh = equip(match(), 0, "shield");
+    expect(types(stepN(sh, 3, [F({ chop: true }), EMPTY_FRAME]).events, "SLASH")).toHaveLength(0);
+  });
+
+  it("3f. the sword lasts ITEMS.sword.ttl ticks, swings are free, then breaks with ITEM_BREAK; the clock runs while KO'd", () => {
+    const ttl = ITEMS.sword.ttl!;
+    const s = equip(match(), 0, "sword");
+    // the equip tick counts cooldowns before applyEquip; only the release tick has ticked
+    expect(s.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ttl - 1 });
+    s.fighters[1]!.x = s.fighters[0]!.x + 400;
+    // many swings, no uses spent
+    let st = s;
+    for (let k = 0; k < 8; k++) {
+      const r = swing(st, { chop: true }, CHOP_TOTAL); st = r.s;
+      expect(types(r.events, "ITEM_USE")).toHaveLength(0);
+      expect(types(r.events, "ITEM_BREAK")).toHaveLength(0);
+    }
+    expect(st.fighters[0]!.item).toMatchObject({ kind: "sword" });
+    const left = st.fighters[0]!.item!.ticksLeft!;
+    const upTo = stepN(st, left - 1, NONE);
+    expect(upTo.s.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: 1 });
+    const last = step(upTo.s, NONE);
+    expect(last.events).toContainEqual({ type: "ITEM_BREAK", player: 0, item: "sword" });
+    expect(last.state.fighters[0]!.item).toBeNull();
+
+    // KO'd fighter: timer still runs
+    const ko = equip(match(3), 0, "sword");
+    ko.fighters[0]!.hp = 0;
+    const k = stepN(ko, 10, [EMPTY_FRAME, EMPTY_FRAME, EMPTY_FRAME]);
+    expect(k.s.fighters[0]!.item!.ticksLeft).toBe(ttl - 11);
   });
 });
 
@@ -202,7 +271,7 @@ describe("items: parry", () => {
     // one tick after contact the attacker has already counted one hitstun tick
     expect(early.s.fighters[0]!.hitstun).toBe(ARSENAL.PARRY_STUN - 1);
     expect(early.s.fighters[0]!.knockbackVx).toBe(0);
-    expect(early.s.fighters[1]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    expect(early.s.fighters[1]!.item).toMatchObject({ kind: "sword", uses: ITEMS.sword.uses });
 
     const late = parryScenario(10);
     expect(types(late.events, "PARRY")).toHaveLength(0);
@@ -232,7 +301,7 @@ describe("items: shield", () => {
       expect(s.fighters[1]!.hitstun).toBe(0);
       if (n < 3) {
         expect(types(r.events, "ITEM_BREAK")).toHaveLength(0);
-        expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 3 - n });
+        expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 3 - n, ticksLeft: null });
       } else {
         const idx = r.events.findIndex((e) => e.type === "SHIELD_ABSORB");
         const brk = r.events.findIndex((e) => e.type === "ITEM_BREAK");
@@ -251,7 +320,7 @@ describe("items: shield", () => {
     o.fighters[1]!.x = WORLD.WIDTH;
     o = stepN(o, BALANCE.OOB_EVERY_TICKS, [EMPTY_FRAME, F({ right: true })]).s;
     expect(o.fighters[1]!.hp).toBe(BALANCE.MAX_HP - BALANCE.OOB_DAMAGE);
-    expect(o.fighters[1]!.item).toEqual({ kind: "shield", uses: 3 });
+    expect(o.fighters[1]!.item).toEqual({ kind: "shield", uses: 3, ticksLeft: null });
 
     // applyDamage routes laser and hazard through the shield, never pit
     const d = equip(match(), 1, "shield");
@@ -262,7 +331,7 @@ describe("items: shield", () => {
     expect(types(ev, "SHIELD_ABSORB").map((e) => (e as { left: number }).left)).toEqual([2, 1]);
     expect(applyDamage(d, 1, 8, "pit", null, ev)).toEqual({ absorbed: false });
     expect(d.fighters[1]!.hp).toBe(BALANCE.MAX_HP - 8);
-    expect(d.fighters[1]!.item).toEqual({ kind: "shield", uses: 1 });
+    expect(d.fighters[1]!.item).toEqual({ kind: "shield", uses: 1, ticksLeft: null });
   });
 });
 

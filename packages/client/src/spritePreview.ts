@@ -11,15 +11,15 @@ import { drawFighter } from "./game/rig/draw";
 import { FRAME_H, SPRITE_SCALE } from "./game/sprites/compose";
 import { SpriteFighter } from "./game/sprites/SpriteFighter";
 
-type StateId = "idle" | "walk" | "jump" | "punch" | "block" | "hit" | "ko" | "win" | "throw" | "laser";
-const STATES: StateId[] = ["idle", "walk", "jump", "punch", "block", "hit", "ko", "win", "throw", "laser"];
+type StateId = "idle" | "walk" | "jump" | "punch" | "block" | "hit" | "ko" | "win" | "throw" | "laser" | "chop" | "sweep";
+const STATES: StateId[] = ["idle", "walk", "jump", "punch", "block", "hit", "ko", "win", "throw", "laser", "chop", "sweep"];
 const VECTOR = new URLSearchParams(location.search).get("rig") === "vector";
 
 /** Column widths in px (the KO sprawl and the punch reach need room) and where the feet sit in the column. */
 const COLUMN: Record<StateId, { w: number; anchor: number }> = {
   idle: { w: 130, anchor: 0.5 }, walk: { w: 130, anchor: 0.5 }, jump: { w: 130, anchor: 0.5 }, punch: { w: 160, anchor: 0.4 },
   block: { w: 130, anchor: 0.5 }, hit: { w: 130, anchor: 0.5 }, ko: { w: 230, anchor: 0.65 }, win: { w: 130, anchor: 0.5 },
-  throw: { w: 160, anchor: 0.4 }, laser: { w: 130, anchor: 0.5 },
+  throw: { w: 160, anchor: 0.4 }, laser: { w: 130, anchor: 0.5 }, chop: { w: 150, anchor: 0.4 }, sweep: { w: 170, anchor: 0.4 },
 };
 /** With `?rig=vector` every column doubles: the vector rig is drawn in the right half. */
 const VECTOR_EXTRA = VECTOR ? 150 : 0;
@@ -152,7 +152,7 @@ function fakeState(cell: Cell, facing: 1 | -1, now: number, frame: number): { f:
   // posed at a safe world x (cells past WORLD.WIDTH would read as offbounds), then translated into the cell
   const base: FighterState = { ...createMatch().fighters[0]!, character: cell.character, x: WORLD.WIDTH / 2, y: cell.groundY, facing };
   const item: ItemId | null = ui.item || cell.item;
-  if (item) base.item = { kind: item, uses: 1 };
+  if (item) base.item = { kind: item, uses: 1, ticksLeft: null };
   const clock: Clock = { renderMs: now, koFrames: 0, landFrames: 0 };
   const pins = ui.pins;
   const cycle = (n: number, ms: number): number => Math.floor((now / ms) % n);
@@ -182,13 +182,24 @@ function fakeState(cell: Cell, facing: 1 | -1, now: number, frame: number): { f:
       const kind = item === "banana" ? "banana" : "molotov";
       const released = elapsed >= ARSENAL.THROW_STARTUP;
       poseF = { ...base, action: { kind: "punch", arm: "R", elapsed: Math.min(elapsed, punchTotal - 1), landed: false, sword: false } };
-      drawF = { ...base, item: released ? null : { kind, uses: 1 }, action: { kind: "throw", item: kind, arm: "R", phase: "release", charge: 0, elapsed, released } };
+      drawF = { ...base, item: released ? null : { kind, uses: 1, ticksLeft: null }, action: { kind: "throw", item: kind, arm: "R", phase: "release", charge: 0, elapsed, released } };
       break;
     }
     case "laser": {
       const elapsed = pins.laser ?? cycle(ARSENAL.LASER_CHARGE + ARSENAL.LASER_ACTIVE + ARSENAL.LASER_RECOVERY, 40);
       poseF = { ...base, blocking: true };
       drawF = { ...base, action: { kind: "laser", elapsed, hit: [] } };
+      break;
+    }
+    // 9.10: the sword slashes, slowed 4x (cycle step 80 ms per tick) so the arc can be read; held sword
+    case "chop":
+    case "sweep": {
+      const style = cell.state;
+      const total = style === "chop"
+        ? ARSENAL.CHOP_STARTUP + ARSENAL.CHOP_ACTIVE + ARSENAL.CHOP_RECOVERY
+        : ARSENAL.SWEEP_STARTUP + ARSENAL.SWEEP_ACTIVE + ARSENAL.SWEEP_RECOVERY;
+      const elapsed = Math.min(pins[style] ?? cycle(total + 6, 80), total - 1);
+      poseF = { ...base, item: { kind: "sword", uses: 0, ticksLeft: 600 }, action: { kind: "slash", style, elapsed, landed: false } };
       break;
     }
   }

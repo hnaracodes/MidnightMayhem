@@ -11,7 +11,7 @@ import Phaser from "phaser";
 import {
   EMPTY_FRAME, MAPS, PIT, TICK, WORLD, createMatch, groundYAt, hazardRect, hurtbox, isActivePunch, laserHitbox,
   punchHitbox, risingEdges, step,
-  type FighterState, type InputFrame, type MapId, type MatchState, type PlayerIndex, type SimEvent, type TrainCar,
+  type FighterState, type InputFrame, type ItemId, type MapId, type MatchState, type PlayerIndex, type SimEvent, type TrainCar,
 } from "@midnight/shared";
 import { attractInputs, attractSetup, drawOrder, fighterAlpha, fireLoopTransition, posedFighter } from "./arenaGlue";
 import { ROOF_INDEX, applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
@@ -37,6 +37,17 @@ const DEPTH = { SHADOW: 1, RIG0: 2, RIG_STEP: 0.4, DEBUG: 9, DAZZLE: 12 } as con
 const DEBUG_TEXT = { X: 20, Y: 84, SIZE: 11 } as const;
 /** Exponential moving average weight for the update() cost readout. */
 const BUDGET_EMA = 0.05;
+/**
+ * 9.10: tell the local input source what the sim says the local fighter holds, so the vision lane can gate wind-up
+ * (throwables) and slash (sword) gestures on sim truth. Optional: only the vision source implements `setHeldItem`.
+ */
+export function feedHeldItem(source: unknown, item: ItemId | null): void {
+  if (source && typeof source === "object" && "setHeldItem" in source) {
+    const fn = (source as { setHeldItem?: unknown }).setHeldItem;
+    if (typeof fn === "function") fn.call(source, item);
+  }
+}
+
 /** Attract mode steps the sim at most this many ticks per render frame (a hidden tab must not spiral). */
 const ATTRACT_MAX_STEPS = 5;
 /** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
@@ -206,6 +217,7 @@ export class ArenaScene extends Phaser.Scene {
     const hands = (i: PlayerIndex): HandPoint => this.handOf(i, newest);
     this.effects.consume(events, state, newest);
     this.itemFx.consume(events, newest, hands);
+    feedHeldItem(session.localSource, newest.fighters[session.localIndex]?.item?.kind ?? null);
     if (!attracting) {
       session.sfx?.consume(events, newest);
       const nowHas = newest.hazards.some((h) => h.kind === "fire");

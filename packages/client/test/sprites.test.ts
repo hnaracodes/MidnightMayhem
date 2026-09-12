@@ -166,7 +166,7 @@ describe("rule 3: facing left is a pixel-for-pixel mirror", () => {
     () => ({ blocking: true }),
     () => ({ hitstun: 8 }),
     () => ({ hp: 0 }),
-    () => ({ item: { kind: "sword", uses: 6 } }),
+    () => ({ item: { kind: "sword", uses: 6, ticksLeft: null } }),
   ];
   for (const id of CHARACTERS) {
     states.forEach((over, i) => {
@@ -236,7 +236,7 @@ describe("rule 6: items ride the front hand or the back", () => {
   const handItems: ItemId[] = ["molotov", "sword", "banana", "flash"];
   for (const kind of handItems) {
     it(`${kind} is centred on the front fist`, () => {
-      const f = base({ character: "drifter", item: { kind, uses: 1 } });
+      const f = base({ character: "drifter", item: { kind, uses: 1, ticksLeft: null } });
       const joints = computePose(f, clock);
       const c = createFrameCanvas();
       composeFrame(c, joints, f, "drifter", OPTS);
@@ -253,7 +253,7 @@ describe("rule 6: items ride the front hand or the back", () => {
   }
 
   it("the backpack is drawn behind the torso at the back shoulder", () => {
-    const f = base({ character: "conductor", item: { kind: "shield", uses: 3 } });
+    const f = base({ character: "conductor", item: { kind: "shield", uses: 3, ticksLeft: null } });
     const joints = computePose(f, clock);
     const c = createFrameCanvas();
     composeFrame(c, joints, f, "conductor", OPTS);
@@ -271,7 +271,7 @@ describe("rule 6: items ride the front hand or the back", () => {
   });
 
   it("itemVisible: false draws no item", () => {
-    const f = base({ character: "stoker", item: { kind: "sword", uses: 6 } });
+    const f = base({ character: "stoker", item: { kind: "sword", uses: 6, ticksLeft: null } });
     const hidden = frame(f, { itemVisible: false });
     const bare = frame(base({ character: "stoker" }));
     expect(hidden.data).toEqual(bare.data);
@@ -378,7 +378,7 @@ describe("every character × state composes without throwing", () => {
     ["hit", { hitstun: 6 }, {}],
     ["ko", { hp: 0 }, { koFrames: 30 }],
     ["win", {}, { win: true }],
-    ["throw", { action: { kind: "throw", item: "molotov", arm: "R", phase: "release", charge: 0, elapsed: 3, released: false }, item: { kind: "molotov", uses: 2 } }, {}],
+    ["throw", { action: { kind: "throw", item: "molotov", arm: "R", phase: "release", charge: 0, elapsed: 3, released: false }, item: { kind: "molotov", uses: 2, ticksLeft: null } }, {}],
     ["laser", { action: { kind: "laser", elapsed: 10, hit: [] } }, {}],
   ];
   for (const id of CHARACTERS as readonly CharacterId[]) {
@@ -386,7 +386,7 @@ describe("every character × state composes without throwing", () => {
       for (const facing of [1, -1] as const) {
         for (const item of [null, "sword", "shield"] as const) {
           it(`${id} ${name} facing ${facing} item ${item}`, () => {
-            const f = base({ character: id, ...over, facing, item: item ? { kind: item, uses: 1 } : null });
+            const f = base({ character: id, ...over, facing, item: item ? { kind: item, uses: 1, ticksLeft: null } : null });
             const c = frame(f, {}, { ...clock, ...clk });
             const b = bounds(c);
             expect(b.y1).toBeLessThanOrEqual(ANCHOR.y);

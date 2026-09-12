@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Baseline } from "../src/vision/calibration";
 import { Laser } from "../src/vision/gestures/laser";
 import { computeMetrics, createMetricBuffers, type Metrics } from "../src/vision/metrics";
-import { LASER_DEBOUNCE_OFF, LASER_DEBOUNCE_ON, LASER_EXT, LASER_GAP } from "../src/vision/thresholds";
+import { LASER_DEBOUNCE_OFF, LASER_DEBOUNCE_ON } from "../src/vision/thresholds";
 import type { Landmark } from "../src/vision/workerClient";
 
 const FRAME = 33;
@@ -10,15 +10,16 @@ const FRAME = 33;
 function metrics(o: Partial<Metrics> = {}): Metrics {
   return {
     lean: 0, riseHip: 0, riseShoulder: 0, midX: 0.5, crossed: false,
-    extL: 1, extR: 1, depthL: 0, depthR: 0, atHeightL: false, atHeightR: false,
+    extL: 1, extR: 1, depthL: 0, depthR: 0, atHeightL: false, atHeightR: false, wristHeightL: 0, wristHeightR: 0,
     thrustL: false, thrustR: false, dropL: 0, dropR: 0, sideL: 0, sideR: 0, jabRiseL: 0, jabRiseR: 0,
     wristGap: 2, guard: false,
+    elbowL: 180, elbowR: 180, raiseL: -2, raiseR: -2, noseDropL: 2.75, noseDropR: 2.75, wristXL: -0.5, wristXR: 0.5,
     ...o,
   };
 }
 
-/** Both arms thrust forward together: short extensions, at height, wrists close. */
-const BEAM = metrics({ extL: 0.4, extR: 0.4, atHeightL: true, atHeightR: true, wristGap: 0.3 });
+/** The player's right hand moves outward quickly; no left-hand pose is needed. */
+const RIGHT_SPECIAL = metrics({ sideR: 0.8, jabRiseR: 0.4 });
 
 function run(laser: Laser, m: Metrics, n: number, t0 = 0): boolean[] {
   const out: boolean[] = [];
@@ -27,53 +28,59 @@ function run(laser: Laser, m: Metrics, n: number, t0 = 0): boolean[] {
 }
 
 describe("Laser gesture", () => {
-  it("both ext 0.4, both at height, gap 0.3 turns on after LASER_DEBOUNCE_ON frames", () => {
+  it("a fast rightward hand motion turns special on after debounce", () => {
     const laser = new Laser();
-    const out = run(laser, BEAM, LASER_DEBOUNCE_ON + 1);
+    const out = run(laser, RIGHT_SPECIAL, LASER_DEBOUNCE_ON + 1);
     expect(out.slice(0, LASER_DEBOUNCE_ON - 1).every((v) => v === false)).toBe(true);
     expect(out[LASER_DEBOUNCE_ON - 1]).toBe(true);
     expect(out[LASER_DEBOUNCE_ON]).toBe(true);
     expect(LASER_DEBOUNCE_ON).toBe(2);
   });
 
-  it("one arm at ext 0.9 turns it off after LASER_DEBOUNCE_OFF frames", () => {
+  it("the special pulse turns off after the rightward motion ends", () => {
     const laser = new Laser();
-    run(laser, BEAM, LASER_DEBOUNCE_ON);
-    const off = run(laser, metrics({ ...BEAM, extR: 0.9 }), LASER_DEBOUNCE_OFF + 1, 1000);
+    run(laser, RIGHT_SPECIAL, LASER_DEBOUNCE_ON);
+    const off = run(laser, metrics({ sideR: 0.8, jabRiseR: 0 }), LASER_DEBOUNCE_OFF + 1, 1000);
     expect(off.slice(0, LASER_DEBOUNCE_OFF - 1).every((v) => v === true)).toBe(true);
     expect(off[LASER_DEBOUNCE_OFF - 1]).toBe(false);
     expect(off[LASER_DEBOUNCE_OFF]).toBe(false);
     expect(LASER_DEBOUNCE_OFF).toBe(3);
   });
 
-  it("a single-arm punch pose never sets it", () => {
+  it("a forward right-hand punch never sets special", () => {
     const laser = new Laser();
-    const punchL = metrics({ extL: 0.4, atHeightL: true, extR: 1.0, atHeightR: false, wristGap: 1.5 });
-    expect(run(laser, punchL, 10).some(Boolean)).toBe(false);
-    const punchR = metrics({ extR: 0.4, atHeightR: true, extL: 1.0, atHeightL: false, wristGap: 1.5 });
-    expect(run(laser, punchR, 10).some(Boolean)).toBe(false);
+    const forwardPunch = metrics({ extR: 0.4, depthR: 0.5, thrustR: true });
+    expect(run(laser, forwardPunch, 10).some(Boolean)).toBe(false);
   });
 
-  it("requires the wrists to be together: arms out at height but a wide gap is not a beam", () => {
-    const laser = new Laser();
-    const wide = metrics({ ...BEAM, wristGap: LASER_GAP + 0.1 });
-    expect(run(laser, wide, 10).some(Boolean)).toBe(false);
-    const narrow = metrics({ ...BEAM, wristGap: LASER_GAP - 0.1 });
-    expect(run(laser, narrow, 10).some(Boolean)).toBe(true);
+  it("the left hand and a slow or held-out right hand never set special", () => {
+    expect(run(new Laser(), metrics({ sideL: 0.8, jabRiseL: 0.4 }), 10).some(Boolean)).toBe(false);
+    expect(run(new Laser(), metrics({ sideR: 0.8, jabRiseR: 0.2 }), 10).some(Boolean)).toBe(false);
+    expect(run(new Laser(), metrics({ sideR: 0.8, jabRiseR: 0 }), 10).some(Boolean)).toBe(false);
   });
 
-  it("requires both arms at height and both extensions below LASER_EXT", () => {
+  it("allows the rightward motion one shoulder-width above or below shoulder level", () => {
+    const high = {
+      ...RIGHT_SPECIAL, wristHeightR: -0.9,
+    } as Metrics;
+    const low = {
+      ...RIGHT_SPECIAL, wristHeightR: 0.9,
+    } as Metrics;
+    expect(run(new Laser(), high, 10).some(Boolean)).toBe(true);
+    expect(run(new Laser(), low, 10).some(Boolean)).toBe(true);
+  });
+
+  it("rejects the former two-hand Kamehameha pose", () => {
     const laser = new Laser();
-    expect(run(laser, metrics({ ...BEAM, atHeightL: false }), 10).some(Boolean)).toBe(false);
-    expect(run(laser, metrics({ ...BEAM, extL: LASER_EXT + 0.05 }), 10).some(Boolean)).toBe(false);
-    expect(run(laser, metrics({ ...BEAM, extL: LASER_EXT - 0.05 }), 10).some(Boolean)).toBe(true);
+    const straightForward = metrics({ extL: 0.4, extR: 0.4, atHeightL: true, atHeightR: true, wristGap: 0.3 });
+    expect(run(laser, straightForward, 10).some(Boolean)).toBe(false);
   });
 
   it("reset drops the output and the debounce", () => {
     const laser = new Laser();
-    run(laser, BEAM, LASER_DEBOUNCE_ON);
+    run(laser, RIGHT_SPECIAL, LASER_DEBOUNCE_ON);
     laser.reset();
-    expect(laser.update(BEAM, 5000)).toBe(false);
+    expect(laser.update(RIGHT_SPECIAL, 5000)).toBe(false);
   });
 });
 

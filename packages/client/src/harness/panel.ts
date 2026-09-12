@@ -1,10 +1,10 @@
 import { INPUT_KEYS, ITEMS } from "@midnight/shared";
-import type { DebugFrame, PunchDiag, RecorderSample } from "../vision/VisionInputSource";
+import type { DebugFrame, PunchDiag, RecorderSample, SlashDiag, WindupDiag } from "../vision/VisionInputSource";
 import type { Metrics } from "../vision/metrics";
 import {
   AT_HEIGHT, DEPTH_ENTER_NO_HAND, DEPTH_EXIT, EXT_ENTER, EXT_EXIT, JAB_EXIT, JAB_EXT, JAB_RISE, JAB_WINDOW_MS,
-  JUMP_LAND, JUMP_RISE, LEAN_ENTER, LEAN_EXIT, RECORDER_SECONDS, SIDE_JAB_ENABLED, THRUST_DROP, THRUST_ENABLED,
-  THRUST_WINDOW_MS,
+  CHOP_DROP, CHOP_EXT, JUMP_LAND, JUMP_RISE, LEAN_ENTER, LEAN_EXIT, RECORDER_SECONDS, SIDE_JAB_ENABLED, SWEEP_TRAVEL,
+  THRUST_DROP, THRUST_ENABLED, THRUST_WINDOW_MS, WINDUP_ELBOW_DEG, WINDUP_RAISE,
 } from "../vision/thresholds";
 import type { WorkerStats } from "../vision/workerClient";
 
@@ -60,6 +60,33 @@ export function punchGateRows(d: PunchDiag): GateRow[] {
   );
   return rows;
 }
+
+/** 9.10 wind-up row for one arm: elbow angle, raise and the active flag. Exported for tests. */
+export function windupGateRows(d: WindupDiag): GateRow[] {
+  return [
+    { label: "elbow", value: `${d.elbow.toFixed(0)}° ≤ ${WINDUP_ELBOW_DEG}`, pass: d.elbow <= WINDUP_ELBOW_DEG },
+    { label: "raise", value: `${d.raise.toFixed(2)} ≥ ${WINDUP_RAISE}`, pass: d.raise >= WINDUP_RAISE },
+    { label: "windup", value: d.active ? "ACTIVE" : d.released ? "released" : "—", pass: d.active },
+  ];
+}
+
+/** 9.10 slash row for one arm: the chop and sweep gates and their pulses. Exported for tests. */
+export function slashGateRows(d: SlashDiag): GateRow[] {
+  return [
+    { label: "aboveNose", value: d.aboveNose ? "yes" : "no", pass: d.aboveNose },
+    { label: "chopDrop", value: `${d.chopDrop.toFixed(2)} ≥ ${CHOP_DROP}`, pass: d.chopDrop >= CHOP_DROP },
+    { label: "chopExt", value: `ext > ${CHOP_EXT}`, pass: d.chopExt },
+    { label: "sweepTravel", value: `${d.sweepTravel.toFixed(2)} ≥ ${SWEEP_TRAVEL}`, pass: d.sweepTravel >= SWEEP_TRAVEL },
+    { label: "sweepCross", value: d.sweepCross ? "crossed" : "—", pass: d.sweepCross },
+    { label: "slash", value: d.chop ? "CHOP" : d.sweep ? "SWEEP" : d.exclusive ? "exclusive" : "—", pass: d.chop || d.sweep },
+  ];
+}
+
+const IDLE_WINDUP: WindupDiag = { elbow: 180, raise: 0, bent: false, released: false, active: false };
+const IDLE_SLASH: SlashDiag = {
+  aboveNose: false, chopDrop: 0, chopExt: false, sweepTravel: 0, sweepCross: false, chop: false, sweep: false,
+  exclusive: false,
+};
 
 const IDLE_DIAG: PunchDiag = {
   ext: 0, depth: 0, drop: 0, atHeight: false, extOk: false, depthOk: false, thrustOk: false, jabOk: false,
@@ -219,9 +246,16 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
     col.append(el("h3", undefined, arm === "L" ? "Left arm" : "Right arm"));
     const rowsEl = el("div", "gates");
     const why = el("div", "why", "—");
-    col.append(rowsEl, why);
+    const windupEl = el("div", "gates windup");
+    const slashEl = el("div", "gates slash");
+    col.append(rowsEl, why, el("h3", undefined, "Wind-up (9.10)"), windupEl, el("h3", undefined, "Slash (9.10)"), slashEl);
     armGrid.append(col);
-    return { arm, rowsEl, why, rows: [] as { row: HTMLDivElement; val: HTMLSpanElement; res: HTMLSpanElement }[] };
+    return {
+      arm, rowsEl, why, windupEl, slashEl,
+      rows: [] as { row: HTMLDivElement; val: HTMLSpanElement; res: HTMLSpanElement }[],
+      windupRows: [] as { row: HTMLDivElement; val: HTMLSpanElement; res: HTMLSpanElement }[],
+      slashRows: [] as { row: HTMLDivElement; val: HTMLSpanElement; res: HTMLSpanElement }[],
+    };
   });
   punch.append(armGrid);
 
@@ -287,6 +321,31 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
     a.why.textContent = d ? punchWhyNot(d) : "not ready";
   }
 
+  type RowEls = { row: HTMLDivElement; val: HTMLSpanElement; res: HTMLSpanElement }[];
+  function renderRows(host: HTMLDivElement, rows: RowEls, gates: GateRow[], ready: boolean): RowEls {
+    if (rows.length !== gates.length) {
+      host.replaceChildren();
+      rows = gates.map((g) => {
+        const row = el("div", "gate");
+        const name = el("span", "name", g.label);
+        const val = el("span", "val");
+        const res = el("span", "res");
+        row.append(name, val, res);
+        host.append(row);
+        return { row, val, res };
+      });
+    }
+    gates.forEach((g, i) => {
+      const r = rows[i];
+      if (!r) return;
+      r.val.textContent = ready ? g.value : "—";
+      r.res.textContent = ready ? (g.pass ? "PASS" : "FAIL") : "—";
+      r.row.toggleAttribute("data-pass", g.pass);
+      r.row.toggleAttribute("data-idle", !ready);
+    });
+    return rows;
+  }
+
   const zero = (g: GaugeSpec) => pct(0, g.min, g.max);
 
   return {
@@ -331,7 +390,13 @@ export function createPanel(root: HTMLElement, opts: PanelOptions = {}): Panel {
       }
       for (const { k, b } of boolEls) b.toggleAttribute("data-on", m ? (m[k] as boolean) : false);
 
-      for (const a of arms) renderArm(a, f.punch?.[a.arm]);
+      for (const a of arms) {
+        renderArm(a, f.punch?.[a.arm]);
+        const w = f.windup?.[a.arm];
+        a.windupRows = renderRows(a.windupEl, a.windupRows, windupGateRows(w ?? IDLE_WINDUP), !!w);
+        const sl = f.slash?.[a.arm];
+        a.slashRows = renderRows(a.slashEl, a.slashRows, slashGateRows(sl ?? IDLE_SLASH), !!sl);
+      }
     },
   };
 }

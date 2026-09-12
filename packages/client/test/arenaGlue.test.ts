@@ -106,3 +106,12 @@ describe("fighterAlpha", () => {
     expect(fighterAlpha({ invuln: 0, pitTicks: 12 })).toBe(0);
   });
 });
+
+describe("9.10 attract inputs carry the slash fields", () => {
+  it("every attract frame spells chop and sweep false", () => {
+    for (const frame of attractInputs(200, 4)) {
+      expect(frame.chop).toBe(false);
+      expect(frame.sweep).toBe(false);
+    }
+  });
+});

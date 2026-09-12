@@ -71,8 +71,14 @@ const PARRY_SHAKE_PX = 2;
 const CHEST_ABOVE_FEET = 63; // 13.00: 90 × 0.7
 const IMPACT_OFFSET = 14;
 const IMPACT_LENGTHS = [26, 16, 22, 14, 26, 18, 20, 14] as const;
-const SLASH_REACH = ARSENAL.SWORD_REACH;
+/** 9.10: the crescent's radius per slash style, from the sim's reach numbers. */
+const SLASH_REACH: Record<"chop" | "sweep", number> = { chop: ARSENAL.CHOP_REACH, sweep: ARSENAL.SWEEP_REACH };
 const SLASH_SWEEP = Math.PI / 3; // 60°
+/** 9.10: chop sweeps the crescent through the vertical (top → strike); sweep runs it flat across the front. */
+export const SLASH_ORIENTATION: Record<"chop" | "sweep", { start: number; span: number }> = {
+  chop: { start: -Math.PI / 2, span: SLASH_SWEEP * 2 },
+  sweep: { start: -SLASH_SWEEP / 4, span: SLASH_SWEEP / 2 },
+};
 const BARRIER_W = 49;  // 13.00: 70 × 0.7
 const BARRIER_H = 105; // 13.00: 150 × 0.7 (head height)
 const BARRIER_ALPHA = 0.35;
@@ -318,12 +324,13 @@ export class ItemFx {
         this.spawn(FRAMES.IMPACT, DEPTH.FX, (g, t) => drawImpact(g, at, t));
         break;
       }
-      case "PUNCH": {
+      case "SLASH": {
         const f = newest.fighters[event.player];
-        if (!f || !holdsSword(f)) break;
+        if (!f) break;
         const origin = { x: f.x, y: f.y - CHEST_ABOVE_FEET };
         const facing = f.facing;
-        this.spawn(FRAMES.SLASH, DEPTH.FX, (g, t) => drawSlash(g, origin, facing, t));
+        const style = event.style;
+        this.spawn(FRAMES.SLASH, DEPTH.FX, (g, t) => drawSlash(g, origin, facing, t, style));
         break;
       }
       case "PARRY": {
@@ -574,11 +581,6 @@ function impactPoint(f: FighterState): Pt {
   return { x: c.x + f.facing * (BARRIER_W / 2), y: f.y - CHEST_ABOVE_FEET };
 }
 
-function holdsSword(f: FighterState): boolean {
-  // The last swing breaks the sword in the same tick (item null + ITEM_BREAK), so the action flag also counts.
-  return f.item?.kind === "sword" || (f.action?.kind === "punch" && f.action.sword);
-}
-
 // ---- pure drawing helpers (world coordinates) ----
 
 /** 9.08 rule 3: 24 particles implode from a 60 px ring over 20 frames, then a moon disc r 14 fading over 6. */
@@ -652,13 +654,19 @@ function drawImpact(g: Graphics, at: Pt, t: number): void {
   g.fillCircle(at.x, at.y, 10 * s);
 }
 
-/** Rule 3: a 60° moon arc 130 px in front of the chest, sweeping top → bottom over 3 frames. */
-function drawSlash(g: Graphics, origin: Pt, facing: Facing, t: number): void {
-  const centre = facing === 1 ? -SLASH_SWEEP / 2 : Math.PI - SLASH_SWEEP / 2; // toward the facing side
-  const start = centre;
-  const end = centre + SLASH_SWEEP * Math.min(1, 0.4 + t);
-  const outer = SLASH_REACH;
-  const inner = SLASH_REACH - 22;
+/** The slash crescent's arc in screen angles for `style` and `facing`: chop vertical (overhead → strike), sweep flat. */
+export function slashArc(style: "chop" | "sweep", facing: Facing, t: number): { start: number; end: number } {
+  const o = SLASH_ORIENTATION[style];
+  const start = facing === 1 ? o.start : Math.PI - o.start;
+  const span = o.span * Math.min(1, 0.4 + t) * (facing === 1 ? 1 : -1);
+  return { start, end: start + span };
+}
+
+/** Rule 3: a moon arc in front of the chest over 3 frames — 9.10: vertical for a chop, horizontal for a sweep. */
+function drawSlash(g: Graphics, origin: Pt, facing: Facing, t: number, style: "chop" | "sweep" = "sweep"): void {
+  const { start, end } = slashArc(style, facing, t);
+  const outer = SLASH_REACH[style];
+  const inner = outer - 22;
   const segments = 12;
   const pts: Pt[] = [];
   for (let k = 0; k <= segments; k += 1) {

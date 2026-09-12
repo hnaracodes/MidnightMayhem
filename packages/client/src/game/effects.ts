@@ -48,6 +48,13 @@ const KO_TIME_SCALE = 0.25;
 const SQUASH_Y = 0.94; // vertical; the drawer widens by the inverse (≈ 1.06)
 const SHAKE_PX = 3;
 const SHAKE_MIN_DAMAGE = BALANCE.PUNCH_DAMAGE; // a clean punch shakes; chip never does
+/** 9.10: a landed chop is the heaviest hit — a longer, larger shake and a stronger nudge. */
+export const CHOP_HIT = { SHAKE_SCALE: 2, NUDGE_SCALE: 2, EXTRA_HITSTOP: 2 } as const;
+
+/** 9.10: whether `attacker` is landing a chop right now (the sim's HIT event carries no style, the action does). */
+export function isChopHit(attacker: { action: { kind: string; style?: string } | null } | undefined): boolean {
+  return attacker?.action?.kind === "slash" && attacker.action.style === "chop";
+}
 const CHEST_ABOVE_FEET = 63; // 13.00: 90 × 0.7
 /** 12.02 rule 7: a clean hit lights the roof around the impact for four frames. */
 const IMPACT_LIGHT = { r: 90, intensity: 0.7, frames: 4 } as const;
@@ -265,7 +272,8 @@ export class Effects {
           this.flashBlocked[event.target] = true;
           this.spawn(FRAMES.BLOCK_RING, (g, t) => drawBlockRing(g, at, t));
         } else {
-          this.freezeFrames = FRAMES.HIT_STOP;
+          const chop = isChopHit(attacker);
+          this.freezeFrames = FRAMES.HIT_STOP + (chop ? CHOP_HIT.EXTRA_HITSTOP : 0);
           this.frozenSnap = structuredClone(newest.fighters);
           this.flashFrames[event.target] = FRAMES.FLASH_WHITE + FRAMES.FLASH_DANGER;
           this.flashBlocked[event.target] = false;
@@ -275,9 +283,9 @@ export class Effects {
           const specks = sparkSpecks(this.rng, punchDir);
           this.spawn(FRAMES.SPARKS, (g, t) => drawSparks(g, at, specks, t));
           this.spawn(FRAMES.RING, (g, t) => drawRing(g, at, t));
-          this.nudge(toward * NUDGE_PX);
+          this.nudge(toward * NUDGE_PX * (chop ? CHOP_HIT.NUDGE_SCALE : 1));
           this.lights?.pulse({ x: at.x, y: at.y, r: IMPACT_LIGHT.r, color: P.amber1, intensity: IMPACT_LIGHT.intensity }, IMPACT_LIGHT.frames);
-          if (event.damage >= SHAKE_MIN_DAMAGE) this.shake();
+          if (event.damage >= SHAKE_MIN_DAMAGE) this.shake(chop ? CHOP_HIT.SHAKE_SCALE : 1);
         }
         break;
       }
@@ -308,13 +316,13 @@ export class Effects {
     }
   }
 
-  private shake(): void {
-    const ix = SHAKE_PX / WORLD.WIDTH;
-    const iy = SHAKE_PX / WORLD.HEIGHT;
+  private shake(scale = 1): void {
+    const ix = (SHAKE_PX * scale) / WORLD.WIDTH;
+    const iy = (SHAKE_PX * scale) / WORLD.HEIGHT;
     // Intensity starts at 0 and is set per update from the callback (which Phaser runs before it
     // computes the offset), giving a 3 px amplitude that decays to 0 over the 6 frames.
     this.scene.cameras.main.shake(
-      FRAMES.SHAKE * FRAME_MS,
+      FRAMES.SHAKE * scale * FRAME_MS,
       0,
       true,
       (camera: Phaser.Cameras.Scene2D.Camera, progress: number) => {

@@ -55,10 +55,10 @@ describe("message handlers", () => {
 
   it("requires HELLO before READY or INPUT and stores input after joining", () => {
     const { ctx, conn, sent } = setup();
-    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null } }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null, chop: false, sweep: false } }));
     expect(sent.at(-1)).toEqual(expect.objectContaining({ type: "ERROR", code: "NOT_IN_ROOM" }));
     handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE", protocolVersion: 2 }));
-    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null } }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null, chop: false, sweep: false } }));
     expect(conn.room?.inputs()[0]!.left).toBe(true);
   });
 

@@ -1,4 +1,4 @@
-import { DEFAULT_LOADOUT, PROTOCOL_VERSION, type LobbyPlayer, type MatchConfig, type PlayerIndex } from "@midnight/shared";
+import { CHARACTERS, DEFAULT_LOADOUT, PROTOCOL_VERSION, type LobbyPlayer, type MatchConfig, type PlayerIndex } from "@midnight/shared";
 import { PAUSED_BANNER, pausedByVisibility, showBanner } from "./app/banner";
 import { CalibrationOverlay } from "./app/calibrationOverlay";
 import { CameraPreview, debugFanOut } from "./app/cameraPreview";
@@ -238,7 +238,7 @@ client.on("LOBBY", (message) => {
   const landingEl = document.getElementById("landing");
   const lobbyEl = document.getElementById("lobby");
   const entering = (landingEl && !landingEl.hidden) || (lobbyEl?.hidden ?? false);
-  if (entering) void irisWipe(session.reducedMotion, () => { landing.hide(); renderRoom(); });
+  if (entering) void irisWipe(session.reducedMotion, () => { landing.hide(); session.attract = CHARACTERS; renderRoom(); });
   else renderRoom();
   if (sourceChoice === "vision" && !autoCameraDone) {
     autoCameraDone = true;
@@ -277,6 +277,7 @@ client.on("SNAPSHOT", (message) => {
   if (matchRunning) {
     const lobbyEl = document.getElementById("lobby");
     if (lobbyEl && !lobbyEl.hidden) void irisWipe(session.reducedMotion, () => lobby.hide());
+    session.attract = null;
   }
   // Rule 6: the preview comes up with every match on a camera player and goes away with the result screen.
   if (matchRunning && !wasRunning && session.visionAvailable) preview.show();

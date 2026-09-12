@@ -1,5 +1,5 @@
 import { EMPTY_FRAME, framesEqual, type InputFrame, type InputKey } from "@midnight/shared";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   VisionInputSource, createPipeline, processLandmarks, type DebugFrame, type Pipeline,
 } from "../src/vision/VisionInputSource";
@@ -16,8 +16,15 @@ import {
   LEAN_EXIT,
   RELOST_MS,
   THRUST_WINDOW_MS,
+  WINDUP_ELBOW_DEG,
+  WINDUP_OFF,
+  WINDUP_ON,
+  WINDUP_RAISE,
 } from "../src/vision/thresholds";
 import type { Landmark, ObjectBox, PoseResult, ResultMessage } from "../src/vision/workerClient";
+
+// The wind-up ships disabled (owner: throwables are use-only); these tests exercise it with the flag on.
+vi.mock("../src/vision/thresholds", async (importOriginal) => ({ ...(await importOriginal<object>()), WINDUP_ENABLED: true }));
 
 /**
  * End-to-end pipeline tests: synthetic 33-landmark frames (image + world) go through the exact
@@ -110,10 +117,9 @@ const CROSSED_R: Wrist = { dx: 0.8, dy: 0.5, z: 0 };
 // Hands on the hips: just outside the hip line, slightly below hip height.
 const ON_HIP_L: Wrist = { dx: -0.2, dy: 1.35, z: 0 };
 const ON_HIP_R: Wrist = { dx: 0.2, dy: 1.35, z: 0 };
-// The beam pose (9.04): both wrists thrust forward together, meeting just in front of the chest at shoulder
-// height. Each wrist sits 0.05 S from the midline (inside CROSS_MARGIN, so it is not a block).
-const BEAM_L: Wrist = { dx: -0.45, dy: 0.25, z: -0.5 };
-const BEAM_R: Wrist = { dx: 0.45, dy: 0.25, z: -0.5 };
+// The special pose: only the right wrist moves outward to the player's right.
+const BEAM_L: Wrist = HANGING_L;
+const BEAM_R: Wrist = { dx: -2.0, dy: 0.25, z: 0 };
 
 /** A detector box of `label` centred on landmark `idx` of `pose`, 0.5 S wide. */
 function boxAt(pose: PoseResult, idx: number, label = "bottle", score = 0.8): ObjectBox {
@@ -210,6 +216,34 @@ describe("vision pipeline: calibration", () => {
     drv.calibrate(2.5);
     expect(drv.pipeline.calibration.baseline!.S).toBeCloseTo(0.12, 3);
     expect(allFalseFrames(drv.hold(500, body({ dist: 2.5 })))).toBe(true);
+  });
+});
+
+describe("vision pipeline: remembered baseline (owner rule 2026-09-12)", () => {
+  it("a restored baseline is ready on the first frame, metrics flow at once, and a still window that agrees keeps it", () => {
+    const drv = new Driver();
+    const stored = { S: 0.2, leanZero: 0, hipY: 0.6, shoulderY: 0.35, noseY: 0.2, eyeY: 0.18, armLen: 0.4 };
+    drv.pipeline.calibration.restore(stored);
+    void drv.pipeline.calibration.begin();
+    const first = drv.step(body());
+    expect(first.calibration.phase).toBe("ready");
+    expect(first.metrics).not.toBeNull();
+    const rest = drv.hold(CALIBRATION_MS + 4 * FRAME_MS, body());
+    expect(allFalseFrames(rest)).toBe(true);
+    expect(drv.pipeline.calibration.baseline).toEqual(stored);
+    expect(drv.pipeline.calibration.provisional).toBe(false);
+  });
+
+  it("losing the body mid-match and coming back is ready at once with the same baseline", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const baseline = drv.pipeline.calibration.baseline;
+    drv.hold(RELOST_MS + 3 * FRAME_MS, null);
+    expect(drv.phase()).toBe("lost");
+    const back = drv.step(body());
+    expect(back.calibration.phase).toBe("ready");
+    expect(back.metrics).not.toBeNull();
+    expect(drv.pipeline.calibration.baseline).toBe(baseline);
   });
 });
 
@@ -491,12 +525,12 @@ describe("vision pipeline: dropout", () => {
     expect(allEmptySingleton(gone)).toBe(true);
     expect(gone[0]?.landmarks).toBeNull();
     expect(drv.phase()).toBe("lost");
-    expect(drv.pipeline.calibration.baseline).toBeNull();
+    expect(drv.pipeline.calibration.baseline).not.toBeNull(); // kept (owner rule 2026-09-12)
     expect(drv.pipeline.frame).toBe(EMPTY_FRAME);
 
-    // Coming back re-runs calibration on its own, then works again.
+    // Coming back is ready at once with the kept baseline, then works again.
     const back = drv.step(body());
-    expect(back.calibration.phase).toBe("calibrating");
+    expect(back.calibration.phase).toBe("ready");
     expect(allFalseFrames(drv.hold(CALIBRATION_MS + 4 * FRAME_MS, body()))).toBe(true);
     expect(drv.phase()).toBe("ready");
     const again = drv.hold(600, body({ lean: LEAN_ENTER + 0.1 }));
@@ -517,33 +551,30 @@ describe("vision pipeline: dropout", () => {
 });
 
 describe("vision pipeline: laser (9.04)", () => {
-  it("both arms thrust forward together sets special after the debounce and never punches or blocks", () => {
+  it("a fast right-hand outward motion sets special and never blocks", () => {
     const drv = new Driver();
     drv.calibrate();
-    const beam = drv.hold(400, body({ wristL: BEAM_L, wristR: BEAM_R }));
+    const beam = [
+      ...drv.run(2, (i) => body({ wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / 2) })),
+      ...drv.hold(250, body({ wristR: BEAM_R })),
+    ];
     expect(risingEdges(beam, "special")).toBe(1);
     expect(beam.slice(0, LASER_DEBOUNCE_ON - 1).every((f) => !f.frame.special)).toBe(true);
-    expect(beam[beam.length - 1]?.frame.special).toBe(true);
     expect(anyTrue(beam, "block")).toBe(false);
     expect(anyTrue(beam, "punchL")).toBe(false);
-    expect(anyTrue(beam, "punchR")).toBe(false);
     const m = beam[beam.length - 1]!.metrics!;
-    expect(m.wristGap).toBeLessThan(0.5);
-    expect(m.extL).toBeLessThan(0.55);
-    expect(m.extR).toBeLessThan(0.55);
+    expect(m.sideR).toBeGreaterThan(0.6);
 
     const rest = drv.hold(400, body());
     expect(rest[rest.length - 1]?.frame.special).toBe(false);
   });
 
-  it("ramping both wrists from hanging into the beam pose never reads as a block on the way (review fix)", () => {
-    // Hands meeting in front of the chest stay on their own sides of the midline (each 0.05 S from it), so the
-    // crossed-arms block must not fire during the 8-frame approach and cancel the laser.
+  it("ramping the right wrist outward never reads as a block on the way", () => {
     for (const n of [6, 8]) {
       const drv = new Driver();
       drv.calibrate();
       const ramp = drv.run(n, (i) => body({
-        wristL: mixWrist(HANGING_L, BEAM_L, (i + 1) / n), wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / n),
+        wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / n),
       }));
       const held = drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R }));
       expect(anyTrue(ramp, "block")).toBe(false);
@@ -565,9 +596,13 @@ describe("vision pipeline: laser (9.04)", () => {
   it("the pipeline reports special in gestures and the debug frame carries objects and item", () => {
     const drv = new Driver();
     drv.calibrate();
-    const f = drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R }));
+    const f = [
+      ...drv.run(2, (i) => body({ wristL: BEAM_L, wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / 2) })),
+      ...drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R })),
+    ];
+    const special = f.find((frame) => frame.frame.special);
     const last = f[f.length - 1]!;
-    expect(last.gestures.special).toBe(true);
+    expect(special?.frame.special).toBe(true);
     expect(last.objects).toBeNull();
     expect(last.item).toBeNull();
   });
@@ -625,6 +660,66 @@ describe("vision pipeline: held items (9.04)", () => {
     expect(drv.pipeline.frame.item).toBe("sword");
     const gone = drv.hold(RELOST_MS + 3 * FRAME_MS, null);
     expect(gone.every((f) => f.frame.item === null && f.item === null)).toBe(true);
+  });
+});
+
+describe("vision pipeline: molotov wind-up (9.10)", () => {
+  /** A body with the right arm's world landmarks bent to `elbowDeg` and the wrist raised `raise` S above the shoulder. */
+  function windupBody(elbowDeg: number, raise: number): PoseResult {
+    const pose = body({ wristR: { dx: 0.3, dy: -raise, z: 0 } });
+    const rad = (elbowDeg * Math.PI) / 180;
+    // Shoulder at the origin, elbow 0.3 m down, wrist 0.25 m from the elbow at the requested angle.
+    pose.worldLandmarks[12] = { x: 0, y: 0, z: 0, visibility: 0.95 };
+    pose.worldLandmarks[14] = { x: 0, y: 0.3, z: 0, visibility: 0.95 };
+    pose.worldLandmarks[16] = { x: 0.25 * Math.sin(rad), y: 0.3 + 0.25 * Math.cos(rad) * -1, z: 0, visibility: 0.95 };
+    return pose;
+  }
+
+  it("a held wind-up yields N frames of punchR then a falling edge on release; nothing without a throwable", () => {
+    const p = createPipeline();
+    void p.calibration.begin();
+    let t = 0;
+    const n = Math.ceil((CALIBRATION_MS + 4 * FRAME_MS) / FRAME_MS);
+    for (let i = 0; i < n; i++, t += FRAME_MS) processLandmarks(p, body(), t);
+    expect(p.calibration.state().phase).toBe("ready");
+
+    // Nothing held: the bent pose never punches.
+    const bent = windupBody(70, 0.4);
+    const idle: DebugFrame[] = [];
+    for (let i = 0; i < 10; i++, t += FRAME_MS) idle.push(processLandmarks(p, bent, t));
+    expect(idle.some((f) => f.frame.punchR)).toBe(false);
+    expect(idle[idle.length - 1]?.metrics?.elbowR).toBeLessThan(WINDUP_ELBOW_DEG);
+    expect(idle[idle.length - 1]?.metrics?.raiseR).toBeGreaterThan(WINDUP_RAISE);
+
+    // The arena says the fighter holds a molotov: the same pose winds up and holds punchR.
+    p.held = "molotov";
+    const held: DebugFrame[] = [];
+    for (let i = 0; i < 12; i++, t += FRAME_MS) held.push(processLandmarks(p, bent, t));
+    const first = held.findIndex((f) => f.frame.punchR);
+    expect(first).toBe(WINDUP_ON - 1);
+    expect(held.slice(first).every((f) => f.frame.punchR && f.gestures.windupR)).toBe(true);
+    expect(held[held.length - 1]?.windup?.R.active).toBe(true);
+    expect(held.some((f) => f.frame.special)).toBe(false);
+
+    // Straightening the arm overhead releases: a single falling edge and no further punch.
+    const thrown = windupBody(175, 0.9);
+    const rel: DebugFrame[] = [];
+    for (let i = 0; i < 10; i++, t += FRAME_MS) rel.push(processLandmarks(p, thrown, t));
+    // The EMA lags the straightening by about a frame, so the release lands one frame after WINDUP_OFF.
+    const drop = rel.findIndex((f) => !f.frame.punchR);
+    expect(drop).toBeGreaterThanOrEqual(WINDUP_OFF - 1);
+    expect(drop).toBeLessThanOrEqual(WINDUP_OFF);
+    expect(rel.slice(drop).every((f) => !f.frame.punchR)).toBe(true);
+    expect(rel.every((f) => f.frame.chop === false && f.frame.sweep === false)).toBe(true);
+  });
+
+  it("VisionInputSource.setHeldItem threads the held item to the classifier", () => {
+    const src = new VisionInputSource();
+    src.setHeldItem("sword");
+    const pipe = (src as unknown as { pipeline: { held: string | null } }).pipeline;
+    expect(pipe.held).toBe("sword");
+    src.setHeldItem(null);
+    expect(pipe.held).toBeNull();
   });
 });
 

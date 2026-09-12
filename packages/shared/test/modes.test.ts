@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ARSENAL, BALANCE, EMPTY_FRAME, MATCH, MODES, WORLD, type InputFrame, type MatchConfig, type MatchState, type SimEvent } from "../src";
+import { ARSENAL, BALANCE, EMPTY_FRAME, ITEMS, MATCH, MODES, WORLD, type InputFrame, type MatchConfig, type MatchState, type SimEvent } from "../src";
 import { canBeHit } from "../src/sim/combat";
 import { createMatch, resetForRound } from "../src/sim/create";
 import { spawnHazard } from "../src/sim/hazards";
@@ -248,7 +248,7 @@ describe("rule 7: 2v2 teammates", () => {
   });
   it("a teammate is never dazzled by a flash", () => {
     const s = fighting({ players: 4, teams: "2v2" });
-    s.fighters[0]!.item = { kind: "flash", uses: 1 };
+    s.fighters[0]!.item = { kind: "flash", uses: 1, ticksLeft: null };
     const { s: e, events } = run(s, 1, [{ ...EMPTY_FRAME, punchL: true }, EMPTY_FRAME, EMPTY_FRAME, EMPTY_FRAME]);
     expect(events.some((ev) => ev.type === "FLASH")).toBe(true);
     expect(e.fighters[0]!.dazzle).toBe(0);
@@ -297,7 +297,7 @@ describe("rule 9: resetForRound", () => {
     s.hazards.push({ id: 2, kind: "fire", owner: 0, x: 200, y: WORLD.ROOF_Y, w: 120, ticks: 240, age: 0 });
     const prevInput: InputFrame = { ...EMPTY_FRAME, right: true, item: "sword" };
     for (const f of s.fighters) {
-      f.item = { kind: "sword", uses: 2 };
+      f.item = { kind: "sword", uses: 2, ticksLeft: ITEMS.sword.ttl ?? null };
       f.itemsUsed = ["sword", "shield"];
       f.dazzle = 50; f.laserCooldown = 300; f.invuln = 10; f.blockTicks = 4; f.pitTicks = 5;
       f.hp = 7; f.x = 10; f.action = { kind: "laser", elapsed: 3, hit: [] };

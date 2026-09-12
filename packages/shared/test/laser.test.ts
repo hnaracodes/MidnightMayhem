@@ -150,14 +150,14 @@ describe("rule 4: block and shield", () => {
     expect(s.fighters[1]!.blocking).toBe(true);
   });
   it("shield holder: absorbed, 0 hp lost, no hitstun, SHIELD_ABSORB", () => {
-    const start = fighting(300); start.fighters[1]!.item = { kind: "shield", uses: 3 };
+    const start = fighting(300); start.fighters[1]!.item = { kind: "shield", uses: 3, ticksLeft: null };
     const { s, events } = run(start, TOTAL + 1, [Q, EMPTY_FRAME]);
     expect(events.filter((e) => e.type === "SHIELD_ABSORB")).toEqual([{ type: "SHIELD_ABSORB", player: 1, left: 2 }]);
     expect(laserHits(events)).toHaveLength(1);
     expect(laserHits(events)[0]).toMatchObject({ damage: 0, blocked: false });
     expect(s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
     expect(s.fighters[1]!.hitstun).toBe(0);
-    expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 2 });
+    expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 2, ticksLeft: null });
   });
 });
 
