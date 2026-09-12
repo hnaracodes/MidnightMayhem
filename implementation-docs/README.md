@@ -31,6 +31,10 @@ under "Depends on" is committed.
 7. **Tests** — named cases the agent writes (Vitest) or the owner runs (manual).
 8. **Done when** — the checklist for the commit.
 
+## Status and next assignments
+
+Where `main` is and what each new agent should pick up: `STATUS.md`. Read it before any feature file.
+
 ## Team split
 
 Four-person parallel plan, ownership and kickoff prompts: `TEAM-SPLIT.md`.

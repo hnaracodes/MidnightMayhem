@@ -5,11 +5,12 @@ A two-laptop, webcam-controlled, side-view 2D fighter for HackCMU 2026. Read thi
 ## Source of truth, in order
 
 1. `DECISIONS_CHANGED.md` — every decision, with the owner's approval column.
-2. `implementation-docs/` — one folder per phase, one file per feature; the exact spec an agent builds from.
-3. `docs/superpowers/plans/2026-09-12-midnight-express-mvp.md` — the high-level architecture and schedule behind 2.
-4. `HackCMU 2026/design/` — how it looks: palette, rig, backgrounds, HUD, feel. Code-drawn, no assets.
-5. `HackCMU 2026/docs/2026-09-12-doc-audit-and-stack.md` — the audit and reasoning behind 1 and 2.
-6. `HackCMU 2026/controls/phases/CLAUDE.md` — gesture rules and thresholds (port to TypeScript, pose only).
+2. `implementation-docs/STATUS.md` — where `main` is right now and what to pick up next.
+3. `implementation-docs/` — one folder per phase, one file per feature; the exact spec an agent builds from.
+4. `docs/superpowers/plans/2026-09-12-midnight-express-mvp.md` — the high-level architecture and schedule behind 2.
+5. `HackCMU 2026/design/` — how it looks: palette, rig, backgrounds, HUD, feel. Code-drawn, no assets.
+6. `HackCMU 2026/docs/2026-09-12-doc-audit-and-stack.md` — the audit and reasoning behind 1 and 2.
+7. `HackCMU 2026/controls/phases/CLAUDE.md` — gesture rules and thresholds (port to TypeScript, pose only).
 
 Everything else under `HackCMU 2026/` is **historical** and carries a SUPERSEDED header. Do not build from it.
 
