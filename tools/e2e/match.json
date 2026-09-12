@@ -1,0 +1,33 @@
+{
+  "viewport": { "width": 960, "height": 540 },
+  "steps": [
+    { "page": 0 },
+    { "goto": "http://localhost:5199/?debug=1" },
+    { "fill": ["#lobby input >> nth=0", "Alice"] },
+    { "fill": ["#lobby input >> nth=1", "E2E1"] },
+    { "click": "text=Join" },
+    { "waitFor": "button:text-is(\"Ready\")" },
+    { "page": 1 },
+    { "goto": "http://localhost:5199/" },
+    { "fill": ["#lobby input >> nth=0", "Bob"] },
+    { "fill": ["#lobby input >> nth=1", "E2E1"] },
+    { "click": "text=Join" },
+    { "waitFor": "button:text-is(\"Ready\")" },
+    { "click": "button:text-is(\"Ready\")" },
+    { "page": 0 },
+    { "click": "button:text-is(\"Ready\")" },
+    { "wait": 1500 },
+    { "shot": ".shots/e2e/countdown.png", "selector": "canvas" },
+    { "wait": 2500 },
+    { "shot": ".shots/e2e/fight-start.png", "selector": "canvas" },
+    { "hold": ["KeyD", 1200] },
+    { "press": "KeyF" },
+    { "wait": 120 },
+    { "shot": ".shots/e2e/punch.png", "selector": "canvas" },
+    { "page": 1 },
+    { "hold": ["KeyS", 300] },
+    { "press": "KeyW" },
+    { "wait": 200 },
+    { "shot": ".shots/e2e/p2-jump.png", "selector": "canvas" }
+  ]
+}

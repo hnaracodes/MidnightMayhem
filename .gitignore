@@ -5,3 +5,5 @@ dist
 packages/server/certs/
 packages/client/public/wasm/
 packages/client/public/models/
+.worktrees/
+.shots/
