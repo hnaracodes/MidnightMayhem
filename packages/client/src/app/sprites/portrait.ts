@@ -38,7 +38,7 @@ export function portraitPixels(characterId: CharacterId): PixelCanvas {
   c.blit(parts.torso, centreX, torsoTop + parts.torso.anchor.y);
   c.blit(parts.head, centreX, HEAD_TOP + parts.head.anchor.y);
   c.outline(P.outline);
-  c.rim(P.amber1, false, P.outline);
+  c.rim(P.amber1, "right", P.outline);
   return c;
 }
 

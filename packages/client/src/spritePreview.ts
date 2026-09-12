@@ -113,7 +113,9 @@ class SpritePreviewScene extends Phaser.Scene {
       const flash = ui.flashFrames > 0 ? (ui.flashFrames > 4 ? P.white : P.danger) : undefined;
       const t0 = performance.now();
       cell.sprite.update(f, joints, {
-        rimBoth: ui.rimBoth,
+        rimColor: P.amber1,
+        rimSide: ui.rimBoth ? "both" : "right",
+        gloom: 0,
         flash,
         flashAlpha: ui.flashFrames > 4 ? 0.7 : 0.3,
         squash: 1,
@@ -125,7 +127,7 @@ class SpritePreviewScene extends Phaser.Scene {
       if (cell.vector) {
         cell.vector.clear();
         cell.vector.setPosition(cell.vectorX - cell.x, 0);
-        drawFighter(cell.vector, joints, cell.character, { facing, rim: P.amber1, rimBoth: ui.rimBoth, windSpeed: 240 });
+        drawFighter(cell.vector, joints, cell.character, { facing, rim: P.amber1, rimSide: ui.rimBoth ? "both" : "right", gloom: 0, windSpeed: 240 });
       }
     }
     if (ui.flashFrames > 0) ui.flashFrames -= 1;

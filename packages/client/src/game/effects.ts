@@ -2,6 +2,7 @@ import type Phaser from "phaser";
 import { BALANCE, WORLD, type FighterState, type MatchState, type PlayerIndex, type SimEvent } from "@midnight/shared";
 import { P } from "./palette";
 import { PIXEL, snapPt } from "./pixel";
+import type { LightSink } from "./stage/lighting";
 
 /**
  * 4.06 — Effects and feel. Reacts to `SimEvent`s and state reads; never predicts and never mutates the state.
@@ -42,6 +43,8 @@ const SQUASH_Y = 0.94; // vertical; the drawer widens by the inverse (≈ 1.06)
 const SHAKE_PX = 3;
 const SHAKE_MIN_DAMAGE = BALANCE.PUNCH_DAMAGE; // a clean punch shakes; chip never does
 const CHEST_ABOVE_FEET = 90;
+/** 12.02 rule 7: a clean hit lights the roof around the impact for four frames. */
+const IMPACT_LIGHT = { r: 90, intensity: 0.7, frames: 4 } as const;
 const IMPACT_OFFSET = 20;
 const TRAIL_WIDTH = 10;
 const WALK_DUST_EVERY_TICKS = 10;
@@ -96,7 +99,8 @@ export class Effects {
   private readonly oobPulseFrames: Per<number> = per(0);
   private clockSec = 0;
 
-  constructor(private readonly scene: Phaser.Scene) {}
+  /** 12.02: `lights` is optional so the tests and previews can run without a rig. */
+  constructor(private readonly scene: Phaser.Scene, private readonly lights: LightSink | null = null) {}
 
   /**
    * Drain this frame's events and read the sampled state. Call once per render frame before the readers.
@@ -234,6 +238,7 @@ export class Effects {
           this.flashFrames[event.target] = FRAMES.FLASH_WHITE + FRAMES.FLASH_DANGER;
           this.flashBlocked[event.target] = false;
           this.spawn(FRAMES.IMPACT, (g, t) => drawImpact(g, at, t));
+          this.lights?.pulse({ x: at.x, y: at.y, r: IMPACT_LIGHT.r, color: P.amber1, intensity: IMPACT_LIGHT.intensity }, IMPACT_LIGHT.frames);
           if (event.damage >= SHAKE_MIN_DAMAGE) this.shake();
         }
         break;

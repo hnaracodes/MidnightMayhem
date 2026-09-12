@@ -14,7 +14,7 @@ import {
   type FighterState, type InputFrame, type MapId, type MatchState, type PlayerIndex, type SimEvent, type TrainCar,
 } from "@midnight/shared";
 import { attractInputs, attractSetup, drawOrder, fighterAlpha, fireLoopTransition, posedFighter } from "./arenaGlue";
-import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
+import { ROOF_INDEX, applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
 import { Effects } from "./effects";
 import { Hud } from "./hud";
 import { ItemFx, type HandPoint } from "./itemFx";
@@ -24,6 +24,7 @@ import { drawFighter, drawShadow } from "./rig/draw";
 import { computePose, type Clock } from "./rig/pose";
 import { session } from "./session";
 import { SpriteFighter } from "./sprites/SpriteFighter";
+import { Lighting } from "./stage/lighting";
 
 /**
  * Fighter depths run RIG0 + rank · RIG_STEP for the rank in the back-to-front draw order (four fighters fit
@@ -35,8 +36,8 @@ const DEBUG_TEXT = { X: 20, Y: 84, SIZE: 11 } as const;
 const BUDGET_EMA = 0.05;
 /** Attract mode steps the sim at most this many ticks per render frame (a hidden tab must not spiral). */
 const ATTRACT_MAX_STEPS = 5;
-/** Rim stroke colour of the vector rig (design/02). */
-const VECTOR_RIM = P.amber1;
+/** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
+const CHEST_ABOVE_FEET = 60;
 
 /** Dev hook: the headless driver reads the measured update cost and the current hint through it. */
 declare global {
@@ -49,6 +50,8 @@ declare global {
       drawn: () => MatchState | null;
       fighters: () => number;
       attract: () => boolean;
+      /** 12.02: live light count (static instances + transients). */
+      lights: () => number;
     };
   }
 }
@@ -69,6 +72,7 @@ export class ArenaScene extends Phaser.Scene {
   private hud!: Hud;
   private effects!: Effects;
   private itemFx!: ItemFx;
+  private lighting!: Lighting;
   private dazzle!: Phaser.GameObjects.Rectangle;
 
   private readonly clock = new RenderClock();
@@ -96,8 +100,9 @@ export class ArenaScene extends Phaser.Scene {
     this.shadow = this.add.graphics().setDepth(DEPTH.SHADOW);
     this.debug = this.add.graphics().setDepth(DEPTH.DEBUG);
     this.hud = new Hud(this);
-    this.effects = new Effects(this);
-    this.itemFx = new ItemFx(this);
+    this.lighting = new Lighting(this);
+    this.effects = new Effects(this, this.lighting);
+    this.itemFx = new ItemFx(this, this.lighting);
     this.dazzle = this.add.rectangle(0, 0, WORLD.WIDTH, WORLD.HEIGHT, P.white, 1)
       .setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.DAZZLE);
     if (session.debug) {
@@ -115,6 +120,7 @@ export class ArenaScene extends Phaser.Scene {
       drawn: () => this.drawnState,
       fighters: () => this.views.length,
       attract: () => this.attract !== null,
+      lights: () => this.lighting.lights().length,
     };
   }
 
@@ -127,6 +133,7 @@ export class ArenaScene extends Phaser.Scene {
   private frame(now: number, delta: number): void {
     const dt = delta / 1000;
     scrollBackgrounds(this.layers, session.reducedMotion ? 0 : dt);
+    this.lighting.update(dt, this.tileOffsets(), { reducedMotion: session.reducedMotion, rays: true });
 
     const renderMs = this.clock.advance(now, this.effects.timeScale());
     const sampled = session.buffer.sample(renderMs);
@@ -153,6 +160,7 @@ export class ArenaScene extends Phaser.Scene {
     if (state.trainCar !== this.car) {
       this.car = state.trainCar;
       applyTrainCar(this, this.layers, this.car);
+      this.lighting.setCar(this.car);
     }
     if (state.config.map !== this.drawnMap) {
       this.drawnMap = state.config.map;
@@ -212,11 +220,14 @@ export class ArenaScene extends Phaser.Scene {
     const ground = groundYAt(state.config.map, fighter.x, fighter.y);
     if (alpha > 0 && ground < PIT.Y) drawShadow(this.shadow, fighter.x, ground, Math.max(0, ground - fighter.y));
     const fill = this.effects.fillFor(i);
+    const rim = this.lighting.rimFor(fighter.x, fighter.y - CHEST_ABOVE_FEET);
     if (view.kind === "sprite") {
       view.sprite.setVisible(alpha > 0);
       view.sprite.setDepth(depth);
       view.sprite.update(fighter, joints, {
-        rimBoth: this.car === "TUNNEL",
+        rimColor: rim.color,
+        rimSide: rim.side,
+        gloom: rim.gloom,
         flash: fill.fillOverride,
         flashAlpha: fill.fillAlpha,
         squash: this.effects.squashFor(i),
@@ -231,8 +242,9 @@ export class ArenaScene extends Phaser.Scene {
       g.setVisible(alpha > 0);
       drawFighter(g, joints, fighter.character, {
         facing: fighter.facing,
-        rim: VECTOR_RIM,
-        rimBoth: this.car === "TUNNEL", // design/03: tunnel lamps light both edges
+        rim: rim.color,
+        rimSide: rim.side,
+        gloom: rim.gloom,
         squash: this.effects.squashFor(i),
         windSpeed: this.layers.roofSpeed,
         ...fill,
@@ -244,6 +256,11 @@ export class ArenaScene extends Phaser.Scene {
       this.effects.drawTrail(i, arm.shoulder, arm.fist);
     }
     if (session.debug) this.drawBoxes(fighter);
+  }
+
+  /** 12.02: the roof and tunnel tile offsets, so light pools sit on their fixtures. */
+  private tileOffsets(): { roof: number; tunnel: number } {
+    return { roof: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0, tunnel: this.layers.tunnel.tilePositionX };
   }
 
   /** Front-hand position for ItemFx: last drawn, else the chest-height guess from the newest snapshot. */
@@ -338,7 +355,7 @@ export class ArenaScene extends Phaser.Scene {
     const rtt = session.rtt === null ? "n/a" : `${session.rtt.toFixed(1)} ms`;
     const mode = attracting ? "ATTRACT" : state.phase;
     this.debugText!.setText(
-      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  ${mode}  ${state.config.map}/${state.config.mode}`,
+      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  ${mode}  ${state.config.map}/${state.config.mode}`,
     );
   }
 }

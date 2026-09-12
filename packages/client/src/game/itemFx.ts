@@ -1,10 +1,11 @@
 import type Phaser from "phaser";
 import {
-  ARSENAL, ITEMS, WORLD, laserHitbox, laserReach,
+  ARSENAL, ITEMS, WORLD, hazardRect, laserHitbox, laserReach,
   type Facing, type FighterState, type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile,
   type SimEvent,
 } from "@midnight/shared";
 import { P } from "./palette";
+import type { LightHandle, LightSink } from "./stage/lighting";
 import { chargeToRange, chargingThrow, predictFlight, throwVelocity } from "./throwPreview";
 
 /**
@@ -101,6 +102,13 @@ const FIRE_H_MAX = 34;
 const FIRE_HZ = 8;
 const SCORCH_ALPHA = 0.25;
 const HAZARD_FADE_TICKS = 30;
+/** 12.02 rule 7: transient lights (radii in world px, intensities 0..1). */
+const LIGHT = {
+  fireR: 160, fireRy: 110, fire: 0.8, fireHz: 8, fireAmp: 0.3,
+  beamR: 520, beamRy: 110, beam: 0.7, palmR: 120, palm: 0.8,
+  flashR: 400, flash: 1, materialiseR: 120, materialise: 0.5,
+  barrierR: 90, barrierRy: 120, barrier: 0.25,
+} as const;
 const PEEL_R = 14;
 const STAR_R = 7;
 const STARS_ABOVE_HEAD = 14;
@@ -156,7 +164,11 @@ export class ItemFx {
   private preview: Graphics | null = null;
   private clockSec = 0;
 
-  constructor(private readonly scene: Phaser.Scene) {}
+  /** 12.02: fire hazards and the shield barrier keep a light while they exist; the beam, flash and materialise pulse one. */
+  private readonly fireLights = new Map<number, LightHandle>();
+  private readonly barrierLights: Per<LightHandle | null> = per(null);
+
+  constructor(private readonly scene: Phaser.Scene, private readonly lights: LightSink | null = null) {}
 
   /** Drain once per render frame with the newest snapshot (the one that carried the events). */
   consume(events: SimEvent[], newest: MatchState, hands: (i: PlayerIndex) => HandPoint): void {
@@ -251,6 +263,12 @@ export class ItemFx {
     this.edge = null;
     this.preview?.destroy();
     this.preview = null;
+    for (const light of this.fireLights.values()) this.lights?.removeLight(light);
+    this.fireLights.clear();
+    for (const i of PLAYERS) {
+      const light = this.barrierLights[i];
+      if (light) { this.lights?.removeLight(light); this.barrierLights[i] = null; }
+    }
   }
 
   // ---- events ----
@@ -265,6 +283,8 @@ export class ItemFx {
         this.edgeFrames[event.player] = FRAMES.EDGE_FLASH;
         this.spawnAnchored(event.player, hands, newest, FRAMES.MATERIALISE, DEPTH.FX, null,
           (g, _t, frame, a) => drawMaterialise(g, a.at, frame, accent));
+        const hand = hands(event.player);
+        this.lights?.pulse({ x: hand.x, y: hand.y, r: LIGHT.materialiseR, color: accent, intensity: LIGHT.materialise }, FRAMES.MATERIALISE);
         break;
       }
       case "LASER_CHARGE":
@@ -277,6 +297,14 @@ export class ItemFx {
         this.spawnAnchored(event.player, hands, newest, FRAMES.BEAM + FRAMES.BEAM_FADE, DEPTH.BEAM, "beam",
           (g, _t, frame, a) => drawBeam(g, a, frame));
         this.shake(BEAM_SHAKE_PX, FRAMES.BEAM_SHAKE);
+        // 12.02 rule 7: the beam lights the roof along its length and both fighters in it; the palms glow warm
+        const shooter = newest.fighters[event.player];
+        if (shooter && this.lights) {
+          const a = anchorFor(hands(event.player), shooter);
+          const mid = a.origin.x + a.facing * (WORLD.WIDTH / 2);
+          this.lights.pulse({ x: mid, y: a.origin.y, r: LIGHT.beamR, ry: LIGHT.beamRy, color: P.glow1, intensity: LIGHT.beam }, FRAMES.BEAM + FRAMES.BEAM_FADE);
+          this.lights.pulse({ x: a.at.x, y: a.at.y, r: LIGHT.palmR, color: P.lamp, intensity: LIGHT.palm }, FRAMES.BEAM + FRAMES.BEAM_FADE);
+        }
         break;
       }
       case "LASER_HIT": {
@@ -334,6 +362,7 @@ export class ItemFx {
         // Non-dazzled fighters see the burst at the flasher's hand; under a full whiteout it is simply not visible.
         const at = hands(event.player);
         this.spawn(FRAMES.FLASH_BURST, DEPTH.FX, (g, t) => drawFlashBurst(g, at, t));
+        this.lights?.pulse({ x: at.x, y: at.y, r: LIGHT.flashR, color: P.white, intensity: LIGHT.flash }, FRAMES.FLASH_BURST);
         break;
       }
       default:
@@ -430,13 +459,28 @@ export class ItemFx {
       }
       const remaining = h.ticks - h.age;
       const fade = clamp(remaining / HAZARD_FADE_TICKS, 0, 1);
-      if (h.kind === "fire") drawFire(g, h, fade, this.clockSec);
-      else drawPeel(g, h, fade);
+      if (h.kind === "fire") {
+        drawFire(g, h, fade, this.clockSec);
+        // 12.02 rule 7: a burning molotov casts a flickering pool that follows it and fades with it
+        if (this.lights) {
+          const r = hazardRect(h);
+          const cx = r.x + r.w / 2;
+          let light = this.fireLights.get(h.id);
+          if (!light) {
+            light = this.lights.addLight({ x: cx, y: r.y + r.h, r: LIGHT.fireR, ry: LIGHT.fireRy, color: P.amber1, intensity: LIGHT.fire * fade, flickerHz: LIGHT.fireHz, flickerAmp: LIGHT.fireAmp });
+            this.fireLights.set(h.id, light);
+          } else {
+            this.lights.moveLight(light, cx, r.y + r.h, LIGHT.fire * fade);
+          }
+        }
+      } else drawPeel(g, h, fade);
     }
     for (const [id, g] of this.hazards) {
       if (seen.has(id)) continue;
       g.destroy();
       this.hazards.delete(id);
+      const light = this.fireLights.get(id);
+      if (light) { this.lights?.removeLight(light); this.fireLights.delete(id); }
     }
   }
 
@@ -450,12 +494,22 @@ export class ItemFx {
         old.destroy();
         this.barriers[i] = null;
       }
+      const light = this.barrierLights[i];
+      if (light) { this.lights?.removeLight(light); this.barrierLights[i] = null; }
       return;
     }
     const g = (this.barriers[i] ??= this.scene.add.graphics().setDepth(DEPTH.BARRIER));
     const cracks = Math.max(0, ITEMS.shield.uses - item.uses);
     const shimmer = (this.clockSec / BARRIER_SHIMMER_SEC) % 1;
-    drawBarrier(g, barrierCentre(f), f.facing, cracks, this.absorbFrames[i] > 0, shimmer);
+    const centre = barrierCentre(f);
+    drawBarrier(g, centre, f.facing, cracks, this.absorbFrames[i] > 0, shimmer);
+    // 12.02: the barrier is a cold, faint source of its own (it is the one glowing thing a fighter carries)
+    if (this.lights) {
+      const flash = this.absorbFrames[i] > 0 ? 2 : 1;
+      const light = this.barrierLights[i];
+      if (!light) this.barrierLights[i] = this.lights.addLight({ x: centre.x, y: centre.y, r: LIGHT.barrierR, ry: LIGHT.barrierRy, color: P.glow1, intensity: LIGHT.barrier * flash });
+      else this.lights.moveLight(light, centre.x, centre.y, LIGHT.barrier * flash);
+    }
   }
 
   /** Rule 5: the dotted arc and landing ring while the local fighter charges a throw; removed on release. */

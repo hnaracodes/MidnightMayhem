@@ -10,7 +10,9 @@ import { ANCHOR, CANVAS, SPRITE_SCALE, composeFrame, createFrameCanvas } from ".
 import { alphaOf, rgbOf, type PixelCanvas } from "./grid";
 
 export interface SpriteUpdateOpts {
-  rimBoth: boolean;
+  rimColor: number;
+  rimSide: "left" | "right" | "both";
+  gloom: number;
   flash?: number | undefined;
   flashAlpha?: number | undefined;
   /** Vertical scale about the feet (1 = none); width scales by the inverse, as the vector rig did. */
@@ -49,7 +51,9 @@ export class SpriteFighter {
     const c = this.canvas;
     composeFrame(c, joints, f, f.character, {
       facing: f.facing,
-      rimBoth: opts.rimBoth,
+      rimColor: opts.rimColor,
+      rimSide: opts.rimSide,
+      gloom: opts.gloom,
       flash: opts.flash,
       flashAlpha: opts.flashAlpha,
       alpha: joints.alpha,
