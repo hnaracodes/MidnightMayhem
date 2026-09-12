@@ -5,7 +5,13 @@ Measured 2026-09-12 on the integrator's laptop, headless, by `node tools/shot.mj
 
 ## Verdict
 
-**MediaPipe stays the default** (`DETECTOR_DEFAULT = "mediapipe"` in `packages/client/src/vision/thresholds.ts`).
+**YOLO is the default** (`DETECTOR_DEFAULT = "yolo"`), by owner decision on 2026-09-12 after holding the real
+objects up on camera ("we want to stay on yolo regardless"; backpack detected fine in his test). The headless
+result below (which would have kept MediaPipe on the synthetic fixture bar) is recorded for the reasoning, not the
+decision. MediaPipe stays as the fallback and is one URL parameter away: `?detector=mediapipe` on the game or the
+harness. The original headless verdict follows.
+
+*Headless verdict (superseded):* MediaPipe stays the default (`DETECTOR_DEFAULT = "mediapipe"`).
 YOLO remains selectable with `?detector=yolo` on the game and the harness.
 
 Rule 5 asks for all three bars on the wasm/CPU figures:

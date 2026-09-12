@@ -71,7 +71,7 @@ export const HOLD_ON = 3; // consecutive equal candidates before an item turns o
 export const HOLD_OFF_MS = 600; // an item stays held until this long passes without a positive
 
 // ---- 9.07 second detector track (YOLO on onnxruntime-web) ----
-export const DETECTOR_DEFAULT: DetectorId = "mediapipe"; // which detector the worker loads without ?detector=; flipped only by the benchmark verdict (docs/superpowers/specs/2026-09-12-detector-benchmark.md)
+export const DETECTOR_DEFAULT: DetectorId = "yolo"; // owner decision 2026-09-12 (real-object test): YOLO by default, ?detector=mediapipe brings the original back; benchmark in docs/superpowers/specs/2026-09-12-detector-benchmark.md
 export const YOLO_MODEL_URL = "/models/yolo.onnx"; // yolov10n COCO export (Hugging Face onnx-community/yolov10n), downloaded by vision:setup
 export const YOLO_INPUT = 640; // square model input; the shipped yolov10n export has a fixed 640 input (the plan's 320 needs a dynamic-shape export)
 export const YOLO_SCORE = 0.35; // YOLO class score threshold; boxes below it are never reported
