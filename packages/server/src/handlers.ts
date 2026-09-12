@@ -1,6 +1,5 @@
 import {
   PROTOCOL_VERSION,
-  normalizeConfig,
   parseClientMessage,
   type ErrorCode,
   type PlayerIndex,
@@ -72,23 +71,15 @@ export function handleMessage(ctx: ServerContext, conn: Conn, raw: string): void
   } else if (message.type === "INPUT") {
     conn.room.setInput(conn.index, message.seq, message.frame);
   } else if (message.type === "CONFIG") {
-    // Accept-and-store only; the full rules (and their tests) are 10.03.
-    if (conn.index !== conn.room.host) {
-      error(conn, "NOT_HOST", "only the host can change the match config");
-      return;
-    }
-    if (conn.room.match !== null && conn.room.match.phase !== "MATCH_END") {
-      error(conn, "BAD_CONFIG", "config can only change in the lobby");
-      return;
-    }
-    if (!conn.room.setConfig(normalizeConfig(message.config))) {
-      error(conn, "BAD_CONFIG", "player count is below the players already seated");
-      return;
-    }
-    conn.room.broadcast(conn.room.lobbyMessage());
+    const result = conn.room.setConfig(conn.index, message.config);
+    if (result === "not-host") error(conn, "NOT_HOST", "only the host can change the match config");
+    else if (result === "in-match") error(conn, "BAD_CONFIG", "the config can only change in the lobby");
+    else if (result === "too-many-players") error(conn, "BAD_CONFIG", "player count is below the players already seated");
+    else conn.room.broadcast(conn.room.lobbyMessage());
   } else if (message.type === "CUSTOMIZE") {
-    conn.room.setCustomize(conn.index, message.character, message.loadout);
-    conn.room.broadcast(conn.room.lobbyMessage());
+    if (conn.room.setCustomize(conn.index, message.character, message.loadout)) {
+      conn.room.broadcast(conn.room.lobbyMessage());
+    }
   }
 }
 
@@ -108,7 +99,7 @@ export function handleClose(ctx: ServerContext, conn: Conn): void {
 }
 
 export function maybeStart(ctx: ServerContext, room: Room): void {
-  if (!room.allReady || (room.match !== null && room.match.phase !== "MATCH_END")) return;
+  if (!room.allReady || room.inMatch) return;
   room.startMatch();
   if (!ctx.loops.has(room.id)) {
     const loop = new RoomLoop(room, ctx.now);

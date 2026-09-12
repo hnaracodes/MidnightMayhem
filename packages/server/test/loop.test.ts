@@ -50,3 +50,22 @@ describe("RoomLoop", () => {
     expect(send).not.toHaveBeenCalled();
   });
 });
+
+describe("RoomLoop (10.03: four players)", () => {
+  it("rule 10: snapshots go to every occupied slot with that slot's own seq", () => {
+    const room = new Room("ABCDE");
+    const sends = [vi.fn(), vi.fn(), vi.fn(), vi.fn()];
+    room.join("A", sends[0]!);
+    room.setConfig(0, { players: 4, teams: "ffa", mode: "rounds", map: "roof", items: true });
+    room.join("B", sends[1]!); room.join("C", sends[2]!); room.join("D", sends[3]!);
+    sends.forEach((_, i) => { room.slots[i]!.seq = 10 + i; });
+    room.startMatch();
+    const loop = new RoomLoop(room);
+    loop.tickOnce(); loop.tickOnce();
+    sends.forEach((send, i) => {
+      expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: "SNAPSHOT", ackSeq: 10 + i }));
+      const snap = send.mock.calls.at(-1)![0];
+      expect(snap.state.fighters).toHaveLength(4);
+    });
+  });
+});
