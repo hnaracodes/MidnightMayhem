@@ -191,6 +191,16 @@ describe("createYoloBackend", () => {
     await expect(missing.init("CPU")).rejects.toMatchObject({ code: "model-load" });
     await expect(missing.init("CPU")).rejects.toBeInstanceOf(VisionInputError);
 
+    // vite dev serves index.html (200, text/html) for a missing public file
+    const html = createYoloBackend({ modelUrl: "/models/yolo.onnx", inputSize: 320 }, {
+      loadOrt: async () => ort,
+      fetch: async () => ({
+        ok: true, status: 200, headers: { get: () => "text/html; charset=utf-8" }, arrayBuffer: async () => new ArrayBuffer(0),
+      }),
+      createContext: () => fakeCanvas(320).ctx as unknown as OffscreenCanvasRenderingContext2D,
+    });
+    await expect(html.init("CPU")).rejects.toMatchObject({ code: "model-load" });
+
     const broken = createYoloBackend({ modelUrl: "/models/yolo.onnx", inputSize: 320 }, {
       loadOrt: async () => { throw new Error("no wasm"); },
       fetch: fetchOk,

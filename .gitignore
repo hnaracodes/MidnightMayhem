@@ -6,3 +6,4 @@ packages/server/certs/
 packages/client/public/models/
 .worktrees/
 .shots/
+packages/client/public/bench/

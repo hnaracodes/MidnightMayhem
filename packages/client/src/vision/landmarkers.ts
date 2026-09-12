@@ -19,16 +19,23 @@
  */
 import { ITEMS } from "@midnight/shared";
 import { ObjectDetector, PoseLandmarker } from "@mediapipe/tasks-vision";
-import wasmLoaderPath from "@mediapipe/tasks-vision/vision_wasm_module_internal.js?url";
-import wasmBinaryPath from "@mediapipe/tasks-vision/vision_wasm_module_internal.wasm?url";
+import moduleLoaderPath from "@mediapipe/tasks-vision/vision_wasm_module_internal.js?url";
+import moduleBinaryPath from "@mediapipe/tasks-vision/vision_wasm_module_internal.wasm?url";
+import classicLoaderPath from "@mediapipe/tasks-vision/vision_wasm_internal.js?url";
+import classicBinaryPath from "@mediapipe/tasks-vision/vision_wasm_internal.wasm?url";
 import { MODEL_URL, OBJECT_MODEL_URL, OBJECT_SCORE } from "./thresholds";
 
 export type Delegate = "GPU" | "CPU";
+
+const inWorker = typeof importScripts === "function";
+const wasmLoaderPath = inWorker ? moduleLoaderPath : classicLoaderPath;
+const wasmBinaryPath = inWorker ? moduleBinaryPath : classicBinaryPath;
 
 type LoaderModule = { default: unknown };
 let loader: Promise<LoaderModule> | null = null;
 
 async function primeModuleFactory(): Promise<void> {
+  if (!inWorker) return; // the classic loader sets up its own globals through the script tag
   loader ??= import(/* @vite-ignore */ wasmLoaderPath) as Promise<LoaderModule>;
   const mod = await loader;
   if (typeof mod.default === "function") {

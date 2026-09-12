@@ -63,7 +63,9 @@ export interface YoloOptions {
 
 export interface YoloDeps {
   loadOrt?: () => Promise<OrtLike>;
-  fetch?: (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }>;
+  fetch?: (url: string) => Promise<{
+    ok: boolean; status: number; headers?: { get(name: string): string | null }; arrayBuffer(): Promise<ArrayBuffer>;
+  }>;
   createContext?: (size: number) => OffscreenCanvasRenderingContext2D;
 }
 
@@ -190,13 +192,16 @@ export function createYoloBackend(opts: YoloOptions, deps: YoloDeps = {}): Objec
         const [rt, res] = await Promise.all([loadOrt(), fetchFn(opts.modelUrl)]);
         ort = rt;
         if (!res.ok) throw new Error(`${opts.modelUrl} → HTTP ${res.status}`);
+        // vite dev answers a missing public/ file with index.html and a 200; that is a missing model too.
+        const type = res.headers?.get("content-type") ?? "";
+        if (type.includes("text/html")) throw new Error(`${opts.modelUrl} → not found (got ${type})`);
         const model = new Uint8Array(await res.arrayBuffer());
         if (delegate === "GPU") {
           try {
             session = await createSession(model, ["webgpu", "wasm"]);
             provider = "webgpu";
           } catch (err) {
-            console.warn("[vision] yolo: webgpu unavailable, using wasm", err);
+            console.info("[vision] yolo: webgpu unavailable, using wasm", err instanceof Error ? err.message : err);
             session = await createSession(model, ["wasm"]);
             provider = "wasm";
           }
