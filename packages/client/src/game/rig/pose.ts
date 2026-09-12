@@ -145,6 +145,9 @@ function lerpLeg(a: Leg, b: Leg, t: number): Leg {
   return { hip: lerpPt(a.hip, b.hip, t), knee: lerpPt(a.knee, b.knee, t), foot: lerpPt(a.foot, b.foot, t) };
 }
 
+/** Extra forward head tilt: the Drifter's hunched shoulders drop his head low and forward. */
+const hunch = (rig: CharacterRig): number => (rig.signature === "drifter" ? 10 : 0);
+
 /** Half the distance between the soles at rest. */
 const halfStance = (rig: CharacterRig): number => rig.stanceSpread + 3;
 
@@ -183,7 +186,7 @@ export function rigState(f: FighterState, koActive: boolean): RigState {
 function standing(rig: CharacterRig, hipDy = 0, footDx: { F: number; B: number } = { F: 0, B: 0 }, lean = rig.torsoLean, headTilt = 0, guardRaise = 0): LocalPose {
   const half = halfStance(rig);
   const hip = { x: 0, y: -hipHeight(rig) + hipDy };
-  const t = torso(hip, lean, headTilt);
+  const t = torso(hip, lean, headTilt + hunch(rig));
   const g = guardTargets(rig, t.shoulder, guardRaise);
   return {
     alpha: 1,
@@ -299,7 +302,7 @@ function koPose(rig: CharacterRig, frames: number): LocalPose {
       F: armTo(tor.shoulder, { x: 10, y: -ANKLE_LIFT - 2 }),
       B: armTo(tor.shoulder, { x: -96, y: -ANKLE_LIFT }),
     },
-    legs: { F: legAngles(hip, 78, 100), B: legAngles(hip, 58, 96) },
+    legs: { F: legAngles(hip, 120, 30), B: legAngles(hip, 110, 40) },
     punchingArm: null,
   };
   // soles never sink below the ground while sprawled
