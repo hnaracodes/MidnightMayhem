@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { EMPTY_FRAME, INPUT_KEYS, ITEMS } from "@midnight/shared";
 import {
-  DOT_KEYS, DOT_LABELS, type PreviewFrame, type PunchDiag, debugFanOut, previewModel,
+  DOT_KEYS, DOT_LABELS, type PreviewFrame, type PunchDiag, debugFanOut, previewModel, retainBoxes,
 } from "../src/app/cameraPreview";
+import type { Landmark, ObjectBox } from "../src/vision/workerClient";
 
 function frame(overrides: Partial<PreviewFrame> = {}): PreviewFrame {
   return {
@@ -60,6 +61,24 @@ describe("previewModel", () => {
     const none = previewModel(frame());
     expect(none.item).toBeNull();
     expect(none.itemLabel).toBe("");
+  });
+
+  it("9.04: retainBoxes keeps the last detector boxes across the detector's off frames and drops them with the pose", () => {
+    const lms: Landmark[] = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, z: 0, visibility: 0.9 }));
+    const bottle: ObjectBox = { label: "bottle", score: 0.8, x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
+    const phone: ObjectBox = { label: "cell phone", score: 0.6, x: 0.5, y: 0.5, w: 0.1, h: 0.1 };
+    // Nothing yet: an off frame shows nothing.
+    expect(retainBoxes(null, frame({ landmarks: lms, objects: null }))).toBeNull();
+    // A detector frame replaces; the two off frames after it keep the same boxes.
+    const a = retainBoxes(null, frame({ landmarks: lms, objects: [bottle] }));
+    expect(a).toEqual([bottle]);
+    expect(retainBoxes(a, frame({ landmarks: lms, objects: null }))).toBe(a);
+    expect(retainBoxes(a, frame({ landmarks: lms, objects: null }))).toBe(a);
+    // The next detector frame replaces, including with an empty list.
+    expect(retainBoxes(a, frame({ landmarks: lms, objects: [phone] }))).toEqual([phone]);
+    expect(retainBoxes(a, frame({ landmarks: lms, objects: [] }))).toEqual([]);
+    // Losing the pose clears them.
+    expect(retainBoxes(a, frame({ landmarks: null, objects: null }))).toBeNull();
   });
 
   it("reports the calibration phase with progress while calibrating", () => {

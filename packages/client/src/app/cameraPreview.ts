@@ -58,6 +58,16 @@ export function previewModel(frame: PreviewFrame | null, fps?: number): PreviewM
   return { dots, status, gates, item, itemLabel: item ? ITEMS[item].label : "", special: frame.frame.special };
 }
 
+/**
+ * The boxes the preview should draw after `frame` (9.04): the detector runs on every OBJECT_EVERY_N-th pose
+ * frame and the others carry `objects: null`, so the last detector result is kept until the next one to
+ * avoid a one-frame-in-three flicker. Losing the pose drops them.
+ */
+export function retainBoxes(prev: ObjectBox[] | null, frame: PreviewFrame): ObjectBox[] | null {
+  if (!frame.landmarks) return null;
+  return frame.objects ?? prev;
+}
+
 function statusText(phase: CalibrationPhase, progress: number, fps: number | undefined): string {
   const parts = [phase === "calibrating" ? `calibrating ${Math.round(progress * 100)}%` : phase];
   if (fps !== undefined && fps > 0) parts.push(`${Math.round(fps)} fps`);
@@ -98,6 +108,8 @@ export class CameraPreview {
   private readonly canvas: HTMLCanvasElement;
   private readonly dots: HTMLSpanElement[] = [];
   private readonly itemGlyph: HTMLSpanElement;
+  /** Last detector boxes, kept across the detector's off frames (see retainBoxes). */
+  private boxes: ObjectBox[] | null = null;
   private readonly status: HTMLDivElement;
   private readonly gates: HTMLDivElement;
   private readonly gateGlyphs: Record<"L" | "R", { label: HTMLSpanElement; glyphs: Record<GateName, HTMLSpanElement> }>;
@@ -166,6 +178,7 @@ export class CameraPreview {
     this.source = source;
     feed.onDebug((frame) => {
       this.frame = frame as PreviewFrame;
+      this.boxes = retainBoxes(this.boxes, this.frame);
     });
   }
 
@@ -238,7 +251,7 @@ export class CameraPreview {
 
     const f = this.frame;
     if (!f) return;
-    if (f.objects) this.drawBoxes(ctx, f.objects, f.item, w, h);
+    if (this.boxes) this.drawBoxes(ctx, this.boxes, f.item, w, h);
     const lms = f.landmarks;
     if (!lms) return;
     const px = (l: Landmark) => ({ x: (1 - l.x) * w, y: l.y * h });
