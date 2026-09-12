@@ -317,7 +317,7 @@ describe("every character × state composes without throwing", () => {
     ["hit", { hitstun: 6 }, {}],
     ["ko", { hp: 0 }, { koFrames: 30 }],
     ["win", {}, { win: true }],
-    ["throw", { action: { kind: "throw", item: "molotov", arm: "R", elapsed: 3, released: false }, item: { kind: "molotov", uses: 2 } }, {}],
+    ["throw", { action: { kind: "throw", item: "molotov", arm: "R", phase: "release", charge: 0, elapsed: 3, released: false }, item: { kind: "molotov", uses: 2 } }, {}],
     ["laser", { action: { kind: "laser", elapsed: 10, hit: [] } }, {}],
   ];
   for (const id of CHARACTERS as readonly CharacterId[]) {
