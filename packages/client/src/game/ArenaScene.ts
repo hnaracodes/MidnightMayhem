@@ -27,6 +27,7 @@ import { session } from "./session";
 import { SpriteFighter } from "./sprites/SpriteFighter";
 import { Lighting } from "./stage/lighting";
 import { Particulate } from "./stage/particulate";
+import { Props } from "./stage/props";
 import { initialQualityState, qualityStep, resolveQuality, type Quality, type QualityState } from "./stage/quality";
 
 /**
@@ -72,6 +73,8 @@ declare global {
       /** 12.03: live particle counts and the resolved quality tier. */
       particles: () => { motes: number; embers: number };
       quality: () => Quality;
+      /** 13.06: animated ambient props this frame. */
+      props: () => number;
     };
   }
 }
@@ -94,6 +97,7 @@ export class ArenaScene extends Phaser.Scene {
   private itemFx!: ItemFx;
   private lighting!: Lighting;
   private particulate!: Particulate;
+  private props!: Props;
   private quality: QualityState = initialQualityState("high");
   private dazzle!: Phaser.GameObjects.Rectangle;
 
@@ -124,6 +128,8 @@ export class ArenaScene extends Phaser.Scene {
     this.hud = new Hud(this);
     this.lighting = new Lighting(this);
     this.particulate = new Particulate(this);
+    this.props = new Props(this, this.lighting);
+    this.props.setMap(this.layers.map.spans);
     this.applyQuality(resolveQuality(session.quality, this.renderer.type === Phaser.WEBGL), true);
     this.effects = new Effects(this, this.lighting);
     this.itemFx = new ItemFx(this, this.lighting);
@@ -147,6 +153,7 @@ export class ArenaScene extends Phaser.Scene {
       lights: () => this.lighting.lights().length,
       particles: () => this.particulate.live(),
       quality: () => this.quality.quality,
+      props: () => this.props.live(),
     };
   }
 
@@ -174,6 +181,12 @@ export class ArenaScene extends Phaser.Scene {
     const high = this.quality.quality === "high";
     this.lighting.update(dt, this.tileOffsets(), { reducedMotion: session.reducedMotion, rays: high });
     this.particulate.update(dt, { reducedMotion: session.reducedMotion, enabled: high, roofSpeed: this.layers.roofSpeed });
+    const motion = this.layers.motion;
+    this.props.update(dt, {
+      reducedMotion: session.reducedMotion, quality: this.quality.quality, roofOffset: this.tileOffsets().roof,
+      bob: motion.bobOffset, clack: motion.lastClack, tunnel: this.car === "TUNNEL",
+    });
+    this.props.bob(motion.bobOffset);
 
     const renderMs = this.clock.advance(now, this.effects.timeScale());
     const sampled = session.buffer.sample(renderMs);
@@ -205,6 +218,7 @@ export class ArenaScene extends Phaser.Scene {
     if (state.config.map !== this.drawnMap) {
       this.drawnMap = state.config.map;
       this.layers.map.setMap(this.drawnMap);
+      this.props.setMap(this.layers.map.spans);
     }
     if (this.names !== session.playerNames) {
       this.names = session.playerNames;
@@ -406,7 +420,7 @@ export class ArenaScene extends Phaser.Scene {
     const rtt = session.rtt === null ? "n/a" : `${session.rtt.toFixed(1)} ms`;
     const mode = attracting ? "ATTRACT" : state.phase;
     this.debugText!.setText(
-      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  q ${this.quality.quality}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  ${mode}  ${state.config.map}/${state.config.mode}`,
+      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  q ${this.quality.quality}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  props ${this.props.live()}  ${mode}  ${state.config.map}/${state.config.mode}`,
     );
   }
 }

@@ -229,3 +229,20 @@ describe("13.02 rule 3: light direction", () => {
     expect(rimFor([lamp], 0.35, 300, 380, true).dir!.x).toBeGreaterThan(0.99);
   });
 });
+
+describe("13.06 setLampGain", () => {
+  it("scales that roof lamp's resolved intensity on the next update and nothing else", () => {
+    const { scene } = stubScene();
+    const rig = new Lighting(scene);
+    const both = { roof: 500, tunnel: 0 }; // both roof lamps on screen (300 − 500 and 1260 − 500)
+    rig.update(DT, both, { reducedMotion: true, rays: true });
+    const before = rig.lights().filter((l) => l.kind === "lamp").map((l) => l.intensity);
+    expect(before).toHaveLength(2);
+    rig.setLampGain(1, 0.2);
+    rig.update(DT, both, { reducedMotion: true, rays: true });
+    const after = rig.lights().filter((l) => l.kind === "lamp").map((l) => l.intensity);
+    expect(after[0]).toBeCloseTo(before[0]!, 9);
+    expect(after[1]).toBeCloseTo(before[1]! * 0.2, 9);
+    expect(rig.lights().find((l) => l.kind === "window")!.intensity).toBe(0.4);
+  });
+});

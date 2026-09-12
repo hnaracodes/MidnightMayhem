@@ -13,6 +13,7 @@ import { computePose } from "../game/rig/pose";
 import { SpriteFighter } from "../game/sprites/SpriteFighter";
 import { Lighting, type LightHandle, type RimChoice } from "../game/stage/lighting";
 import { Particulate } from "../game/stage/particulate";
+import { Props } from "../game/stage/props";
 import { qualityFromQuery, resolveQuality } from "../game/stage/quality";
 
 declare global {
@@ -53,12 +54,14 @@ class StagePreviewScene extends Phaser.Scene {
   private layers!: Layers;
   private lighting!: Lighting;
   private particulate!: Particulate;
+  private props!: Props;
   private high = true;
   private sprite!: SpriteFighter;
   private shadow!: Phaser.GameObjects.Graphics;
   private debug: Phaser.GameObjects.Graphics | null = null;
   private fighter: FighterState = { ...createMatch().fighters[0]!, x: WALK.x0, vx: 3, facing: 1 };
   private walking = true;
+  private car: TrainCar = startCar;
   private fireLight: LightHandle | null = null;
   private rimNow: RimChoice = { color: P.amber1, side: "right", gloom: 0 };
   private costMs = 0;
@@ -72,6 +75,8 @@ class StagePreviewScene extends Phaser.Scene {
     this.layers = createBackgrounds(this, startMap);
     this.lighting = new Lighting(this);
     this.particulate = new Particulate(this);
+    this.props = new Props(this, this.lighting);
+    this.props.setMap(this.layers.map.spans);
     this.high = resolveQuality(qualityFromQuery(location.search), this.renderer.type === Phaser.WEBGL) === "high";
     this.lighting.setQuality(this.high);
     if (startCar !== "STANDARD") {
@@ -82,8 +87,8 @@ class StagePreviewScene extends Phaser.Scene {
     this.sprite = new SpriteFighter(this, 0, 2);
     if (DEBUG) { this.debug = this.add.graphics().setDepth(9); this.drawCollision(startMap); }
     window.__stage = {
-      setCar: (car) => { applyTrainCar(this, this.layers, car); this.lighting.setCar(car); },
-      setMap: (map) => { this.layers.map.setMap(map); this.drawCollision(map); },
+      setCar: (car) => { this.car = car; applyTrainCar(this, this.layers, car); this.lighting.setCar(car); },
+      setMap: (map) => { this.layers.map.setMap(map); this.props.setMap(this.layers.map.spans); this.drawCollision(map); },
       scroll: (sec) => {
         // Advance in render-sized steps so the clamp inside scrollBackgrounds never trims a long jump.
         for (let left = sec; left > 0; left -= 1 / 60) scrollBackgrounds(this.layers, Math.min(left, 1 / 60));
@@ -97,9 +102,9 @@ class StagePreviewScene extends Phaser.Scene {
     };
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
       const car = CARS[event.code];
-      if (car) { applyTrainCar(this, this.layers, car); this.lighting.setCar(car); }
+      if (car) { this.car = car; applyTrainCar(this, this.layers, car); this.lighting.setCar(car); }
       const map = MAP_KEYS[event.code];
-      if (map) this.layers.map.setMap(map);
+      if (map) { this.layers.map.setMap(map); this.props.setMap(this.layers.map.spans); this.drawCollision(map); }
       if (event.code === "KeyL") this.layers.motion.strike();
       if (event.code === "KeyF") this.setFire(this.fireLight === null);
     });
@@ -134,11 +139,17 @@ class StagePreviewScene extends Phaser.Scene {
     scrollBackgrounds(this.layers, dt);
     this.lighting.update(dt, { roof: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0, tunnel: this.layers.tunnel.tilePositionX }, { reducedMotion: false, rays: this.high });
     this.particulate.update(dt, { reducedMotion: false, enabled: this.high, roofSpeed: this.layers.roofSpeed });
+    const motion = this.layers.motion;
+    this.props.update(dt, {
+      reducedMotion: false, quality: this.high ? "high" : "low", roofOffset: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0,
+      bob: motion.bobOffset, clack: motion.lastClack, tunnel: this.car === "TUNNEL",
+    });
+    this.props.bob(motion.bobOffset);
     this.stepStandIn(dt);
     this.costMs += (performance.now() - start - this.costMs) * 0.05;
     if (++this.frames % 30 === 0) {
       const el = document.getElementById("cost");
-      if (el) el.textContent = `scrollBackgrounds + Motion.update + Lighting.update: ${this.costMs.toFixed(3)} ms/frame (budget 1 ms)  lights ${this.lighting.lights().length}  q ${this.high ? "high" : "low"}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  rim ${this.rimNow.side} gloom ${this.rimNow.gloom.toFixed(2)}`;
+      if (el) el.textContent = `scrollBackgrounds + Motion.update + Lighting.update: ${this.costMs.toFixed(3)} ms/frame (budget 1 ms)  lights ${this.lighting.lights().length}  q ${this.high ? "high" : "low"}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  props ${this.props.live()}  rim ${this.rimNow.side} gloom ${this.rimNow.gloom.toFixed(2)}`;
     }
   }
 

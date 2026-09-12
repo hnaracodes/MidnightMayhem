@@ -238,6 +238,8 @@ export class Lighting implements LightSink {
   private readonly glowing = new Set<Phaser.GameObjects.GameObject>();
   private readonly flickers = new Map<string, FlickerState>();
   private readonly transients = new Map<number, Transient>();
+  /** 13.06: per-roof-lamp gain multipliers set by `Props` each frame (index into ROOF_LAMPS). */
+  private readonly lampGains: number[] = [];
   private readonly tweenState = { darkAlpha: DARK_ALPHA.STANDARD };
   private specs: LightSpec[] = carLights("STANDARD");
   private car: TrainCar = "STANDARD";
@@ -335,6 +337,11 @@ export class Lighting implements LightSink {
     this.transients.set(id, { id, light: { ...l }, frames, left: frames });
   }
 
+  /** 13.06: multiplies roof lamp `index`'s intensity by `gain` on the next `update` (1 = no change). */
+  setLampGain(index: number, gain: number): void {
+    this.lampGains[index] = Math.max(0, gain);
+  }
+
   /** Live lights this frame (static instances plus transients), for the rim choice, tests and the debug readout. */
   lights(): readonly Resolved[] { return this.resolved; }
 
@@ -349,6 +356,7 @@ export class Lighting implements LightSink {
   update(dtSec: number, offsets: { roof: number; tunnel: number }, opts: { reducedMotion: boolean; rays: boolean }): void {
     if (!opts.reducedMotion) this.t += dtSec;
     const out: Resolved[] = [];
+    let lampIndex = 0;
     for (const [i, spec] of this.specs.entries()) {
       const key = `${spec.kind}${i}`;
       let gain = 1;
@@ -358,6 +366,7 @@ export class Lighting implements LightSink {
         gain = flicker(this.rng, st, spec.flickerHz, spec.flickerAmp ?? 0.05, dtSec);
       }
       if (spec.pulseHz) gain *= 0.7 + 0.3 * Math.sin(this.t * spec.pulseHz * Math.PI * 2);
+      if (spec.kind === "lamp") gain *= this.lampGains[lampIndex++] ?? 1;
       const offset = spec.scroll === "roof" ? offsets.roof : spec.scroll === "tunnel" ? offsets.tunnel : 0;
       for (const x of placeRepeating(spec, offset)) {
         out.push({ x, y: spec.y, rx: spec.r, ry: spec.ry ?? spec.r, color: spec.color, intensity: spec.intensity * gain, cold: spec.kind === "moon", kind: spec.kind });
