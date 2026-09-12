@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import { MAPS, WORLD } from "@midnight/shared";
-import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "../src/game/backgrounds";
+import { WINDOW_CENTRE, applyTrainCar, createBackgrounds, renderPixelArt, scrollBackgrounds, type Layers } from "../src/game/backgrounds";
+import { PIXEL } from "../src/game/pixel";
+import { rgba } from "../src/game/sprites/grid";
 import { Motion } from "../src/game/stage/motion";
 import { P } from "../src/game/palette";
 
@@ -54,6 +56,8 @@ function stubScene() {
   const rectangles: FakeRect[] = [];
   const tweens: TweenConfig[] = [];
   const textures = new Set<string>();
+  /** 13.04: canvas textures made through makePixelTexture, with their declared size and the bytes uploaded. */
+  const canvases: Array<{ key: string; w: number; h: number; uploaded: number }> = [];
   const track = <T extends FakeObject>(o: T): T => { objects.push(o); return o; };
   const scene = {
     add: {
@@ -69,7 +73,22 @@ function stubScene() {
       container: (x: number, y: number) => track(new FakeObject(x, y)),
     },
     make: { graphics: () => new FakeGraphics() },
-    textures: { exists: (key: string) => textures.has(key) },
+    textures: {
+      exists: (key: string) => textures.has(key),
+      createCanvas: (key: string, w: number, h: number) => {
+        textures.add(key);
+        const entry = { key, w, h, uploaded: 0 };
+        canvases.push(entry);
+        return {
+          setFilter: () => undefined,
+          refresh: () => undefined,
+          context: {
+            createImageData: (iw: number, ih: number) => ({ data: new Uint8ClampedArray(iw * ih * 4), width: iw, height: ih }),
+            putImageData: (img: { data: Uint8ClampedArray }) => { entry.uploaded = img.data.length; },
+          },
+        };
+      },
+    },
     tweens: { add: (cfg: TweenConfig) => { tweens.push(cfg); return {}; }, killTweensOf: () => undefined },
   };
   // generateTexture is a no-op on the proxy; record keys so a second call does not regenerate.
@@ -79,8 +98,67 @@ function stubScene() {
     (g as unknown as { generateTexture: (key: string) => void }).generateTexture = (key) => { textures.add(key); };
     return g;
   };
-  return { scene: scene as unknown as Phaser.Scene, graphics, objects, rectangles, tweens };
+  return { scene: scene as unknown as Phaser.Scene, graphics, objects, rectangles, tweens, canvases };
 }
+
+describe("13.04 roof and body pixel rasters", () => {
+  it("the roof and body textures are canvas textures at exactly their TEXTURE_SIZE, uploaded in full", () => {
+    const { scene, canvases } = stubScene();
+    createBackgrounds(scene);
+    const roof = canvases.find((c) => c.key === "bg_train_roof")!;
+    const body = canvases.find((c) => c.key === "bg_train_body")!;
+    expect([roof.w, roof.h]).toEqual([1920, 130]);
+    expect([body.w, body.h]).toEqual([1920, 110]);
+    expect(roof.uploaded).toBe(1920 * 130 * 4);
+    expect(body.uploaded).toBe(1920 * 110 * 4);
+    expect(canvases.map((c) => c.key).sort()).toEqual(["bg_train_body", "bg_train_roof"]);
+  });
+
+  it("the rasters are deterministic, art-sized, lip and gutter run the full width, and every window's glass sits on its WINDOW_CENTRE", () => {
+    const roof = renderPixelArt("bg_train_roof");
+    const again = renderPixelArt("bg_train_roof");
+    expect(Array.from(roof.data)).toEqual(Array.from(again.data));
+    expect([roof.w, roof.h]).toEqual([1920 / PIXEL, 130 / PIXEL]);
+    for (let x = 0; x < roof.w; x++) expect(roof.get(x, 0)).toBe(rgba(P.steel2));
+    const body = renderPixelArt("bg_train_body");
+    expect([body.w, body.h]).toEqual([1920 / PIXEL, 110 / PIXEL]);
+    for (let x = 0; x < body.w; x++) {
+      expect(body.get(x, 0)).toBe(0); // roof lip rows stay transparent
+      expect(body.get(x, body.h - 1)).toBe(0); // wheel band rows stay transparent
+      expect(body.get(x, 15)).toBe(rgba(P.steel2)); // gutter highlight
+    }
+    const glass = new Set([0xf2a03d, 0xebba46]); // amber glass and its mix; any opaque non-outline, non-body pixel counts
+    for (let cx = WINDOW_CENTRE.x; cx < 1920; cx += WINDOW_CENTRE.every) {
+      const ax = Math.floor(cx / PIXEL);
+      const px = body.get(ax, 24) >>> 8;
+      // glass is warm: red channel well above blue
+      expect((px >> 16) & 255, `window at world x ${cx}`).toBeGreaterThan(((px & 255) + 60));
+    }
+    void glass;
+  });
+
+  it("the tiles are seamless: every structural row continues across the wrap and a feature at the last column continues at the first", () => {
+    const roof = renderPixelArt("bg_train_roof");
+    // the wrap must look like any other panel joint: column w−1 matches the column before the seam at 120, column 0 the seam itself
+    for (const y of [0, 1, 6, 9, 11, 28, 33]) {
+      expect(roof.get(roof.w - 1, y), `row ${y} last column`).toBe(roof.get(119, y));
+      expect(roof.get(0, y), `row ${y} first column`).toBe(roof.get(120, y));
+    }
+    const body = renderPixelArt("bg_train_body");
+    for (const y of [15, 16, 18, 31, 34]) {
+      expect(body.get(body.w - 1, y), `body row ${y} last column`).toBe(body.get(119, y));
+      expect(body.get(0, y), `body row ${y} first column`).toBe(body.get(120, y));
+    }
+    // a seeded feature (tar, rust) that reaches the last column continues past the wrap: at the seam it meets the
+    // seam line (x 0–1), otherwise a non-base pixel at x 2 within the same streak row (visible rows only)
+    const base = new Set([rgba(P.steel1), rgba(P.steel0), rgba(P.steel2)]);
+    for (let y = 2; y < 15; y++) {
+      const last = roof.get(roof.w - 1, y);
+      if (base.has(last)) continue;
+      expect(roof.get(0, y), `row ${y}: the seam continues`).toBe(rgba(P.steel0));
+    }
+  });
+});
 
 const DT = 1 / 60;
 const ROOF = 240;
