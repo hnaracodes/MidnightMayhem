@@ -16,8 +16,13 @@ class FakeGraphics {
       },
     });
   }
+  circles: Array<{ x: number; y: number; r: number }> = [];
   fillStyle(color: number, alpha = 1): this {
     this.fills.push({ color, alpha });
+    return this;
+  }
+  fillCircle(x: number, y: number, r: number): this {
+    this.circles.push({ x, y, r });
     return this;
   }
   clear(): this {
@@ -157,6 +162,25 @@ describe("Effects hit-stop and flashes", () => {
     frames(fx, state, 12);
     expect(created.length).toBe(spawned);
     expect(created.every((g) => g.destroyed)).toBe(true);
+  });
+});
+
+describe("Effects impact position", () => {
+  it("4.06 rule 1: the spark sits on the newest snapshot's target chest, 20 px toward the attacker", () => {
+    const { scene, created } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    state.fighters[0].x = 300;
+    state.fighters[1].x = 400;
+    // the snapshot that carried the event: the target has already taken a knockback step
+    const newest = structuredClone(state);
+    newest.fighters[1].x = 460;
+    fx.consume([hit(1, false)], state, newest);
+    const spark = created.at(-1)!;
+    const core = spark.circles.at(-1)!;
+    expect(core.x).toBe(460 - 20);
+    expect(core.y).toBe(WORLD.ROOF_Y - 90);
+    expect(fx.frozen(1)?.x).toBe(460);
   });
 });
 

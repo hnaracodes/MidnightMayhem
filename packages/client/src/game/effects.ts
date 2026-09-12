@@ -207,8 +207,10 @@ export class Effects {
   private onEvent(event: SimEvent, state: MatchState, newest: MatchState): void {
     switch (event.type) {
       case "HIT": {
-        const target = state.fighters[event.target];
-        const attacker = state.fighters[event.attacker];
+        // Positions from `newest`, the snapshot that carried the event: an unblocked hit freezes that snapshot,
+        // so the spark must sit on the frozen target's chest, not on the 50 ms-delayed sample.
+        const target = newest.fighters[event.target];
+        const attacker = newest.fighters[event.attacker];
         const toward = attacker.x !== target.x ? Math.sign(attacker.x - target.x) : target.facing;
         const at = { x: target.x + toward * IMPACT_OFFSET, y: target.y - CHEST_ABOVE_FEET };
         if (event.blocked) {

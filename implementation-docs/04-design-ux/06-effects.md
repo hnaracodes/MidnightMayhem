@@ -39,3 +39,5 @@ Create: `packages/client/src/game/effects.ts`.
 
 ## Done when
 - [ ] all effects visible in a keyboard match
+- Rule 1 `fx_impact` position (and the blocked ring) is computed from `newest`, the snapshot that carried the HIT,
+  so the spark sits on the frozen target's chest rather than up to a knockback step away from it. (review fix)
