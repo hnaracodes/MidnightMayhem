@@ -313,8 +313,8 @@ export class Motion {
     if (body) body.setY(WORLD.ROOF_Y + offset);
     L.glow.setY(WORLD.ROOF_Y + offset);
     this.rail.setY(BAND_TOP + offset);
-    for (const g of [L.railing, L.lamp, this.bogies, this.wheels, this.sparkLayer, L.map.gaps, L.map.platforms]) g.setY(offset);
-    for (const s of L.map.slices) s.setY(480 + offset);
+    for (const g of [L.railing, L.lamp, this.bogies, this.wheels, this.sparkLayer]) g.setY(offset);
+    L.map.bob(offset); // 13.05: mask, glow, track slices and the pixel-art images
   }
 
   private lightning(): void {

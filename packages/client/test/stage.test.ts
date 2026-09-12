@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import { MAPS, WORLD } from "@midnight/shared";
 import { WINDOW_CENTRE, applyTrainCar, createBackgrounds, renderPixelArt, scrollBackgrounds, type Layers } from "../src/game/backgrounds";
+import { gapArt, rackArt } from "../src/game/stage/mapDraw";
 import { PIXEL } from "../src/game/pixel";
 import { rgba } from "../src/game/sprites/grid";
 import { Motion } from "../src/game/stage/motion";
@@ -177,13 +178,69 @@ describe("map drawing", () => {
     expect(masks.map((r) => [r.x, r.x + r.w])).toEqual([[300, 380], [580, 660]]);
   });
 
-  it("platforms: two racks at MAPS.platforms.platforms with the slab top on platform.y", () => {
-    const { scene } = stubScene();
+  it("platforms: two rack images at MAPS.platforms.platforms whose plank row sits on platform.y (13.05)", () => {
+    const { scene, canvases } = stubScene();
     const layers = createBackgrounds(scene, "platforms");
     expect(layers.map.spans.gaps).toEqual([]);
     expect(layers.map.spans.platforms).toEqual(MAPS.platforms.platforms);
-    const slabs = (layers.map.platforms as unknown as FakeGraphics).rects.filter((r) => r.h === 12 && r.w === 180);
-    expect(slabs.map((r) => [r.x, r.y])).toEqual([[150, 330], [630, 330]]);
+    expect(layers.map.images).toHaveLength(2);
+    // the image starts one outline row (PIXEL px) above the surface and PIXEL px outside the span
+    expect(layers.map.images.map((i) => [(i as unknown as FakeObject).x, (i as unknown as FakeObject).y])).toEqual([[148, 328], [628, 328]]);
+    expect(canvases.filter((c) => c.key.startsWith("map_rack_")).map((c) => [c.w, c.h])).toEqual([[184, 102], [184, 102]]);
+    // the glow stays a Graphics under the rack
+    const glow = (layers.map.platforms as unknown as FakeGraphics).rects.filter((r) => r.y === WORLD.ROOF_Y && r.w === 180);
+    expect(glow).toHaveLength(2);
+  });
+
+  it("13.05 rackArt: the plank row is opaque across the span, row 0 is outline only, nothing outside the span ±1 outline column", () => {
+    for (const worn of [false, true]) {
+      const { canvas: c, x, y } = rackArt(150, 330, 330, worn);
+      expect([x, y]).toEqual([148, 328]);
+      expect([c.w, c.h]).toEqual([92, 51]);
+      for (let ax = 1; ax < c.w - 1; ax++) {
+        expect(c.get(ax, 1), `plank column ${ax}`).not.toBe(0);
+        const top = c.get(ax, 0);
+        expect(top === 0 || top === rgba(P.outline), `row 0 column ${ax}`).toBe(true);
+      }
+      // the outline columns carry only outline pixels: no ledge outside MAPS
+      for (let ay = 0; ay < c.h; ay++) for (const ax of [0, c.w - 1]) {
+        const px = c.get(ax, ay);
+        expect(px === 0 || px === rgba(P.outline), `edge ${ax},${ay}`).toBe(true);
+      }
+    }
+    let plain = 0, worn = 0;
+    for (const px of rackArt(150, 330, 330, false).canvas.data) if (px !== 0) plain += 1;
+    for (const px of rackArt(150, 330, 330, true).canvas.data) if (px !== 0) worn += 1;
+    expect(worn).toBeLessThan(plain); // the worn rack has a hole
+  });
+
+  it("13.05 gapArt: the pit stays open above the buffers except the shards at each lip; walls, buffers, coupling and hoses are inside", () => {
+    const { canvas: c, x, y } = gapArt(300, 380);
+    expect([x, y]).toEqual([292, WORLD.ROOF_Y]);
+    expect([c.w, c.h]).toEqual([48, 55]);
+    const gx0 = 4, gx1 = 44; // art columns of the pit
+    for (let ay = 0; ay < 6; ay++) for (let ax = gx0 + 3; ax < gx1 - 3; ax++) expect(c.get(ax, ay), `open pit at ${ax},${ay}`).toBe(0);
+    // the lip is bright on both cars and the shard hangs at the edge
+    expect(c.get(0, 0)).toBe(rgba(P.steel2));
+    expect(c.get(c.w - 1, 0)).toBe(rgba(P.steel2));
+    expect(c.get(gx0, 1)).not.toBe(0);
+    // coupling bar with a pin in the middle, hoses below it
+    expect(c.get(24, 15)).not.toBe(0);
+    expect(c.get(23, 15)).toBe(rgba(P.moon));
+    let hose = 0;
+    for (let ay = 12; ay < 30; ay++) if (c.get(24, ay) === rgba(P.outline) || c.get(24, ay) === rgba(P.steel0)) hose += 1;
+    expect(hose).toBeGreaterThan(0);
+  });
+
+  it("13.05 bob moves the mask, glow, slices and images together", () => {
+    const { scene } = stubScene();
+    const layers = createBackgrounds(scene, "chaos");
+    expect(layers.map.images).toHaveLength(4);
+    const before = layers.map.images.map((i) => (i as unknown as FakeObject).y);
+    layers.map.bob(3);
+    layers.map.images.forEach((i, k) => expect((i as unknown as FakeObject).y).toBe(before[k]! + 3));
+    expect((layers.map.gaps as unknown as FakeObject).y).toBe(3);
+    for (const s of layers.map.slices) expect((s as unknown as FakeObject).y).toBe(483);
   });
 
   it("chaos: both; roof: neither; setMap switches in place", () => {

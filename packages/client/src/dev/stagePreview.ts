@@ -5,7 +5,7 @@
  * No drawing logic lives here.
  */
 import Phaser from "phaser";
-import { MAP_IDS, WORLD, createMatch, type FighterState, type MapId, type TrainCar } from "@midnight/shared";
+import { MAPS, MAP_IDS, WORLD, createMatch, type FighterState, type MapId, type TrainCar } from "@midnight/shared";
 import { CSS_P, P } from "../game/palette";
 import { ROOF_INDEX, applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "../game/backgrounds";
 import { drawShadow } from "../game/rig/draw";
@@ -45,6 +45,7 @@ const MAP_KEYS: Record<string, MapId> = { KeyQ: "roof", KeyW: "gaps", KeyE: "pla
 const CAR_IDS: TrainCar[] = ["STANDARD", "TUNNEL", "FINAL_CAR"];
 
 const query = new URLSearchParams(window.location.search);
+const DEBUG = query.get("debug") === "1";
 const startMap = MAP_IDS.find((m) => m === query.get("map")) ?? "roof";
 const startCar = CAR_IDS.find((c) => c === query.get("car")) ?? "STANDARD";
 
@@ -55,6 +56,7 @@ class StagePreviewScene extends Phaser.Scene {
   private high = true;
   private sprite!: SpriteFighter;
   private shadow!: Phaser.GameObjects.Graphics;
+  private debug: Phaser.GameObjects.Graphics | null = null;
   private fighter: FighterState = { ...createMatch().fighters[0]!, x: WALK.x0, vx: 3, facing: 1 };
   private walking = true;
   private fireLight: LightHandle | null = null;
@@ -78,9 +80,10 @@ class StagePreviewScene extends Phaser.Scene {
     }
     this.shadow = this.add.graphics().setDepth(1);
     this.sprite = new SpriteFighter(this, 0, 2);
+    if (DEBUG) { this.debug = this.add.graphics().setDepth(9); this.drawCollision(startMap); }
     window.__stage = {
       setCar: (car) => { applyTrainCar(this, this.layers, car); this.lighting.setCar(car); },
-      setMap: (map) => this.layers.map.setMap(map),
+      setMap: (map) => { this.layers.map.setMap(map); this.drawCollision(map); },
       scroll: (sec) => {
         // Advance in render-sized steps so the clamp inside scrollBackgrounds never trims a long jump.
         for (let left = sec; left > 0; left -= 1 / 60) scrollBackgrounds(this.layers, Math.min(left, 1 / 60));
@@ -100,6 +103,18 @@ class StagePreviewScene extends Phaser.Scene {
       if (event.code === "KeyL") this.layers.motion.strike();
       if (event.code === "KeyF") this.setFire(this.fireLight === null);
     });
+  }
+
+  /** 13.05 acceptance: the sim's platform lines and ground segment ends (`?debug=1`), as ArenaScene draws them. */
+  private drawCollision(map: MapId): void {
+    const g = this.debug;
+    if (!g) return;
+    g.clear();
+    for (const plat of MAPS[map].platforms) g.lineStyle(1, P.steel2, 1).lineBetween(plat.x0, plat.y, plat.x1, plat.y);
+    for (const seg of MAPS[map].ground) {
+      g.lineStyle(1, P.danger, 1).lineBetween(seg.x0, WORLD.ROOF_Y, seg.x0, WORLD.ROOF_Y + 60);
+      g.lineBetween(seg.x1, WORLD.ROOF_Y, seg.x1, WORLD.ROOF_Y + 60);
+    }
   }
 
   /** A molotov-sized fire light on the roof (rule 7), without the sim hazard. */
