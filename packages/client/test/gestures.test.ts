@@ -35,6 +35,7 @@ function metrics(o: Partial<Metrics> = {}): Metrics {
     sideR: 0,
     jabRiseL: 0,
     jabRiseR: 0,
+    wristGap: 2,
     guard: false,
     ...o,
   };
