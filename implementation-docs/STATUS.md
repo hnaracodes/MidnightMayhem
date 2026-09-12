@@ -13,8 +13,21 @@ first, then this, then your feature file.
 | `gate-5-code` | Phase 5 vision code, MediaPipe wired, harness page | client tests; camera checklist not run |
 | (untagged) | Phase 4 design (rig, stage, HUD, effects, arena), Phase 6 integration, polish | 219 client + 125 shared/server tests, owner keyboard match |
 
-`main` builds, `pnpm test` (344 tests) and `pnpm typecheck` are green. The game is a playable two-player keyboard
-and webcam fighter with vector-rig characters.
+| (untagged) | 8.01 contracts + every phase 9–11 lane merged (9.01–9.06, 10.01–10.03, 11.01–11.04), integrator shims collapsed | 165 shared + 38 server + 707 client tests, typecheck, client build |
+
+`main` builds, `pnpm test` (910 tests) and `pnpm typecheck` are green. The sim has items, throwables, laser, maps,
+modes and N players; the client has the pixel sprites, moving stage, landing/lobby, four-player HUD, item FX and SFX
+as separate modules. **The arena does not use them yet: 11.05 (arena integration) is the next assignment, alone on
+`main`.** After 11.05: review per area, then 9.07.
+
+Integration notes (merge of 13 lanes, commits `integ:`):
+- Molotov retuned to `MOLOTOV_VX 2 / VY -3` so it lands 70–130 px out (9.02 rule 2); banana unchanged (~250 px).
+- `step.ts` runs `applyEquip` during COUNTDOWN too (spec §4.2).
+- `LOBBY.host` is sent as `host ?? 0` for an empty room because the shared protocol keeps `host: PlayerIndex`.
+- The RoomLoop keeps sending `MATCH_END` snapshots until the room empties; 11.05's client should tolerate an old
+  2-fighter MATCH_END arriving before a new 4-player match starts.
+- `settleKnockouts` (rounds.ts) clears a KO'd fighter's action each fighting tick; could fold into `resolvePunches`.
+- `efficientdet_lite0.tflite` is gitignored; run `pnpm --filter @midnight/client vision:setup` on a fresh checkout.
 
 ## What is being built now: the expansion
 

@@ -86,12 +86,10 @@ describe("2. molotov flight and landing", () => {
     const { s, h, events } = landed("molotov");
     expect(s.projectiles).toHaveLength(0);
     expect(h).toMatchObject({ kind: "fire", owner: 0, y: WORLD.ROOF_Y, w: ARSENAL.FIRE_W, ticks: ARSENAL.FIRE_TICKS - 1, age: 1 }); // aged once on the landing tick
-    // The feature file says 70–130 px; with MOLOTOV_VX 6, MOLOTOV_VY −7 and GRAVITY 8/30 from a 100 px release
-    // height the arc is ~64 ticks long, so the real landing is ~400 px out. Constants are not this lane's to
-    // change; the assertion pins the actual arc so a retune of the constants shows up here.
+    // 9.02 rule 2: 70–130 px in front of the thrower on a flat map (MOLOTOV_VX / VY in constants.ts are tuned for it).
     const dist = h.x - 280;
-    expect(dist).toBeGreaterThan(350);
-    expect(dist).toBeLessThan(450);
+    expect(dist).toBeGreaterThanOrEqual(70);
+    expect(dist).toBeLessThanOrEqual(130);
     expect(events.find((e) => e.type === "HAZARD_SPAWN")).toEqual({ type: "HAZARD_SPAWN", id: h.id, kind: "fire", x: h.x });
   });
   it("follows the arc: gravity each tick, x by vx", () => {
