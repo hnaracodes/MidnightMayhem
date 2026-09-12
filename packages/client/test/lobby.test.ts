@@ -20,6 +20,34 @@ describe("Lobby.renderRoom", () => {
   beforeEach(() => { document.body.innerHTML = '<div id="lobby" class="overlay" hidden></div>'; });
   afterEach(() => { document.body.innerHTML = ""; });
 
+  it("keeps keyboard focus on the same control across a re-render (rule 9)", () => {
+    const l = lobby();
+    const four: MatchConfig = { ...DEFAULT_CONFIG, players: 4 };
+    l.renderRoom("K7QX", [player("Ana"), player("Bo"), null, null], four, 0, 0, false, "button");
+    root().querySelector<HTMLButtonElement>('[data-field="mode"] button[data-value="timed"]')!.focus();
+    l.renderRoom("K7QX", [player("Ana"), player("Bo"), null, null], { ...four, mode: "timed" }, 0, 0, false, "button");
+    expect(document.activeElement).toBe(root().querySelector('[data-field="mode"] button[data-value="timed"]'));
+    root().querySelector<HTMLButtonElement>('button[data-item="banana"]')!.focus();
+    l.renderRoom("K7QX", [player("Ana"), player("Bo"), null, null], four, 0, 0, false, "button");
+    expect(document.activeElement).toBe(root().querySelector('button[data-item="banana"]'));
+    const full = [player("Ana"), player("Bo"), player("Cy"), player("Di")];
+    l.renderRoom("K7QX", full, four, 0, 0, false, "button");
+    readyButton().focus(); // enabled now that the room is full
+    l.renderRoom("K7QX", [player("Ana", true), ...full.slice(1)], four, 0, 0, false, "button");
+    expect(document.activeElement).toBe(readyButton());
+    expect(readyButton().textContent).toBe("Not ready");
+  });
+
+  it("disables player counts the seated players rule out (a guest in slot 2 pins players at 3 or more)", () => {
+    const l = lobby();
+    const four: MatchConfig = { ...DEFAULT_CONFIG, players: 4 };
+    l.renderRoom("K7QX", [player("Ana"), player("Bo"), player("Cy"), null], four, 0, 0, false, "button");
+    const seg = (v: string) => root().querySelector<HTMLButtonElement>(`[data-field="players"] button[data-value="${v}"]`)!;
+    expect(seg("2").disabled).toBe(true);
+    expect(seg("3").disabled).toBe(false);
+    expect(seg("4").disabled).toBe(false);
+  });
+
   it("draws one roster row per configured seat, empty seats included", () => {
     const l = lobby();
     const four: MatchConfig = { ...DEFAULT_CONFIG, players: 4 };

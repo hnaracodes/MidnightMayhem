@@ -29,6 +29,15 @@ describe("HostControls", () => {
     expect(segment(el, "teams", "2v2").disabled).toBe(false);
   });
 
+  it("disables player counts below minPlayers (the seats the server would refuse to drop)", () => {
+    const controls = new HostControls(vi.fn());
+    const el = root();
+    controls.render(el, { ...DEFAULT_CONFIG, players: 4 }, true, 3);
+    expect(segment(el, "players", "2").disabled).toBe(true);
+    expect(segment(el, "players", "3").disabled).toBe(false);
+    expect(segment(el, "players", "4").disabled).toBe(false);
+  });
+
   it("emits one normalised config per burst of changes, after the debounce", () => {
     const onChange = vi.fn<(config: MatchConfig) => void>();
     const controls = new HostControls(onChange);

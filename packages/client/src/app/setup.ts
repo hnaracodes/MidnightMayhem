@@ -50,12 +50,18 @@ export class HostControls {
   private config: MatchConfig | null = null;
   private root: HTMLElement | null = null;
   private enabled = false;
+  private minPlayers = 2;
   private timer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly onChange: (config: MatchConfig) => void) {}
 
-  render(root: HTMLElement, config: MatchConfig, enabled: boolean): void {
+  /**
+   * `minPlayers` is the lowest player count the server would accept (one past the highest seated slot), so
+   * the counts below it are drawn disabled instead of being picked and then rejected with no LOBBY to undo it.
+   */
+  render(root: HTMLElement, config: MatchConfig, enabled: boolean, minPlayers = 2): void {
     this.root = root;
+    this.minPlayers = minPlayers;
     // A LOBBY that lands inside the debounce window still carries the pre-click config; the host's pending
     // pick wins until it has been sent, then the next LOBBY is the truth again.
     if (this.timer === null || !enabled) this.config = normalizeConfig(config);
@@ -86,7 +92,7 @@ export class HostControls {
         button.className = "segment";
         button.dataset["value"] = option.value;
         button.textContent = option.label;
-        button.disabled = rowDisabled;
+        button.disabled = rowDisabled || (row.field === "players" && Number(option.value) < this.minPlayers);
         button.setAttribute("aria-pressed", String(valueOf(config, row.field) === option.value));
         button.addEventListener("click", () => this.pick(row.field, option.value));
         group.append(button);

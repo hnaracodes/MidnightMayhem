@@ -417,6 +417,8 @@ export class Sfx {
   private master: GainNode | null = null;
   private readonly voices: Voice[] = [];
   private fireLoop: Voice | null = null;
+  /** The arena wants the fire loop running (set even while muted, so unmuting can bring it back). */
+  private fireWanted = false;
   private _muted = readMuted();
   /** True once a context creation was attempted and failed; play() stays a no-op from then on. */
   private unavailable = false;
@@ -445,9 +447,13 @@ export class Sfx {
       this.master.gain.value = muted ? 0 : MASTER_GAIN;
     }
     if (muted) this.stopFireLoop(0);
+    // The arena only calls fire_loop_start on a fire edge; a fire that is still burning after unmuting restarts here.
+    else if (this.fireWanted && !this.fireLoop) this.play("fire_loop_start");
   }
 
   play(name: SfxName, opts?: { pan?: number; gain?: number }): void {
+    if (name === "fire_loop_start") this.fireWanted = true;
+    else if (name === "fire_loop_stop") this.fireWanted = false;
     if (this._muted) return;
     if (name === "fire_loop_start" && this.fireLoop) return;
     const ctx = this.ensureContext();

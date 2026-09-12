@@ -271,6 +271,31 @@ describe("Sfx mute", () => {
     expect(ctx.nodes.length).toBeGreaterThan(before);
   });
 
+  it("unmuting while a fire still burns brings the fire loop back; a loop started while muted starts on unmute", () => {
+    const { ctx, sfx } = ctxAndSfx();
+    // A live fire loop source only carries the recipe's far-off safety stop; stopping it schedules a near stop.
+    const live = () => ctx.sources.filter((s) => s.loop && (s.stopped ?? 0) > 60);
+    sfx.play("fire_loop_start");
+    const perLoop = live().length;
+    expect(perLoop).toBeGreaterThan(0);
+    ctx.currentTime = 1;
+    sfx.setMuted(true);
+    expect(live()).toHaveLength(0);
+    sfx.setMuted(false);
+    expect(live()).toHaveLength(perLoop);
+    // Stop clears the wish: unmute after a stop starts nothing.
+    sfx.play("fire_loop_stop");
+    expect(live()).toHaveLength(0);
+    sfx.setMuted(true); sfx.setMuted(false);
+    expect(live()).toHaveLength(0);
+    // Started while muted: nothing scheduled until unmute.
+    sfx.setMuted(true);
+    sfx.play("fire_loop_start");
+    expect(live()).toHaveLength(0);
+    sfx.setMuted(false);
+    expect(live()).toHaveLength(perLoop);
+  });
+
   it("persists mute in localStorage['midnight-mayhem:muted']", () => {
     const { sfx } = ctxAndSfx();
     sfx.setMuted(true);

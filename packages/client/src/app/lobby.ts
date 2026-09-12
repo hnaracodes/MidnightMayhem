@@ -47,6 +47,8 @@ export class Lobby {
     visionAvailable: boolean,
     cameraButton: CameraButton = "button",
   ): void {
+    // Every LOBBY rebuilds the DOM; remember which control had the keyboard focus so it comes back (rule 9).
+    const focused = focusKey(document.activeElement);
     this.root.replaceChildren();
     this.root.hidden = false;
     const seated = players.slice(0, config.players).filter((p): p is LobbyPlayer => p !== null);
@@ -96,7 +98,9 @@ export class Lobby {
     const routeHead = document.createElement("h2");
     routeHead.textContent = isHost ? "Route" : "Route, set by the host";
     const route = document.createElement("div");
-    this.hostControls.render(route, config, isHost);
+    // The server refuses a player count below the highest seated slot + 1 (10.03), so those are disabled.
+    const highestSeated = players.reduce((top, p, i) => (p !== null ? i : top), -1);
+    this.hostControls.render(route, config, isHost, Math.max(2, highestSeated + 1));
     const summary = document.createElement("p");
     summary.className = "route-summary";
     summary.textContent = describeConfig(config);
@@ -113,11 +117,24 @@ export class Lobby {
     board.append(routeHead, route, summary, seatHead, pick);
 
     this.root.append(manifest, board);
+    if (focused) this.root.querySelector<HTMLElement>(focused)?.focus({ preventScroll: true });
   }
 
   hide(): void {
     this.root.hidden = true;
   }
+}
+
+/** A selector that finds the same control again after a re-render, or null when nothing in the lobby is focused. */
+export function focusKey(el: Element | null): string | null {
+  if (!(el instanceof HTMLElement) || !el.closest("#lobby")) return null;
+  const { field, value, character, item } = { ...el.closest<HTMLElement>("[data-field]")?.dataset, ...el.dataset };
+  if (field !== undefined && value !== undefined) return `[data-field="${field}"] button[data-value="${value}"]`;
+  if (character !== undefined) return `button[data-character="${character}"]`;
+  if (item !== undefined) return `button[data-item="${item}"]`;
+  if (el.classList.contains("btn-primary")) return "button.btn-primary";
+  if (el.classList.contains("btn")) return ".actions button.btn:not(.btn-primary)";
+  return null;
 }
 
 function seat(index: PlayerIndex, player: LobbyPlayer | null, config: MatchConfig, host: PlayerIndex, localIndex: PlayerIndex): HTMLElement {
