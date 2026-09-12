@@ -1,7 +1,7 @@
 import { ARSENAL, BALANCE, WORLD } from "../constants";
 import { playerIndices } from "./create";
 import { absorbWithShield } from "./items";
-import type { FighterState, MatchState, PlayerIndex, Rect, SimEvent } from "./types";
+import type { FighterState, MatchState, PlayerIndex, Rect, SimEvent, SlashAction } from "./types";
 
 export function hurtbox(f: FighterState): Rect {
   return { x: f.x - WORLD.HURTBOX_W / 2, y: f.y - WORLD.HURTBOX_H, w: WORLD.HURTBOX_W, h: WORLD.HURTBOX_H };
@@ -20,9 +20,31 @@ export function isActivePunch(f: FighterState): boolean {
 
 export function punchHitbox(f: FighterState): Rect | null {
   if (!isActivePunch(f)) return null;
-  const reach = f.action?.kind === "punch" && f.action.sword ? ARSENAL.SWORD_REACH : BALANCE.PUNCH_REACH;
+  const reach = BALANCE.PUNCH_REACH;
   const x = f.facing === 1 ? f.x + BALANCE.PUNCH_GAP : f.x - BALANCE.PUNCH_GAP - reach;
   return { x, y: f.y - BALANCE.PUNCH_HITBOX_TOP, w: reach, h: BALANCE.PUNCH_HITBOX_H };
+}
+
+/** 9.10: chop (tall, narrow) or sweep (wide, low) geometry from ARSENAL.CHOP_* / SWEEP_*. */
+function slashSpec(style: SlashAction["style"]) {
+  return style === "chop"
+    ? { startup: ARSENAL.CHOP_STARTUP, active: ARSENAL.CHOP_ACTIVE, recovery: ARSENAL.CHOP_RECOVERY, damage: ARSENAL.CHOP_DAMAGE,
+        gap: ARSENAL.CHOP_GAP, reach: ARSENAL.CHOP_REACH, top: ARSENAL.CHOP_HITBOX_TOP, h: ARSENAL.CHOP_HITBOX_H, push: 1 }
+    : { startup: ARSENAL.SWEEP_STARTUP, active: ARSENAL.SWEEP_ACTIVE, recovery: ARSENAL.SWEEP_RECOVERY, damage: ARSENAL.SWEEP_DAMAGE,
+        gap: ARSENAL.SWEEP_GAP, reach: ARSENAL.SWEEP_REACH, top: ARSENAL.SWEEP_HITBOX_TOP, h: ARSENAL.SWEEP_HITBOX_H, push: ARSENAL.SWEEP_PUSH };
+}
+
+export function isActiveSlash(f: FighterState): boolean {
+  if (!f.action || f.action.kind !== "slash") return false;
+  const spec = slashSpec(f.action.style);
+  return f.action.elapsed >= spec.startup && f.action.elapsed < spec.startup + spec.active;
+}
+
+export function slashHitbox(f: FighterState): Rect | null {
+  if (!f.action || f.action.kind !== "slash" || !isActiveSlash(f)) return null;
+  const spec = slashSpec(f.action.style);
+  const x = f.facing === 1 ? f.x + spec.gap : f.x - spec.gap - spec.reach;
+  return { x, y: f.y - spec.top, w: spec.reach, h: spec.h };
 }
 
 /** Jump i-frames (airborne, jumpTicks within the window, inclusive) or respawn i-frames after a pit. */
@@ -46,16 +68,17 @@ const PUNCH_TOTAL = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH
 const THROW_TOTAL = ARSENAL.THROW_STARTUP + ARSENAL.THROW_RECOVERY;
 const LASER_TOTAL = ARSENAL.LASER_CHARGE + ARSENAL.LASER_ACTIVE + ARSENAL.LASER_RECOVERY;
 
-function actionTotal(kind: NonNullable<FighterState["action"]>["kind"]): number {
-  return kind === "punch" ? PUNCH_TOTAL : kind === "throw" ? THROW_TOTAL : LASER_TOTAL;
+function actionTotal(a: NonNullable<FighterState["action"]>): number {
+  if (a.kind === "slash") { const sp = slashSpec(a.style); return sp.startup + sp.active + sp.recovery; }
+  return a.kind === "punch" ? PUNCH_TOTAL : a.kind === "throw" ? THROW_TOTAL : LASER_TOTAL;
 }
 
-/** Advances every action (punch, throw, laser) and clears finished ones. */
+/** Advances every action (punch, slash, throw, laser) and clears finished ones. */
 export function advancePunches(s: MatchState): void {
   for (const f of s.fighters) {
     if (!f.action) continue;
     f.action.elapsed++;
-    if (f.action.elapsed >= actionTotal(f.action.kind)) f.action = null;
+    if (f.action.elapsed >= actionTotal(f.action)) f.action = null;
   }
 }
 
@@ -77,7 +100,7 @@ export function applyDamage(
   return { absorbed: false };
 }
 
-interface PendingHit { attacker: PlayerIndex; target: PlayerIndex; damage: number; blocked: boolean; parried: boolean }
+interface PendingHit { attacker: PlayerIndex; target: PlayerIndex; damage: number; blocked: boolean; parried: boolean; push: number }
 
 /** Blocking with a sword inside the first PARRY_WINDOW ticks of the block turns the hit back on the attacker. */
 function isParry(target: FighterState): boolean {
@@ -92,16 +115,29 @@ export function resolvePunches(s: MatchState, events: SimEvent[]): void {
   const pending: PendingHit[] = [];
   for (const i of playerIndices(s)) {
     const attacker = s.fighters[i]!;
-    const box = punchHitbox(attacker);
-    if (!box || !attacker.action || attacker.action.kind !== "punch" || attacker.action.landed) continue;
+    const action = attacker.action;
+    if (!action || (action.kind !== "punch" && action.kind !== "slash") || action.landed) continue;
+    const box = action.kind === "punch" ? punchHitbox(attacker) : slashHitbox(attacker);
+    if (!box) continue;
     for (const t of opponentsOf(s, i)) {
       const target = s.fighters[t]!;
       if (!canBeHit(target) || isInvulnerable(target)) continue;
       if (!overlaps(box, hurtbox(target))) continue;
-      attacker.action.landed = true;
+      action.landed = true;
       const blocked = target.blocking;
-      const full = attacker.action.sword ? ARSENAL.SWORD_DAMAGE : BALANCE.PUNCH_DAMAGE;
-      pending.push({ attacker: i, target: t, damage: blocked ? BALANCE.CHIP_DAMAGE : full, blocked, parried: isParry(target) });
+      let damage: number;
+      let push = 1;
+      if (action.kind === "punch") {
+        damage = blocked ? BALANCE.CHIP_DAMAGE : BALANCE.PUNCH_DAMAGE;
+      } else {
+        const spec = slashSpec(action.style);
+        push = spec.push;
+        // Chop crushes guard: a blocking target takes CHOP_GUARD_FRACTION of the damage, not chip.
+        damage = blocked
+          ? (action.style === "chop" ? Math.round(spec.damage * ARSENAL.CHOP_GUARD_FRACTION) : BALANCE.CHIP_DAMAGE)
+          : spec.damage;
+      }
+      pending.push({ attacker: i, target: t, damage, blocked, parried: isParry(target), push });
       break;
     }
   }
@@ -121,7 +157,7 @@ export function resolvePunches(s: MatchState, events: SimEvent[]): void {
       target.action = null;
       target.blocking = false;
       target.hitstun = BALANCE.HITSTUN_TICKS;
-      target.knockbackVx = attacker.facing * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
+      target.knockbackVx = attacker.facing * h.push * (BALANCE.KNOCKBACK_PX / BALANCE.HITSTUN_TICKS);
       target.vx = 0;
     }
     events.push({ type: "HIT", attacker: h.attacker, target: h.target, damage: absorbed ? 0 : h.damage, blocked: h.blocked });

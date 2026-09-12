@@ -268,7 +268,7 @@ describe("rule 8: a fighter in a pit is out of play", () => {
     const s0 = fightingOn("gaps");
     const p0 = s0.fighters[0]!;
     p0.x = 340; p0.y = PIT.Y; p0.grounded = false; p0.pitTicks = 20;
-    p0.item = { kind: "shield", uses: 3 };
+    p0.item = { kind: "shield", uses: 3, ticksLeft: null };
     s0.fighters[1]!.x = 280;
     const { s, events } = run(s0, 10, { ...EMPTY_FRAME, right: true, punchL: true, jump: true }, PUNCH);
     const f = f0(s);
@@ -277,7 +277,7 @@ describe("rule 8: a fighter in a pit is out of play", () => {
     expect(f.action).toBeNull();
     expect(f.pitTicks).toBe(10);
     expect(f.oobTicks).toBe(0);
-    expect(f.item).toEqual({ kind: "shield", uses: 3 });
+    expect(f.item).toEqual({ kind: "shield", uses: 3, ticksLeft: null });
     expect(ofType(events, "HIT")).toHaveLength(0);
     expect(ofType(events, "JUMP")).toHaveLength(0);
     expect(ofType(events, "PUNCH").filter((e) => e.type === "PUNCH" && e.player === 0)).toHaveLength(0);
@@ -311,11 +311,11 @@ describe("rule 8: a fighter in a pit is out of play", () => {
 describe("rule 9: pit damage bypasses the shield", () => {
   it("a shield keeps its uses and hp still drops by 8", () => {
     const s0 = fightingOn("gaps");
-    s0.fighters[0]!.item = { kind: "shield", uses: 3 };
+    s0.fighters[0]!.item = { kind: "shield", uses: 3, ticksLeft: null };
     const walk = runUntil(s0, (s) => !f0(s).grounded, RIGHT);
     const fall = runUntil(walk.s, (s) => f0(s).pitTicks > 0);
     expect(f0(fall.s).hp).toBe(BALANCE.MAX_HP - PIT.DAMAGE);
-    expect(f0(fall.s).item).toEqual({ kind: "shield", uses: 3 });
+    expect(f0(fall.s).item).toEqual({ kind: "shield", uses: 3, ticksLeft: null });
     expect(ofType(fall.events, "SHIELD_ABSORB")).toHaveLength(0);
   });
 });

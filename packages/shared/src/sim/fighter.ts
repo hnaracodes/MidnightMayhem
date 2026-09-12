@@ -1,7 +1,7 @@
 import { BALANCE, PIT, WORLD, type MapId } from "../constants";
 import { risingEdges, type InputFrame } from "../input";
 import { playerIndices } from "./create";
-import { usePunchWithItem } from "./items";
+import { startSlash, usePunchWithItem } from "./items";
 import { startLaser } from "./laser";
 import { groundYAt, platformAt, surfaceBelow } from "./maps";
 import type { Arm, FighterState, MatchState, PlayerIndex, SimEvent } from "./types";
@@ -36,6 +36,8 @@ export function controlFighter(s: MatchState, i: PlayerIndex, input: InputFrame,
   if (f.action === null && !f.blocking) {
     if (edge.punchL) startPunch(s, i, "L", events);
     else if (edge.punchR) startPunch(s, i, "R", events);
+    else if (edge.chop) startSlash(s, i, "chop", events);
+    else if (edge.sweep) startSlash(s, i, "sweep", events);
     else if (edge.special) startLaser(s, i, events);
   }
 
