@@ -5,6 +5,7 @@ import {
 } from "../src";
 import { createMatch, resetForRound } from "../src/sim/create";
 import { step } from "../src/sim/step";
+import { applyDamage } from "../src/sim/combat";
 import { canEquip, tickCooldowns } from "../src/sim/items";
 
 const PUNCH_TOTAL = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH_RECOVERY;
@@ -237,6 +238,17 @@ describe("items: shield", () => {
     o = stepN(o, BALANCE.OOB_EVERY_TICKS, [EMPTY_FRAME, F({ right: true })]).s;
     expect(o.fighters[1]!.hp).toBe(BALANCE.MAX_HP - BALANCE.OOB_DAMAGE);
     expect(o.fighters[1]!.item).toEqual({ kind: "shield", uses: 3 });
+
+    // applyDamage routes laser and hazard through the shield, never pit
+    const d = equip(match(), 1, "shield");
+    const ev: SimEvent[] = [];
+    expect(applyDamage(d, 1, 10, "laser", 0, ev)).toEqual({ absorbed: true });
+    expect(applyDamage(d, 1, 2, "hazard", null, ev)).toEqual({ absorbed: true });
+    expect(d.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+    expect(types(ev, "SHIELD_ABSORB").map((e) => (e as { left: number }).left)).toEqual([2, 1]);
+    expect(applyDamage(d, 1, 8, "pit", null, ev)).toEqual({ absorbed: false });
+    expect(d.fighters[1]!.hp).toBe(BALANCE.MAX_HP - 8);
+    expect(d.fighters[1]!.item).toEqual({ kind: "shield", uses: 1 });
   });
 });
 
