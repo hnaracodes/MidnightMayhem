@@ -11,6 +11,8 @@ Modify: `packages/client/index.html` (stylesheet), `src/app/lobby.ts`, `result.t
 
 ## Exposes
 - CSS classes: `.overlay`, `.title`, `.room-code`, `.player-row`, `.btn`, `.btn-primary`, `.banner`, `.calib`, `.progress`.
+- `.banner--match`: added to / removed from `#banner` by the app (4.07 / Phase 6) while a match is on screen; offsets the strip below y 60 so it never covers the HUD bars. `showBanner` keeps its signature. (integrator amendment)
+- `.calib`, `.progress` and the `.overlay` base class are defined now; Phase 6 only writes the calibration DOM (`.progress > *` is the fill, set its `width`; a `video`/`canvas` inside `.calib` is pinned bottom-left at 320 px). (integrator amendment)
 
 ## Behaviour
 1. Background of every overlay: `night-0` at 92 % over the arena so the moving roof is faintly visible behind (the game is alive even in menus).
