@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WORLD, createMatch, type MatchState, type SimEvent } from "@midnight/shared";
-import { Sfx, type SfxName } from "../src/game/sfx";
+import { MAX_VOICES, Sfx, type SfxName } from "../src/game/sfx";
 
 // ---- Minimal fake BaseAudioContext: records created nodes and start/stop times ----
 
@@ -141,6 +141,32 @@ describe("Sfx.RECIPES", () => {
     spy.mockRestore();
   });
 
+  it("laser_fire is a 0.25 s sawtooth chord under a low-pass sweep with a noise tail ending near 0.5 s", () => {
+    const ctx = new FakeContext();
+    const t0 = 1;
+    const duration = Sfx.RECIPES.laser_fire(ctx as unknown as BaseAudioContext, ctx.createGain() as unknown as AudioNode, t0);
+    const saws = ctx.sources.filter((s) => s.type === "sawtooth");
+    expect(saws.length).toBeGreaterThanOrEqual(3);
+    for (const s of saws) expect(s.stopped! - t0).toBeCloseTo(0.27, 2);
+    const filters = ctx.nodes.filter((n): n is FakeFilter => n instanceof FakeFilter && n.type === "lowpass");
+    const sweep = filters.find((f) => f.frequency.automation.some((a) => a.op === "exp" && a.time - t0 <= 0.25));
+    expect(sweep, "fast low-pass sweep").toBeDefined();
+    const tail = ctx.sources.filter((s) => s.kind === "buffer");
+    expect(tail.length).toBeGreaterThanOrEqual(1);
+    expect(Math.max(...tail.map((s) => s.stopped! - s.started!))).toBeCloseTo(0.42, 2);
+    expect(duration).toBeCloseTo(0.5, 3);
+  });
+
+  it("ko is a descending four-note line", () => {
+    const ctx = new FakeContext();
+    Sfx.RECIPES.ko(ctx as unknown as BaseAudioContext, ctx.createGain() as unknown as AudioNode, 0);
+    const notes = ctx.sources.filter((s) => s.type === "square").sort((a, b) => a.started! - b.started!);
+    expect(notes.length).toBe(4);
+    const freqs = notes.map((n) => n.frequency.automation[0]!.value);
+    for (let i = 1; i < 4; i++) expect(freqs[i]!, `note ${i} lower`).toBeLessThan(freqs[i - 1]!);
+    for (let i = 1; i < 4; i++) expect(notes[i]!.started!, `note ${i} later`).toBeGreaterThan(notes[i - 1]!.started!);
+  });
+
   it("laser_charge lasts 0.5 s and fire_loop_start loops", () => {
     const ctx = new FakeContext();
     expect(Sfx.RECIPES.laser_charge(ctx as unknown as BaseAudioContext, ctx.createGain() as unknown as AudioNode, 0)).toBeCloseTo(0.5, 3);
@@ -184,6 +210,17 @@ describe("Sfx.play", () => {
     expect(sfx.voiceCount).toBe(24);
     for (let i = 0; i < 6; i++) expect(voices[i]!.disconnected, `voice ${i} dropped`).toBe(true);
     for (let i = 6; i < 30; i++) expect(voices[i]!.disconnected, `voice ${i} kept`).toBe(false);
+  });
+
+  it("stops an evicted voice's sources at the current time, not just its gain", () => {
+    const { ctx, sfx } = ctxAndSfx();
+    sfx.play("round_start"); // long enough to still be live when evicted
+    const first = ctx.sources.slice();
+    expect(first.length).toBeGreaterThan(0);
+    for (const s of first) expect(s.stopped).toBeGreaterThan(0.2);
+    ctx.currentTime = 0.2;
+    for (let i = 0; i < MAX_VOICES; i++) sfx.play("ui_move");
+    for (const s of first) expect(s.stopped, "evicted source stopped now").toBeCloseTo(0.2, 6);
   });
 
   it("frees voices once their duration has elapsed", () => {

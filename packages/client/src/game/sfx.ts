@@ -50,7 +50,7 @@ function noiseBuffer(ctx: BaseAudioContext): AudioBuffer {
 
 /**
  * A view of `ctx` that records every scheduled source (oscillators and buffer sources) into `into`, so a caller can
- * stop a recipe's sources early (the fire loop) or dump what a recipe scheduled (the dev page).
+ * stop a recipe's sources early (the fire loop, an evicted voice) or dump what a recipe scheduled (the dev page).
  */
 export function trackSources(ctx: BaseAudioContext, into: AudioScheduledSourceNode[]): BaseAudioContext {
   return new Proxy(ctx, {
@@ -466,14 +466,14 @@ export class Sfx {
       }
       out.connect(sink);
       const sources: AudioScheduledSourceNode[] = [];
-      const duration = Sfx.RECIPES[name](name === "fire_loop_start" ? trackSources(ctx, sources) : ctx, out, t0);
+      const duration = Sfx.RECIPES[name](trackSources(ctx, sources), out, t0);
       const voice: Voice = { out, end: t0 + duration + 0.05, sources };
       if (name === "fire_loop_start") {
         this.fireLoop = voice;
         return;
       }
       this.prune();
-      while (this.voices.length >= MAX_VOICES) this.voices.shift()!.out.disconnect();
+      while (this.voices.length >= MAX_VOICES) stopVoice(this.voices.shift()!, t0);
       this.voices.push(voice);
     } catch {
       /* a broken or closed context must never take the game down */
@@ -568,6 +568,18 @@ export class Sfx {
       /* ignore */
     }
   }
+}
+
+/** Silence an evicted voice now: stop its sources (not just its gain) so they stop costing CPU. */
+function stopVoice(voice: Voice, now: number): void {
+  for (const src of voice.sources) {
+    try {
+      src.stop(now);
+    } catch {
+      /* already stopped or never started */
+    }
+  }
+  voice.out.disconnect();
 }
 
 const EQUIP_SOUND: Record<ItemId, SfxName> = {
