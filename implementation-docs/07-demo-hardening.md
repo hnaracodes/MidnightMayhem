@@ -26,4 +26,4 @@ Phase 6.
 - Owner gate: three consecutive clean matches; runbook followed by someone who did not write the code.
 
 ## Done when
-- [ ] tag exists; runbook committed
+- [ ] tag exists; [x] runbook committed
