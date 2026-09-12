@@ -249,7 +249,7 @@ const RECIPES: Record<SfxName, Recipe> = {
 
   // Sword and shield
   slash: (ctx, out, t0) => {
-    noise(ctx, out, t0, { dur: 0.18, peak: 0.4, attack: 0.02, filter: "bandpass", f0: 3000, f1: 700, q: 1.2 });
+    noise(ctx, out, t0, { dur: 0.18, peak: 0.8, attack: 0.02, filter: "bandpass", f0: 3000, f1: 700, q: 1 });
     tone(ctx, out, t0, { type: "triangle", f0: 1400, f1: 300, dur: 0.16, peak: 0.12, attack: 0.01 });
     return 0.18;
   },
@@ -275,7 +275,7 @@ const RECIPES: Record<SfxName, Recipe> = {
 
   // Throwables and traps
   molotov_throw: (ctx, out, t0) => {
-    noise(ctx, out, t0, { dur: 0.3, peak: 0.3, attack: 0.08, filter: "bandpass", f0: 400, f1: 2500, q: 1 });
+    noise(ctx, out, t0, { dur: 0.3, peak: 0.9, attack: 0.08, filter: "bandpass", f0: 400, f1: 2500, q: 0.8 });
     return 0.3;
   },
   fire_ignite: (ctx, out, t0) => {
@@ -294,11 +294,11 @@ const RECIPES: Record<SfxName, Recipe> = {
   },
   fire_loop_stop: (ctx, out, t0) => {
     // The last embers: a short crackle that dies over the fade time; `Sfx.play` fades the loop itself.
-    noise(ctx, out, t0, { dur: FIRE_FADE, peak: 0.15, attack: 0.01, filter: "bandpass", f0: 1100, f1: 400, q: 0.8 });
+    noise(ctx, out, t0, { dur: FIRE_FADE, peak: 0.4, attack: 0.01, filter: "bandpass", f0: 1100, f1: 400, q: 0.8 });
     return FIRE_FADE;
   },
   peel_throw: (ctx, out, t0) => {
-    noise(ctx, out, t0, { dur: 0.15, peak: 0.18, attack: 0.03, filter: "bandpass", f0: 900, f1: 2200, q: 1 });
+    noise(ctx, out, t0, { dur: 0.15, peak: 0.5, attack: 0.03, filter: "bandpass", f0: 900, f1: 2200, q: 0.8 });
     tone(ctx, out, t0, { type: "sine", f0: 700, f1: 300, dur: 0.12, peak: 0.12 });
     return 0.15;
   },
@@ -317,7 +317,7 @@ const RECIPES: Record<SfxName, Recipe> = {
 
   // 4. Existing feel
   punch_whiff: (ctx, out, t0) => {
-    noise(ctx, out, t0, { dur: 0.12, peak: 0.25, attack: 0.02, filter: "bandpass", f0: 1200, f1: 300, q: 1 });
+    noise(ctx, out, t0, { dur: 0.12, peak: 0.8, attack: 0.02, filter: "bandpass", f0: 1200, f1: 300, q: 0.8 });
     return 0.12;
   },
   hit: (ctx, out, t0) => {
@@ -366,12 +366,12 @@ const RECIPES: Record<SfxName, Recipe> = {
     return 0.75;
   },
   ui_move: (ctx, out, t0) => {
-    tone(ctx, out, t0, { type: "square", f0: 1200, dur: 0.025, peak: 0.12, attack: 0.002 });
+    tone(ctx, out, t0, { type: "square", f0: 1200, dur: 0.025, peak: 0.22, attack: 0.002 });
     return 0.03;
   },
   ui_select: (ctx, out, t0) => {
-    tone(ctx, out, t0, { type: "square", f0: 900, dur: 0.03, peak: 0.12, attack: 0.002 });
-    tone(ctx, out, t0 + 0.05, { type: "square", f0: 1400, dur: 0.04, peak: 0.12, attack: 0.002 });
+    tone(ctx, out, t0, { type: "square", f0: 900, dur: 0.03, peak: 0.22, attack: 0.002 });
+    tone(ctx, out, t0 + 0.05, { type: "square", f0: 1400, dur: 0.04, peak: 0.22, attack: 0.002 });
     return 0.09;
   },
   countdown_tick: (ctx, out, t0) => {
