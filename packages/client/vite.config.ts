@@ -20,6 +20,7 @@ export default defineConfig({
         game: "index.html",
         harness: "harness.html",
         rig: "rig.html",
+        sprites: "sprites.html",
       },
     },
   },
@@ -29,6 +30,6 @@ export default defineConfig({
   // which drops the player back to the Join screen and out of the room.
   optimizeDeps: {
     include: ["@mediapipe/tasks-vision"],
-    entries: ["index.html", "harness.html", "rig.html", "src/vision/worker.ts"],
+    entries: ["index.html", "harness.html", "rig.html", "sprites.html", "src/vision/worker.ts"],
   },
 });
