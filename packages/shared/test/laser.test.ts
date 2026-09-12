@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { ARSENAL, BALANCE, EMPTY_FRAME, MATCH, WORLD, type InputFrame, type MatchState, type SimEvent } from "../src";
 import { createMatch } from "../src/sim/create";
 import { laserHitbox, laserPhase, resolveLaser, startLaser } from "../src/sim/laser";
@@ -114,31 +114,14 @@ describe("rule 4: block and shield", () => {
     expect(s.fighters[1]!.hitstun).toBe(0);
     expect(s.fighters[1]!.blocking).toBe(true);
   });
-  it("shield holder: absorbed, 0 hp lost, no hitstun, SHIELD_ABSORB (applyDamage stub: 09.01 wires the real shield)", async () => {
-    // INTEGRATOR: collapse after merge — once 09.01's applyDamage absorbs through a held shield this mock can go and
-    // the test can equip `{ kind: "shield", uses: 3 }` on fighter 1 directly.
-    vi.resetModules();
-    vi.doMock("../src/sim/combat", async (importOriginal) => {
-      const orig = await importOriginal<typeof import("../src/sim/combat")>();
-      return {
-        ...orig,
-        applyDamage: (s: MatchState, target: number, _d: number, _src: string, _a: number | null, events: SimEvent[]) => {
-          const f = s.fighters[target]!;
-          if (f.item?.kind === "shield") { f.item.uses--; events.push({ type: "SHIELD_ABSORB", player: target as 0, left: f.item.uses }); return { absorbed: true }; }
-          f.hp -= _d; return { absorbed: false };
-        },
-      };
-    });
-    const { step: mockedStep } = await import("../src/sim/step");
-    let s = fighting(300); s.fighters[1]!.item = { kind: "shield", uses: 3 };
-    const events: SimEvent[] = [];
-    for (let i = 0; i < TOTAL + 1; i++) { const r = mockedStep(s, [Q, EMPTY_FRAME]); s = r.state; events.push(...r.events); }
-    vi.doUnmock("../src/sim/combat");
-    vi.resetModules();
+  it("shield holder: absorbed, 0 hp lost, no hitstun, SHIELD_ABSORB", () => {
+    const start = fighting(300); start.fighters[1]!.item = { kind: "shield", uses: 3 };
+    const { s, events } = run(start, TOTAL + 1, [Q, EMPTY_FRAME]);
     expect(events.filter((e) => e.type === "SHIELD_ABSORB")).toEqual([{ type: "SHIELD_ABSORB", player: 1, left: 2 }]);
     expect(laserHits(events)).toHaveLength(1);
     expect(s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
     expect(s.fighters[1]!.hitstun).toBe(0);
+    expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 2 });
   });
 });
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  BALANCE, EMPTY_FRAME, MAPS, MAP_IDS, MATCH, PIT, SPAWN_X, WORLD,
+  BALANCE, EMPTY_FRAME, MAPS, MAP_IDS, MATCH, PIT, WORLD,
   type InputFrame, type MapId, type MatchState, type SimEvent,
 } from "../src";
 import { createMatch } from "../src/sim/create";
@@ -323,11 +323,7 @@ describe("rule 9: pit damage bypasses the shield", () => {
 describe("rule 10: spawns are on ground", () => {
   for (const map of MAP_IDS) {
     for (const players of [2, 3, 4] as const) {
-      const bad = SPAWN_X[players].filter((x) => !onGround(map, x));
-      // INTEGRATOR: SPAWN_X[4] = [140, 340, 620, 820] puts players 1 and 2 over the gaps of `gaps` and `chaos`.
-      // The fix belongs to constants.ts (8.01), e.g. [140, 260, 700, 820]; flip these to `it` once it lands.
-      const test = bad.length > 0 ? it.fails : it;
-      test(`${map} × ${players} players`, () => {
+      it(`${map} × ${players} players`, () => {
         const s = createMatch({ players, teams: "ffa", mode: "rounds", map, items: true });
         for (const f of s.fighters) {
           expect(onGround(map, f.x)).toBe(true);

@@ -116,6 +116,20 @@ describe("items: equip", () => {
     s.phase = "COUNTDOWN";
     expect(canEquip(s, 0, "sword")).toBe(true);
   });
+
+  it("2b. an item edge during the countdown equips, and the item is in hand when FIGHT starts", () => {
+    const s = createMatch({ players: 2, teams: "ffa", mode: "rounds", map: "roof", items: true }, ROSTER);
+    expect(s.phase).toBe("COUNTDOWN");
+    const r = step(s, [HOLD("sword"), EMPTY_FRAME]);
+    expect(r.events).toContainEqual({ type: "ITEM_EQUIP", player: 0, item: "sword" });
+    expect(r.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    // holding the key through the countdown does not re-equip, and the item survives into FIGHTING
+    let t = r.state;
+    while (t.phase === "COUNTDOWN") t = step(t, [HOLD("sword"), EMPTY_FRAME]).state;
+    expect(t.phase).toBe("FIGHTING");
+    expect(t.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses });
+    expect(t.fighters[0]!.itemsUsed).toEqual(["sword"]);
+  });
 });
 
 describe("items: sword", () => {

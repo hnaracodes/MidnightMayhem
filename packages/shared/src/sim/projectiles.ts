@@ -2,6 +2,7 @@
 import { ARSENAL, BALANCE, PIT, WORLD } from "../constants";
 import { playerIndices } from "./create";
 import { spawnHazard } from "./hazards";
+import { consumeUse } from "./items";
 import { groundYAt } from "./maps";
 import type { Arm, MatchState, PlayerIndex, Projectile, SimEvent } from "./types";
 
@@ -19,22 +20,6 @@ export function startThrow(s: MatchState, i: PlayerIndex, arm: Arm, _events: Sim
   return true;
 }
 
-/**
- * INTEGRATOR: collapse after merge. 09.01 (sim-items) exposes `consumeUse`; until it lands this is the same rule
- * kept private: one use gone, ITEM_USE, and at zero ITEM_BREAK with the hand emptied.
- */
-function spend(s: MatchState, i: PlayerIndex, events: SimEvent[]): void {
-  const f = s.fighters[i];
-  if (!f || !f.item) return;
-  const item = f.item.kind;
-  f.item.uses--;
-  events.push({ type: "ITEM_USE", player: i, item });
-  if (f.item.uses <= 0) {
-    f.item = null;
-    events.push({ type: "ITEM_BREAK", player: i, item });
-  }
-}
-
 /** Spawns the projectile of every throw that reaches its release tick (elapsed === THROW_STARTUP, once). */
 export function releaseThrows(s: MatchState, events: SimEvent[]): void {
   for (const i of playerIndices(s)) {
@@ -47,7 +32,7 @@ export function releaseThrows(s: MatchState, events: SimEvent[]): void {
     s.projectiles.push(p);
     a.released = true;
     events.push({ type: "PROJECTILE_SPAWN", id: p.id, kind: p.kind, owner: i });
-    spend(s, i, events);
+    consumeUse(s, i, events);
   }
 }
 

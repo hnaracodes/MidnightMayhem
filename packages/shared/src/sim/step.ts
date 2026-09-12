@@ -20,7 +20,11 @@ export function step(prev: MatchState, inputs: readonly InputFrame[]): StepResul
     fightTick(s, inputs, events);
     applyOutOfBounds(s, events);
     tickRound(s, events);
-  } else if (s.phase === "COUNTDOWN" || s.phase === "ROUND_END") {
+  } else if (s.phase === "COUNTDOWN") {
+    // Spec §4.2: an item may be equipped during the countdown so it is in hand when FIGHT starts.
+    for (const i of playerIndices(s)) applyEquip(s, i, inputs[i] ?? EMPTY_FRAME, events);
+    advancePhase(s, events);
+  } else if (s.phase === "ROUND_END") {
     advancePhase(s, events);
   }
 

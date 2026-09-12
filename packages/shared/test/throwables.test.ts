@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  ARSENAL, BALANCE, EMPTY_FRAME, ITEMS, WORLD, risingEdges,
-  type Arm, type InputFrame, type ItemId, type MatchState, type SimEvent,
+  ARSENAL, BALANCE, EMPTY_FRAME, ITEMS, WORLD,
+  type InputFrame, type ItemId, type MatchState, type SimEvent,
 } from "../src";
 import { createMatch, resetForRound } from "../src/sim/create";
 import { step } from "../src/sim/step";
@@ -12,33 +12,9 @@ const NONE: [InputFrame, InputFrame] = [EMPTY_FRAME, EMPTY_FRAME];
 const P_L: InputFrame = { ...EMPTY_FRAME, punchL: true };
 const THROW_TOTAL = ARSENAL.THROW_STARTUP + ARSENAL.THROW_RECOVERY;
 
-/**
- * INTEGRATOR: collapse after merge. 09.01's `usePunchWithItem` (sim-items lane) is a stub on this branch, so the
- * punch edge never reaches `startThrow` through `controlFighter`. This harness starts the throw on the punch edge
- * exactly where 09.01 will (action null, no hitstun, not blocking), then runs the real `step`. The action is
- * seeded at elapsed −1 so the leading `advancePunches` of the tick brings it to 0, as a real start would.
- */
-function stepT(prev: MatchState, inputs: [InputFrame, InputFrame]) {
-  const s: MatchState = structuredClone(prev);
-  if (s.phase === "FIGHTING") {
-    const pre: SimEvent[] = [];
-    for (let i = 0; i < 2; i++) {
-      const f = s.fighters[i]!;
-      const input = inputs[i]!;
-      const edge = risingEdges(f.prev, input);
-      const blocking = input.block && f.grounded;
-      if (f.hp <= 0 || f.pitTicks > 0 || f.hitstun > 0 || f.action !== null || blocking) continue;
-      const arm: Arm | null = edge.punchL ? "L" : edge.punchR ? "R" : null;
-      if (!arm) continue;
-      if (startThrow(s, i as 0 | 1, arm, pre)) f.action!.elapsed = -1;
-    }
-  }
-  return step(s, inputs);
-}
-
 function run(s: MatchState, n: number, inputs: [InputFrame, InputFrame] = NONE) {
   const events: SimEvent[] = [];
-  for (let i = 0; i < n; i++) { const r = stepT(s, inputs); s = r.state; events.push(...r.events); }
+  for (let i = 0; i < n; i++) { const r = step(s, inputs); s = r.state; events.push(...r.events); }
   return { s, events };
 }
 
@@ -46,7 +22,7 @@ function run(s: MatchState, n: number, inputs: [InputFrame, InputFrame] = NONE) 
 function runUntil(s: MatchState, max: number, inputs: [InputFrame, InputFrame], pred: (e: SimEvent) => boolean) {
   const events: SimEvent[] = [];
   for (let i = 1; i <= max; i++) {
-    const r = stepT(s, inputs); s = r.state; events.push(...r.events);
+    const r = step(s, inputs); s = r.state; events.push(...r.events);
     if (r.events.some(pred)) return { s, events, tick: i };
   }
   return { s, events, tick: -1 };
@@ -147,7 +123,7 @@ describe("3. fire damage", () => {
     const s = structuredClone(s0);
     s.fighters[1]!.x = h.x; s.fighters[0]!.x = 100;
     let cur = s; const at: number[] = [];
-    for (let t = 1; t <= 45; t++) { const r = stepT(cur, NONE); cur = r.state; if (hits(r.events, 1).length) at.push(t); }
+    for (let t = 1; t <= 45; t++) { const r = step(cur, NONE); cur = r.state; if (hits(r.events, 1).length) at.push(t); }
     expect(at).toEqual([ARSENAL.FIRE_EVERY - 1, 2 * ARSENAL.FIRE_EVERY - 1]); // the hazard is already age 1 after landing
   });
   it("a fighter one jump above it takes none", () => {
@@ -157,7 +133,7 @@ describe("3. fire damage", () => {
     let cur = run(s, 10).s;
     const events: SimEvent[] = [];
     for (let t = 0; t < 40; t++) {
-      const r = stepT(cur, [EMPTY_FRAME, { ...EMPTY_FRAME, jump: t === 0 }]); cur = r.state; events.push(...r.events);
+      const r = step(cur, [EMPTY_FRAME, { ...EMPTY_FRAME, jump: t === 0 }]); cur = r.state; events.push(...r.events);
     }
     expect(events.some((e) => e.type === "JUMP")).toBe(true);
     expect(cur.fighters[1]!.grounded).toBe(false);
@@ -239,7 +215,7 @@ describe("5. banana peel", () => {
     // ages 2..30: owner walks on the spot (tiny oscillation keeps him over the peel)
     let cur = s; const early: SimEvent[] = [];
     for (let t = 0; t < ARSENAL.PEEL_OWNER_IMMUNE - 1; t++) {
-      const r = stepT(cur, [{ ...EMPTY_FRAME, left: t % 2 === 0, right: t % 2 === 1 }, EMPTY_FRAME]);
+      const r = step(cur, [{ ...EMPTY_FRAME, left: t % 2 === 0, right: t % 2 === 1 }, EMPTY_FRAME]);
       cur = r.state; early.push(...r.events);
     }
     expect(cur.hazards[0]!.age).toBe(ARSENAL.PEEL_OWNER_IMMUNE);
@@ -281,7 +257,23 @@ describe("6. off-world and pits", () => {
     advanceProjectiles(left, ev);
     expect(left.hazards[0]!.x).toBe(ARSENAL.PEEL_W / 2);
   });
-  it.todo("with map gaps, a landing x inside a gap spawns no hazard (after 10.01 merges)");
+  it("with map gaps, a landing x inside a gap spawns no hazard", () => {
+    // gaps map: ground breaks at 300–380 and 580–660. A projectile dropped straight into the first gap falls
+    // past the roof line, reaches PIT.Y and vanishes; one dropped beside it on ground still lands.
+    const inGap = fighting("molotov", 100, 900);
+    inGap.config.map = "gaps";
+    inGap.projectiles.push({ id: inGap.nextId++, kind: "molotov", owner: 0, x: 340, y: WORLD.ROOF_Y - 1, vx: 0, vy: 5 });
+    const r = run(inGap, 60);
+    expect(r.s.projectiles).toHaveLength(0);
+    expect(r.s.hazards).toHaveLength(0);
+    expect(r.events.some((e) => e.type === "HAZARD_SPAWN")).toBe(false);
+    const onGround = fighting("molotov", 100, 900);
+    onGround.config.map = "gaps";
+    onGround.projectiles.push({ id: onGround.nextId++, kind: "molotov", owner: 0, x: 450, y: WORLD.ROOF_Y - 1, vx: 0, vy: 5 });
+    const g = run(onGround, 2);
+    expect(g.s.hazards).toHaveLength(1);
+    expect(g.s.hazards[0]!.x).toBe(450);
+  });
 });
 
 describe("7. throw locks", () => {

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { BALANCE, EMPTY_FRAME, MATCH, MODES, WORLD, type InputFrame, type MatchConfig, type MatchState, type SimEvent } from "../src";
+import { ARSENAL, BALANCE, EMPTY_FRAME, MATCH, MODES, WORLD, type InputFrame, type MatchConfig, type MatchState, type SimEvent } from "../src";
 import { canBeHit } from "../src/sim/combat";
 import { createMatch, resetForRound } from "../src/sim/create";
+import { spawnHazard } from "../src/sim/hazards";
 import { matchWinner } from "../src/sim/rounds";
 import { hasTimer, teamCount, teamsOf, timerSeconds } from "../src/sim/modes";
 import { step } from "../src/sim/step";
@@ -231,9 +232,42 @@ describe("rule 7: 2v2 teammates", () => {
     expect(e.fighters[0]!.facing).toBe(-1);
     expect(e.fighters[1]!.facing).toBe(-1);
   });
-  it.todo("a teammate is never hit by a laser (needs 9.03 sim-laser)");
-  it.todo("a teammate is never dazzled by a flash (needs 9.01 sim-items)");
-  it.todo("a teammate IS hurt by fire (needs 9.02 sim-throwables)");
+  it("a teammate is never hit by a laser", () => {
+    // P0 fires right through P1 (team 0) into P2 and P3 (team 1); only the enemies register LASER_HIT.
+    const s = fighting({ players: 4, teams: "2v2" });
+    s.fighters[0]!.x = 100; s.fighters[0]!.facing = 1;
+    s.fighters[1]!.x = 300; s.fighters[2]!.x = 600; s.fighters[3]!.x = 800;
+    const total = ARSENAL.LASER_CHARGE + ARSENAL.LASER_ACTIVE + ARSENAL.LASER_RECOVERY;
+    const q: InputFrame = { ...EMPTY_FRAME, special: true };
+    const { s: e, events } = run(s, total + 1, [q, EMPTY_FRAME, EMPTY_FRAME, EMPTY_FRAME]);
+    const hits = events.filter((ev) => ev.type === "LASER_HIT").map((ev) => (ev as { target: number }).target);
+    expect(hits.sort()).toEqual([2, 3]);
+    expect(e.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+    expect(e.fighters[2]!.hp).toBe(BALANCE.MAX_HP - ARSENAL.LASER_DAMAGE);
+    expect(e.fighters[3]!.hp).toBe(BALANCE.MAX_HP - ARSENAL.LASER_DAMAGE);
+  });
+  it("a teammate is never dazzled by a flash", () => {
+    const s = fighting({ players: 4, teams: "2v2" });
+    s.fighters[0]!.item = { kind: "flash", uses: 1 };
+    const { s: e, events } = run(s, 1, [{ ...EMPTY_FRAME, punchL: true }, EMPTY_FRAME, EMPTY_FRAME, EMPTY_FRAME]);
+    expect(events.some((ev) => ev.type === "FLASH")).toBe(true);
+    expect(e.fighters[0]!.dazzle).toBe(0);
+    expect(e.fighters[1]!.dazzle).toBe(0);
+    expect(e.fighters[2]!.dazzle).toBe(ARSENAL.DAZZLE_TICKS);
+    expect(e.fighters[3]!.dazzle).toBe(ARSENAL.DAZZLE_TICKS);
+  });
+  it("a teammate IS hurt by fire", () => {
+    const s = fighting({ players: 4, teams: "2v2" });
+    s.fighters[0]!.x = 300; s.fighters[1]!.x = 340; s.fighters[2]!.x = 800; s.fighters[3]!.x = 900;
+    const ev: SimEvent[] = [];
+    spawnHazard(s, "fire", 0, 320, WORLD.ROOF_Y, ev);
+    const { s: e, events } = run(s, ARSENAL.FIRE_EVERY);
+    const burned = events.filter((x) => x.type === "HAZARD_HIT").map((x) => (x as { target: number }).target);
+    expect(burned).toContain(1);
+    expect(burned).toContain(0);
+    expect(burned).not.toContain(2);
+    expect(e.fighters[1]!.hp).toBeLessThan(BALANCE.MAX_HP);
+  });
 });
 
 describe("rule 8: timer draw in 2v2", () => {
