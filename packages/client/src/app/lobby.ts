@@ -20,7 +20,7 @@ export type CameraButton = "button" | "starting" | "hidden";
 
 /** Short glyph per item for the seat row. */
 const ITEM_GLYPH: Record<keyof typeof ITEMS, string> = {
-  molotov: "bottle", sword: "umbrella", shield: "backpack", banana: "banana", flash: "phone",
+  molotov: "bottle", sword: "racket", shield: "backpack", banana: "banana", flash: "phone",
 };
 
 /**

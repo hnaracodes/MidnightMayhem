@@ -1,7 +1,7 @@
 # 9.04 — Vision: object detection, laser gesture, keyboard keys
 
 ## Purpose
-Turn a real water bottle, umbrella, backpack, banana or phone in the player's hand into `InputFrame.item`, and the
+Turn a real water bottle, tennis racket (was umbrella — a closed umbrella is undetectable by COCO models, owner swap 2026-09-12), backpack, banana or phone in the player's hand into `InputFrame.item`, and the
 "beam" pose (both arms thrust forward together) into `InputFrame.special`. Keyboard gets the same two controls so
 the camera is still additive.
 

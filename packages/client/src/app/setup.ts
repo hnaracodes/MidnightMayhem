@@ -12,7 +12,7 @@ const TEAMS_LABEL: Record<TeamsId, string> = { ffa: "free-for-all", "2v2": "2v2"
 /** What each item is in the real world (behaviour: the loadout tile names the object to bring). */
 const BRING: Record<ItemId, string> = {
   molotov: "bring a water bottle",
-  sword: "bring an umbrella",
+  sword: "bring a tennis racket",
   shield: "bring a backpack",
   banana: "bring a banana",
   flash: "bring a phone",
