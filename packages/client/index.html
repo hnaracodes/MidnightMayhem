@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Midnight Mayhem</title>
   <style>
-    /* Palette: design/00-art-direction.md. Mirrors packages/client/src/game/palette.ts. */
+    /* Palette: design/00-art-direction.md, mirrored from src/game/palette.ts; the four character keys from 11.01.
+       Type: system stacks only (the demo runs offline). Plan and self-review: docs/superpowers/specs/2026-09-12-ui-design-notes.md. */
     :root {
       color-scheme: dark;
       --night-0: #070B18;
@@ -20,8 +21,14 @@
       --danger: #E8434F;
       --drifter-key: #8A6B4A;
       --conductor-key: #1B2A5C;
+      --stoker-key: #4A4E57;
+      --claude-key: #D97757;
       --outline: #05070F;
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      --font-display: "Avenir Next Condensed", Bahnschrift, "Arial Narrow", "Helvetica Neue", Impact, sans-serif;
+      --font-text: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-family: var(--font-text);
+      font-size: 16px;
+      line-height: 1.45;
       background: var(--night-0);
       color: var(--moon);
     }
@@ -30,131 +37,27 @@
     [hidden] { display: none !important; }
     #game { width: 100%; min-height: 100dvh; }
     #game canvas { display: block; max-width: 100%; }
+    button, input { font: inherit; }
+    button:focus-visible, input:focus-visible, .field:focus-within { outline: 3px solid var(--moon); outline-offset: 3px; }
 
-    /* Overlays: night-0 at 92 % so the moving roof stays faintly visible behind every menu. */
+    /* Overlays sit over the arena canvas (4.08 rule 1: the canvas is under every overlay from the first frame). */
     .overlay {
       position: fixed;
       inset: 0;
       z-index: 10;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 20px;
-      padding: 32px 16px;
       overflow-y: auto;
-      text-align: center;
-      background: rgba(7, 11, 24, 0.92);
-    }
-    .overlay > p { margin: 0; font-size: 16px; color: var(--steel-2); letter-spacing: 0.04em; }
-
-    /* Title block. The subtitle rides inside the h1 as <small>. */
-    .title {
-      margin: 0;
-      font-size: 64px;
-      font-weight: 800;
-      line-height: 1;
-      letter-spacing: 0.04em;
-      color: var(--moon);
-      text-shadow: 6px 6px 0 var(--outline);
-    }
-    .title small {
-      display: block;
-      margin-top: 12px;
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 0.08em;
-      color: var(--steel-2);
-      text-shadow: none;
+      padding: 20px 24px;
+      background: rgba(7, 11, 24, 0.88);
     }
 
-    /* Room code */
-    .room-code {
-      margin: 8px 0 0;
-      font-size: 56px;
-      font-weight: 800;
-      line-height: 1;
-      letter-spacing: 0.3em;
-      text-indent: 0.3em;
-      color: var(--amber-1);
-      text-shadow: 4px 4px 0 var(--outline);
-    }
-    .room-code::before {
-      content: "ROOM CODE";
-      display: block;
-      margin-bottom: 10px;
-      font-size: 14px;
-      font-weight: 700;
-      letter-spacing: 0.3em;
-      color: var(--steel-2);
-      text-shadow: none;
-    }
-
-    /* Player rows: dot | character + status | ready check */
-    .roster { display: flex; flex-direction: column; gap: 10px; width: 440px; max-width: 100%; }
-    .player-row {
-      --dot: var(--steel-2);
-      display: grid;
-      grid-template-columns: 16px 1fr 28px;
-      align-items: center;
-      gap: 14px;
-      padding: 10px 18px;
-      font-size: 20px;
-      text-align: left;
-      background: var(--night-1);
-      border: 2px solid var(--steel-0);
-      border-radius: 8px;
-    }
-    .player-row[data-character="drifter"] { --dot: var(--drifter-key); }
-    .player-row[data-character="conductor"] { --dot: var(--conductor-key); }
-    .player-row::before {
-      content: "";
-      width: 16px;
-      height: 16px;
-      border-radius: 50%;
-      background: var(--dot);
-      border: 2px solid var(--outline);
-      box-shadow: 0 0 0 2px var(--steel-2);
-    }
-    .player-row::after {
-      content: "\2713";
-      font-size: 26px;
-      font-weight: 800;
-      line-height: 1;
-      color: var(--amber-1);
-      opacity: 0;
-    }
-    .player-row[data-ready="true"]::after { opacity: 1; }
-    .player-row h2 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: 0.08em; }
-    .player-row p { margin: 2px 0 0; font-size: 20px; color: var(--steel-2); }
-    .player-row[data-ready="true"] p { color: var(--moon); }
-
-    /* Inputs */
-    .overlay input {
-      font: inherit;
-      font-size: 20px;
-      width: 380px;
-      max-width: 100%;
-      padding: 12px 16px;
-      text-align: center;
-      letter-spacing: 0.04em;
-      color: var(--moon);
-      background: var(--night-1);
-      border: 2px solid var(--steel-2);
-      border-radius: 6px;
-    }
-    .overlay input::placeholder { color: var(--steel-2); }
-    .overlay input:focus-visible { outline: none; border-color: var(--amber-1); }
-
-    /* Buttons */
-    .actions { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 16px; }
+    /* ---- Buttons ---- */
     .btn {
-      font: inherit;
+      font-family: var(--font-display);
       font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0.08em;
+      font-weight: 800;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
-      padding: 12px 24px;
+      padding: 10px 20px;
       color: var(--moon);
       background: var(--night-1);
       border: 2px solid var(--amber-1);
@@ -164,14 +67,251 @@
     }
     .btn:hover:not(:disabled), .btn[aria-pressed="true"] { background: var(--amber-1); color: var(--night-0); }
     .btn:active:not(:disabled) { transform: translateY(2px); }
-    .btn:disabled { cursor: default; color: var(--steel-2); border-color: var(--steel-2); }
-    .btn:focus-visible { outline: 3px solid var(--moon); outline-offset: 3px; }
-    .btn-primary { font-size: 24px; padding: 16px 48px; box-shadow: 0 4px 0 var(--outline); }
+    .btn:disabled { cursor: default; color: var(--steel-2); border-color: var(--steel-2); background: var(--night-1); }
+    .btn-primary { font-size: 24px; padding: 14px 36px; box-shadow: 0 4px 0 var(--outline); }
     .btn-primary:active:not(:disabled) { box-shadow: 0 2px 0 var(--outline); }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 
-    /* Result: h1 is the verdict coloured by outcome, h2 the winner name at 72 px */
+    /* ---- Landing: the train is the hero. A top-heavy scrim keeps the text legible and leaves the roof
+       (y ≈ 430 of 540) and the four idling fighters lit. Nothing here moves on its own. ---- */
+    #landing {
+      display: grid;
+      align-content: start;
+      justify-items: start;
+      gap: 0;
+      padding: clamp(20px, 6vh, 56px) clamp(16px, 6vw, 72px) 96px;
+      text-align: left;
+      background: linear-gradient(180deg,
+        rgba(7, 11, 24, 0.94) 0%, rgba(7, 11, 24, 0.78) 34%, rgba(7, 11, 24, 0.12) 58%,
+        rgba(7, 11, 24, 0.06) 80%, rgba(7, 11, 24, 0.7) 100%);
+    }
+    .title {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: clamp(44px, 9vw, 84px);
+      font-weight: 800;
+      line-height: 0.95;
+      letter-spacing: 0.02em;
+      color: var(--moon);
+      text-shadow: 5px 5px 0 var(--amber-2);
+    }
+    .invitation { margin: 14px 0 0; font-size: clamp(16px, 2.4vw, 21px); color: var(--moon); opacity: 0.82; }
+
+    /* The ticket: two fields and the punch, one strip, perforated on the left. */
+    .ticket {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: stretch;
+      width: min(600px, 100%);
+      margin: 26px 0 0;
+      background: var(--night-1);
+      border: 2px solid var(--steel-1);
+      border-left: 3px dashed var(--amber-1);
+      border-radius: 6px;
+    }
+    .field {
+      display: flex;
+      flex: 1 1 160px;
+      flex-direction: column;
+      gap: 2px;
+      padding: 10px 16px 12px;
+      border-right: 2px solid var(--steel-0);
+      cursor: text;
+    }
+    .field > span { font-size: 13px; color: var(--steel-2); }
+    .field > input {
+      width: 100%;
+      min-width: 0;
+      padding: 2px 0;
+      font-family: var(--font-display);
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+      color: var(--moon);
+      background: transparent;
+      border: 0;
+      border-bottom: 2px solid var(--steel-2);
+      border-radius: 0;
+    }
+    .field > input:focus { outline: none; border-bottom-color: var(--amber-1); }
+    .field > input::placeholder { color: var(--steel-2); font-weight: 600; letter-spacing: 0.02em; }
+    .field.missing > input { border-bottom-color: var(--danger); }
+    .field.missing > span { color: var(--danger); }
+    .field.missing > span::after { content: " — needed to board"; }
+    .ticket .btn-primary { flex: 1 0 200px; margin: -2px; color: var(--night-0); background: var(--amber-1); border-radius: 4px; box-shadow: none; }
+    .ticket .btn-primary:hover { background: var(--moon); border-color: var(--moon); }
+
+    /* The key legend rides the train body under the roof line. */
+    .legend {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 1;
+      display: flex;
+      flex-wrap: wrap;
+      column-gap: 18px;
+      row-gap: 2px;
+      margin: 0;
+      padding: 10px clamp(16px, 6vw, 72px) 12px;
+      font-size: 14px;
+      background: rgba(7, 11, 24, 0.7);
+      border-top: 2px solid var(--steel-0);
+    }
+    .legend > div { white-space: nowrap; }
+    .legend dt { display: inline; font-family: var(--font-display); font-weight: 800; font-size: 15px; letter-spacing: 0.04em; color: var(--amber-1); }
+    .legend dd { display: inline; margin: 0 0 0 5px; color: var(--moon); opacity: 0.8; }
+
+    /* ---- Lobby: the manifest on the left, the route board and your seat on the right. Stacks under 720 px. ---- */
+    #lobby {
+      display: grid;
+      grid-template-columns: minmax(260px, 380px) minmax(0, 540px);
+      justify-content: center;
+      align-content: start;
+      gap: 24px 36px;
+      text-align: left;
+    }
+    #lobby h2 {
+      margin: 0 0 8px;
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      color: var(--moon);
+    }
+    #lobby .board .route-summary + h2 { margin-top: 14px; }
+    .room-code { display: flex; align-items: baseline; gap: 12px; margin: 0 0 12px; line-height: 1; }
+    .room-code > span { font-size: 15px; color: var(--steel-2); }
+    .room-code > strong {
+      font-family: var(--font-display);
+      font-size: 48px;
+      font-weight: 800;
+      letter-spacing: 0.18em;
+      color: var(--amber-1);
+      text-shadow: 4px 4px 0 var(--outline);
+    }
+
+    .seats { display: grid; gap: 8px; margin: 0 0 16px; padding: 0; list-style: none; }
+    .seat {
+      --key: var(--steel-2);
+      --team: transparent;
+      display: grid;
+      grid-template-columns: 44px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 60px;
+      padding: 6px 12px 6px 10px;
+      background: var(--night-1);
+      border: 2px solid var(--steel-0);
+      border-left: 6px solid var(--key);
+      border-radius: 6px;
+    }
+    .seat[data-character="drifter"] { --key: var(--drifter-key); }
+    .seat[data-character="conductor"] { --key: var(--conductor-key); }
+    .seat[data-character="stoker"] { --key: var(--stoker-key); }
+    .seat[data-character="claude"] { --key: var(--claude-key); }
+    .seat[data-you="true"] { border-color: var(--amber-2); border-left-color: var(--key); }
+    .seat[data-empty="true"] { grid-template-columns: 1fr; border-style: dashed; border-left-style: dashed; background: transparent; }
+    .seat-empty { margin: 0; font-size: 14px; color: var(--steel-2); }
+    .seat canvas, .portrait canvas {
+      display: block;
+      width: 44px;
+      height: 44px;
+      image-rendering: pixelated;
+      background: var(--night-1);
+      border-radius: 4px;
+      outline: 2px solid var(--team);
+      outline-offset: 1px;
+    }
+    .seat[data-team="0"] { --team: var(--amber-1); }
+    .seat[data-team="1"] { --team: var(--moon); }
+    .seat-text { min-width: 0; }
+    .seat-text h3 { display: flex; align-items: baseline; gap: 8px; margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: 0.02em; }
+    .seat-host, .seat-team { padding: 1px 6px; font-family: var(--font-text); font-size: 11px; font-weight: 700; color: var(--night-0); background: var(--amber-1); border-radius: 3px; }
+    .seat-team { color: var(--moon); background: var(--steel-1); }
+    .seat[data-team="0"] .seat-team { color: var(--night-0); background: var(--amber-1); }
+    .seat[data-team="1"] .seat-team { color: var(--night-0); background: var(--moon); }
+    .seat-character { margin: 0; font-size: 13px; letter-spacing: 0.06em; color: var(--moon); opacity: 0.85; }
+    .seat-loadout { margin: 0; font-size: 13px; color: var(--steel-2); }
+    .seat-ready { min-width: 48px; font-family: var(--font-display); font-size: 16px; font-weight: 800; text-align: right; color: var(--amber-1); }
+    .seat[data-ready="false"] .seat-ready::before { content: ""; display: inline-block; width: 12px; height: 12px; border: 2px solid var(--steel-1); border-radius: 50%; }
+
+    /* Route board: label | segmented choice. The current choice is amber even when the board is read-only. */
+    .route { display: grid; gap: 6px; }
+    .route-row { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 10px; }
+    .route-label { font-size: 15px; color: var(--moon); opacity: 0.8; }
+    .segments { display: flex; flex-wrap: wrap; gap: 4px; }
+    .segment {
+      padding: 4px 11px;
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      color: var(--moon);
+      background: var(--night-1);
+      border: 2px solid var(--steel-1);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .segment:hover:not(:disabled) { border-color: var(--amber-1); }
+    .segment[aria-pressed="true"] { color: var(--night-0); background: var(--amber-1); border-color: var(--amber-1); }
+    .segment:disabled { cursor: default; color: var(--steel-2); border-color: var(--steel-0); }
+    .segment[aria-pressed="true"]:disabled { color: var(--amber-1); background: var(--night-2); border-color: var(--amber-2); }
+    .route-summary { margin: 8px 0 0; font-size: 14px; color: var(--moon); opacity: 0.75; }
+
+    /* Your seat: four portraits, five item tiles. */
+    .portraits { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+    .portrait {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 8px 5px;
+      color: var(--moon);
+      background: var(--night-1);
+      border: 2px solid var(--steel-1);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .portrait:hover { border-color: var(--amber-2); }
+    .portrait[aria-pressed="true"] { border-color: var(--amber-1); background: var(--night-2); }
+    .portrait-name { font-family: var(--font-display); font-size: 12px; font-weight: 800; letter-spacing: 0.04em; }
+    .portrait-tag { font-size: 10px; color: var(--steel-2); }
+    .items { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+    .item {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      min-width: 0;
+      padding: 6px 8px;
+      text-align: left;
+      color: var(--moon);
+      background: var(--night-1);
+      border: 2px solid var(--steel-1);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .item:hover { border-color: var(--amber-2); }
+    .item[aria-pressed="true"] { border-color: var(--amber-1); background: var(--night-2); }
+    .item-name { font-family: var(--font-display); font-size: 14px; font-weight: 800; letter-spacing: 0.02em; line-height: 1.1; }
+    .pips { display: flex; gap: 3px; }
+    .pip { display: block; width: 7px; height: 7px; background: var(--steel-2); border-radius: 1px; }
+    .item[aria-pressed="true"] .pip { background: var(--amber-1); }
+    .item-bring { font-size: 11px; color: var(--steel-2); }
+
+    @media (max-width: 720px) {
+      #lobby { grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 20px 16px; }
+      .room-code > strong { font-size: 44px; }
+      .route-row { grid-template-columns: 1fr; gap: 4px; }
+      .items { grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); }
+    }
+
+    /* ---- Result: h1 is the verdict coloured by outcome, h2 the winner at 72 px, both names under it in 2v2. ---- */
+    #result { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; text-align: center; }
     #result h1 {
       margin: 0;
+      font-family: var(--font-display);
       font-size: 40px;
       font-weight: 800;
       letter-spacing: 0.2em;
@@ -183,6 +323,7 @@
     #result[data-verdict="draw"] h1 { font-size: 72px; letter-spacing: 0.06em; text-indent: 0.06em; color: var(--moon); text-shadow: 6px 6px 0 var(--outline); }
     #result h2 {
       margin: 0;
+      font-family: var(--font-display);
       font-size: 72px;
       font-weight: 800;
       line-height: 1.1;
@@ -190,6 +331,8 @@
       color: var(--moon);
       text-shadow: 6px 6px 0 var(--outline);
     }
+    #result p { margin: 0; font-size: 18px; color: var(--moon); opacity: 0.8; }
+    #result .result-team { font-family: var(--font-display); font-size: 22px; font-weight: 800; letter-spacing: 0.06em; opacity: 1; }
     #result .btn-primary { margin-top: 12px; }
 
     /* Error banner: danger strip at the top; .banner--match drops it under the HUD band during a match. */
@@ -212,7 +355,7 @@
 
     /* Calibration (markup arrives in Phase 6): centred prompt, 360 px amber progress, 320 px camera preview
        pinned bottom-left. Fill the progress by setting the inner element's width. */
-    .calib { z-index: 12; font-size: 28px; font-weight: 700; letter-spacing: 0.04em; } /* above .campreview (11) */
+    .calib { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; text-align: center; z-index: 12; font-size: 28px; font-weight: 700; letter-spacing: 0.04em; } /* above .campreview (11) */
     .calib p { margin: 0; font-size: 28px; color: var(--moon); }
     .progress {
       width: 360px;
@@ -297,6 +440,7 @@
 </head>
 <body>
   <div id="game"></div>
+  <div id="landing" class="overlay" hidden></div>
   <div id="lobby" class="overlay" hidden></div>
   <div id="calibration" class="overlay calib" hidden></div>
   <div id="result" class="overlay" hidden></div>
