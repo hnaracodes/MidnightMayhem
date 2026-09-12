@@ -27,6 +27,13 @@ Thresholds (starting values, all in `thresholds.ts`): `LEAN_ENTER 0.25`, `LEAN_E
 5. Every gesture resets its counters and buffers when calibration is not `ready`.
 6. `Metrics` computation is a pure function of its inputs plus the ring buffers passed in.
 
+## Integrator amendments (2026-09-12, first real punch test: zero punches tracked)
+- (integrator amendment) `Metrics` gains `dropL/R` (the raw-extension drop behind `thrustL/R`), `sideL/R` (the wrist's horizontal offset away from the body past its own shoulder over `armLen`; ~1 straight out, negative when crossed) and `jabRiseL/R` (largest rise of raw `side` within `JAB_WINDOW_MS`). `MetricBuffers` gains `sideL/R`.
+- (integrator amendment) `computeMetrics(landmarks, world, baseline, ts, buffers, raw = landmarks)`: the thrust drop and the jab rise are measured on the RAW (unsmoothed) landmarks so the EMA cannot blunt a fast move; every level gate still reads the smoothed set.
+- (integrator amendment) `Punch` gains `diag(): PunchDiag` — `{ ext, depth, drop, atHeight, extOk, depthOk, thrustOk, jabOk, active, out, side, jabRise, path }` for the last `update()`; the first ten fields are the contract shared with the game's preview lane.
+- (integrator amendment) Side-jab entry behind `SIDE_JAB_ENABLED` (owner decision, start true): `jabOk = atHeight && side > JAB_EXT (0.90) && side rose by ≥ JAB_RISE (0.30) within JAB_WINDOW_MS (250)`. Enter when the thrust rule holds OR (`SIDE_JAB_ENABLED && jabOk`). A jab-entered punch exits when `side < JAB_EXIT (JAB_EXT − 0.15)`; a thrust-entered punch exits as before. Crossed arms (negative `side`), an arm swung up (off height, no sideways reach) and a slow raise (no rise) never enter; tested at gesture and pipeline level.
+- (integrator amendment) First tuning pass, reasons next to each number in `thresholds.ts`: `EXT_ENTER 0.55 → 0.62`, `DEPTH_ENTER_NO_HAND 0.40 → 0.22`, `DEPTH_EXIT 0.15 → 0.08`, `THRUST_DROP 0.25 → 0.15`, `THRUST_WINDOW_MS 200 → 320`. Walk, jump and block untouched.
+
 ## Invariants
 - No gesture reads raw landmark indices; only `Metrics`.
 - Thresholds are imported, never inlined.

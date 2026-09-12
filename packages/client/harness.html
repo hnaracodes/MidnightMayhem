@@ -46,6 +46,17 @@
     .gauge .mark.exit { background: var(--moon); opacity: .6; }
     .bool { display: inline-block; padding: 2px 8px; border-radius: 4px; background: var(--steel-0); color: var(--steel-2); margin: 2px 4px 2px 0; }
     .bool[data-on] { background: var(--pose); color: var(--night-0); }
+    .arms { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .arm h3 { margin: 0 0 4px; font-size: 12px; color: var(--steel-2); text-transform: uppercase; letter-spacing: .06em; }
+    .gate { display: grid; grid-template-columns: 56px 1fr 40px; gap: 6px; align-items: baseline; font-variant-numeric: tabular-nums; font-size: 12px; padding: 2px 0; border-bottom: 1px solid var(--steel-0); color: var(--danger); }
+    .gate[data-pass] { color: var(--pose); }
+    .gate[data-idle] { color: var(--steel-2); }
+    .gate .name { color: var(--steel-2); }
+    .gate .res { text-align: right; font-weight: 700; }
+    .why { margin-top: 6px; font-size: 12px; color: var(--moon); min-height: 2.6em; }
+    .recorder { display: flex; gap: 8px; align-items: center; margin-top: 10px; flex-wrap: wrap; }
+    .recorder button { padding: 6px 10px; font-size: 12px; }
+    .rec-status { color: var(--steel-2); font-size: 12px; }
     .row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--steel-0); }
     .row .dot { width: 12px; height: 12px; border-radius: 6px; background: var(--steel-0); }
     .row .dot[data-on] { background: var(--amber-1); }

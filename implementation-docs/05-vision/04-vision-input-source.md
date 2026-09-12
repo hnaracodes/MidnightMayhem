@@ -22,6 +22,11 @@ Create: `packages/client/src/vision/classify.ts`, `VisionInputSource.ts`, `test/
 5. The class touches no DOM except the hidden `<video>` it owns; the host renders prompts from `calibrationState()`.
 6. Per result: EMA → calibration.update → if ready: metrics → gestures → classify → store frame; emit `DebugFrame`.
 
+## Integrator amendments (2026-09-12)
+- (integrator amendment) `DebugFrame` gains optional `punch?: { L: PunchDiag; R: PunchDiag }`, present only while calibration is ready. `PunchDiag` is re-exported from this module.
+- (integrator amendment) `VisionInputSource.dump(): RecorderSample[]` returns the last `RECORDER_SECONDS` (15) seconds of `{ ts, metrics, gestures, frame, punch }` samples, oldest first (landmarks excluded; `gestures` is a copy). The harness exposes it as `window.__vision.dump()` and behind "Copy last 15 s" / "Download JSON" buttons under the punch-gates card (5.05).
+- (integrator amendment) `processLandmarks` passes the raw `pose.landmarks` to `computeMetrics` as its `raw` argument (5.03 amendment).
+
 ## Invariants
 - `sample()` cost is a property read.
 - No landmark ever leaves this module except through `onDebug`.

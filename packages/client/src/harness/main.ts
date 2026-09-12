@@ -30,12 +30,15 @@ const overlay = createOverlay(canvas, () => {
   const v = source.video;
   return { w: v?.videoWidth || 640, h: v?.videoHeight || 480 };
 });
-const panel = createPanel($("panel"));
+const panel = createPanel($("panel"), { dump: () => source.dump() });
 const checklist = createChecklist($("checklist"));
 
 let videoAttached = false;
 
-/** Dev hook for headless checks: `window.__vision.stats()`. Phases lists every distinct phase seen, in order. */
+/**
+ * Dev hook for headless checks: `window.__vision.stats()` and `window.__vision.dump()` (the last
+ * RECORDER_SECONDS of samples). Phases lists every distinct phase seen, in order.
+ */
 const phases: string[] = [];
 let lastError: string | null = null;
 const devHook = {
@@ -44,6 +47,7 @@ const devHook = {
     const { phase, progress } = source.calibrationState();
     return { delegate: s.delegate, fps: s.fps, poseMs: s.poseMs, dropped: s.dropped, phase, progress, phases, lastError };
   },
+  dump: () => source.dump(),
 };
 (window as unknown as { __vision: typeof devHook }).__vision = devHook;
 
