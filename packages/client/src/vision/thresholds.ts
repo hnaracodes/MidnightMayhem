@@ -52,6 +52,7 @@ export const THRUST_ENABLED = true; // require the fast drop; false = depth and 
 export const PUNCH_DEBOUNCE_ON = 2; // frames before punch turns on
 export const PUNCH_DEBOUNCE_OFF = 3; // frames before punch turns off
 export const PUNCH_MIN_HOLD_MS = 100; // once entered, punch stays on at least this long
+export const PUNCH_RETRIGGER_COOLDOWN_MS = 250; // suppress a second pulse while the player retracts the same punch
 
 // ---- 5.03 punch, side-jab entry (integrator amendment; owner decision, flag-gated) ----
 // The game is side-view, so players punch sideways, which never changes world depth. `side` is the wrist's
