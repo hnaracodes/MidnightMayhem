@@ -114,7 +114,7 @@ a 4-slot array. `PROTOCOL_VERSION = 2`.
 
 ### 3.6 N-player generalisation of existing rules
 
-- Spawn X: 2 → `[280, 680]`; 3 → `[200, 480, 760]`; 4 → `[140, 340, 620, 820]`. Teams for 2v2: `[0, 0, 1, 1]`.
+- Spawn X: 2 → `[280, 680]`; 3 → `[200, 480, 760]`; 4 → `[120, 250, 710, 840]`. Teams for 2v2: `[0, 0, 1, 1]`.
 - Facing: the nearest living opponent (different team, hp > 0). Ties keep facing. Dead fighters keep facing.
 - Punch resolution: every attacker against every living opponent; one hit per punch still (first overlap wins,
   lowest index).

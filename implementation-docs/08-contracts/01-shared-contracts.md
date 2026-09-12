@@ -43,7 +43,7 @@ Phases 1–6 (all merged on `main`).
 - `MODES: Record<ModeId, { label: string; roundTicks: number | null; roundsToWin: number; maxRounds: number }>`:
   rounds `{1800, 2, 3}`, timed `{5400, 1, 1}`, deathmatch `{null, 1, 1}`
 - `TEAMS_IDS = ["ffa", "2v2"] as const`, `type TeamsId`
-- `SPAWN_X: Record<2 | 3 | 4, readonly number[]>` = `[280, 680]`, `[200, 480, 760]`, `[140, 340, 620, 820]`
+- `SPAWN_X: Record<2 | 3 | 4, readonly number[]>` = `[280, 680]`, `[200, 480, 760]`, `[120, 250, 710, 840]` (every spawn sits on ground on every map: gaps are 300–380 and 580–660)
 - `TEAM_OF: Record<TeamsId, (i: PlayerIndex, players: number) => number>` — ffa → `i`, 2v2 → `i < 2 ? 0 : 1`
 - `CHARACTERS = ["drifter", "conductor", "stoker", "claude"] as const` (type `CharacterId` widens)
 - `CHARACTER_LABEL: Record<CharacterId, string>` = "THE DRIFTER", "THE CONDUCTOR", "THE STOKER", "CLAUDE CODE"

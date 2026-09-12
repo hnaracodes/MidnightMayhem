@@ -95,7 +95,7 @@ export type TeamsId = (typeof TEAMS_IDS)[number];
 export const SPAWN_X: Record<2 | 3 | 4, readonly number[]> = {
   2: [280, 680],
   3: [200, 480, 760],
-  4: [140, 340, 620, 820],
+  4: [120, 250, 710, 840],
 };
 export const TEAM_OF: Record<TeamsId, (i: PlayerIndex, players: number) => number> = {
   ffa: (i) => i,
