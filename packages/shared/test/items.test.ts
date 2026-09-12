@@ -157,19 +157,19 @@ describe("items: sword", () => {
     s = r.s;
     // keep the target from being knocked out of reach
     for (let k = 2; k <= 5; k++) {
-      s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = 40;
+      s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = BALANCE.MAX_HP;
       r = swing(s); s = r.s;
       expect(types(r.events, "ITEM_BREAK")).toHaveLength(0);
       expect(s.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses - k });
     }
     // 6th swing: breaks
-    s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = 40;
+    s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = BALANCE.MAX_HP;
     r = swing(s); s = r.s;
     expect(r.events).toContainEqual({ type: "ITEM_BREAK", player: 0, item: "sword" });
     expect(types(r.events, "HIT")[0]).toMatchObject({ damage: ARSENAL.SWORD_DAMAGE });
     expect(s.fighters[0]!.item).toBeNull();
     // 7th: a normal punch, misses at 120 px, no ITEM_USE
-    s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = 40;
+    s.fighters[1]!.x = s.fighters[0]!.x + 120; s.fighters[1]!.hitstun = 0; s.fighters[1]!.knockbackVx = 0; s.fighters[1]!.hp = BALANCE.MAX_HP;
     r = swing(s);
     expect(types(r.events, "PUNCH")).toHaveLength(1);
     expect(types(r.events, "ITEM_USE")).toHaveLength(0);
