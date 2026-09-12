@@ -50,6 +50,18 @@ describe("Landing", () => {
     expect(onEnter).toHaveBeenCalledWith("Ana", undefined);
   });
 
+  it("reads prefers-reduced-motion into session.reducedMotion on render", () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((query: string) => ({ matches: query.includes("reduce"), media: query })) as typeof window.matchMedia;
+    try {
+      session.reducedMotion = false;
+      new Landing({ onEnter: vi.fn() }).render();
+      expect(session.reducedMotion).toBe(true);
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
   it("sets session.attract to the four characters on render and clears it on hide", () => {
     const landing = new Landing({ onEnter: vi.fn() });
     expect(session.attract).toBeNull();

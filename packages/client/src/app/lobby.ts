@@ -49,7 +49,7 @@ export class Lobby {
   ): void {
     this.root.replaceChildren();
     this.root.hidden = false;
-    const seated = players.filter((p): p is LobbyPlayer => p !== null);
+    const seated = players.slice(0, config.players).filter((p): p is LobbyPlayer => p !== null);
     const local = players[localIndex] ?? null;
     const isHost = host === localIndex;
 

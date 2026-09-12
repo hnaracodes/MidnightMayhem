@@ -75,6 +75,10 @@ describe("Lobby.renderRoom", () => {
     l.renderRoom("K7QX", [player("Ana"), player("Bo"), player("Cy")], three, 0, 0, false, "button");
     expect(readyButton().disabled).toBe(false);
     expect(readyButton().textContent).toBe("Ready");
+    // Only the configured seats count: a stale fourth slot does not fill a three-player room.
+    l.renderRoom("K7QX", [player("Ana"), player("Bo"), null, player("Di")], three, 0, 0, false, "button");
+    expect(readyButton().disabled).toBe(true);
+    expect(readyButton().textContent).toBe("Waiting for 1 more");
   });
 
   it("reflects the local player's ready state from the server and toggles it", () => {

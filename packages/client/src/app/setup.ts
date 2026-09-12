@@ -56,7 +56,9 @@ export class HostControls {
 
   render(root: HTMLElement, config: MatchConfig, enabled: boolean): void {
     this.root = root;
-    this.config = normalizeConfig(config);
+    // A LOBBY that lands inside the debounce window still carries the pre-click config; the host's pending
+    // pick wins until it has been sent, then the next LOBBY is the truth again.
+    if (this.timer === null || !enabled) this.config = normalizeConfig(config);
     this.enabled = enabled;
     this.draw();
   }

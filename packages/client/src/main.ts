@@ -1,4 +1,4 @@
-import { PROTOCOL_VERSION, type LobbyPlayer, type MatchConfig, type PlayerIndex } from "@midnight/shared";
+import { DEFAULT_LOADOUT, PROTOCOL_VERSION, type LobbyPlayer, type MatchConfig, type PlayerIndex } from "@midnight/shared";
 import { PAUSED_BANNER, pausedByVisibility, showBanner } from "./app/banner";
 import { CalibrationOverlay } from "./app/calibrationOverlay";
 import { CameraPreview, debugFanOut } from "./app/cameraPreview";
@@ -189,7 +189,7 @@ client.on("LOBBY", (message) => {
   session.playerNames = message.players.map((p, i) => p?.name || session.playerNames[i] || DEFAULT_PLAYER_NAMES[i] || "");
   session.config = message.config;
   session.roster = message.players.slice(0, message.config.players)
-    .map((p) => p ? { character: p.character, loadout: p.loadout } : { character: "drifter", loadout: ["molotov", "shield"] });
+    .map((p) => p ? { character: p.character, loadout: p.loadout } : { character: "drifter", loadout: DEFAULT_LOADOUT });
   lastLobby = { roomId: message.roomId, players: message.players, config: message.config, host: message.host };
   landing.hide();
   renderRoom();

@@ -42,6 +42,23 @@ describe("HostControls", () => {
     expect(onChange).toHaveBeenCalledWith({ players: 3, teams: "ffa", mode: "rounds", map: "chaos", items: true });
   });
 
+  it("keeps a pending pick when a stale LOBBY re-renders inside the debounce window", () => {
+    const onChange = vi.fn<(config: MatchConfig) => void>();
+    const controls = new HostControls(onChange);
+    const el = root();
+    controls.render(el, DEFAULT_CONFIG, true);
+    segment(el, "map", "chaos").click();
+    // Another player readies up: the server echoes the old config before the host's CONFIG has even been sent.
+    controls.render(el, DEFAULT_CONFIG, true);
+    expect(segment(el, "map", "chaos").getAttribute("aria-pressed")).toBe("true");
+    vi.advanceTimersByTime(CONFIG_DEBOUNCE_MS);
+    expect(onChange).toHaveBeenCalledTimes(1);
+    expect(onChange).toHaveBeenCalledWith({ ...DEFAULT_CONFIG, map: "chaos" });
+    // Once sent, the next LOBBY is the truth again.
+    controls.render(el, { ...DEFAULT_CONFIG, map: "gaps" }, true);
+    expect(segment(el, "map", "gaps").getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("is read-only for guests: every control disabled, current values still marked", () => {
     const onChange = vi.fn();
     const controls = new HostControls(onChange);
