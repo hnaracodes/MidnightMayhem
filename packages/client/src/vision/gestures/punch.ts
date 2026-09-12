@@ -3,15 +3,13 @@ import { fistFor } from "../hands";
 import type { Metrics } from "../metrics";
 import {
   DEPTH_ENTER_NO_HAND,
-  DEPTH_EXIT,
   EXT_ENTER,
-  EXT_EXIT,
-  JAB_EXIT,
   JAB_EXT,
   JAB_RISE,
   PUNCH_DEBOUNCE_OFF,
   PUNCH_DEBOUNCE_ON,
   PUNCH_MIN_HOLD_MS,
+  PUNCH_RETRIGGER_COOLDOWN_MS,
   SIDE_JAB_ENABLED,
   THRUST_ENABLED,
 } from "../thresholds";
@@ -57,7 +55,8 @@ function emptyDiag(): PunchDiag {
 
 /**
  * A punch per arm: either a thrust toward the camera (the no-hand depth rule) or, behind SIDE_JAB_ENABLED,
- * a fast horizontal jab away from the body. Each path has its own exit.
+ * a fast horizontal jab away from the body. Each detection emits one short pulse, then waits for its motion
+ * signal to clear before another motion can enter.
  */
 export class Punch {
   private readonly deb = new Debounce(PUNCH_DEBOUNCE_ON, PUNCH_DEBOUNCE_OFF);
@@ -65,6 +64,8 @@ export class Punch {
   private path: PunchPath = null;
   private out = false;
   private enteredAt = 0;
+  private cooldownUntil = 0;
+  private awaitingMotionClear = false;
   private last: PunchDiag = emptyDiag();
 
   constructor(private readonly arm: "L" | "R") {}
@@ -85,25 +86,39 @@ export class Punch {
     // A crossed arm has negative side; an arm swinging up is off-height and never reaches JAB_EXT sideways.
     const jabOk = atHeight && side > JAB_EXT && jabRise >= JAB_RISE;
 
-    if (this.active) {
-      const done = this.path === "jab" ? side < JAB_EXIT : ext > EXT_EXIT || depth < DEPTH_EXIT;
-      if (done) {
+    const motionPresent = thrustOk || jabOk;
+    if (this.out && ts - this.enteredAt >= PUNCH_MIN_HOLD_MS) {
+      this.out = false;
+      this.path = null;
+    }
+    if (this.awaitingMotionClear) {
+      this.active = false;
+      this.deb.update(false);
+      if (!motionPresent) this.awaitingMotionClear = false;
+    } else if (ts < this.cooldownUntil) {
+      // Retraction can briefly look like a new thrust. Require a fresh motion after this short window.
+      this.active = false;
+      this.path = null;
+      this.deb.update(false);
+    } else {
+      if (fistFor(this.arm) !== false && extOk && depthOk && atHeight && thrustOk) {
+        this.active = true;
+        this.path = "thrust";
+      } else if (fistFor(this.arm) !== false && SIDE_JAB_ENABLED && jabOk) {
+        this.active = true;
+        this.path = "jab";
+      } else {
         this.active = false;
         this.path = null;
       }
-    } else if (fistFor(this.arm) !== false) {
-      if (extOk && depthOk && atHeight && thrustOk) {
-        this.active = true;
-        this.path = "thrust";
-      } else if (SIDE_JAB_ENABLED && jabOk) {
-        this.active = true;
-        this.path = "jab";
+
+      if (this.deb.update(this.active) && !this.out) {
+        this.out = true;
+        this.enteredAt = ts;
+        this.cooldownUntil = ts + PUNCH_RETRIGGER_COOLDOWN_MS;
+        this.awaitingMotionClear = true;
       }
     }
-
-    const debounced = this.deb.update(this.active);
-    if (debounced && !this.out) this.enteredAt = ts;
-    this.out = debounced || (this.out && ts - this.enteredAt < PUNCH_MIN_HOLD_MS);
 
     this.last = {
       ext, depth, drop, atHeight, extOk, depthOk, thrustOk, jabOk,
@@ -123,6 +138,8 @@ export class Punch {
     this.path = null;
     this.out = false;
     this.enteredAt = 0;
+    this.cooldownUntil = 0;
+    this.awaitingMotionClear = false;
     this.last = emptyDiag();
   }
 }
