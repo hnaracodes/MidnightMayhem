@@ -281,6 +281,23 @@ describe("ItemFx shield", () => {
     expect(created).toHaveLength(1); // still one: nothing new created for a fighter without a shield
   });
 
+  it("the bubble goes away while the fighter is down a pit and comes back on respawn", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    const f = state.fighters[0]!;
+    f.item = { kind: "shield", uses: 3 };
+    fx.draw(state, hands, 0);
+    expect(created).toHaveLength(1);
+    f.pitTicks = 40; f.y = 520;
+    fx.draw(state, hands, 0);
+    expect(created[0]!.destroyed).toBe(true);
+    f.pitTicks = 0; f.y = WORLD.ROOF_Y;
+    fx.draw(state, hands, 0);
+    expect(created).toHaveLength(2);
+    expect(created[1]!.count("fillEllipse")).toBe(1);
+  });
+
   it("no bubble while the shield is materialising; it appears once the 26 frames end", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);

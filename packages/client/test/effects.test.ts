@@ -296,7 +296,7 @@ describe("Effects KO slowdown", () => {
     expect(fx.koFrames(0)).toBe(0);
   });
 
-  it("(11.05) a fighter KO'd mid-round in a four-player match collapses at once and stays collapsed", () => {
+  it("(11.05) a fighter KO'd mid-round in a four-player match collapses at once, at 1x, and stays collapsed", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
     const state = createMatch({ players: 4, teams: "2v2", mode: "rounds", map: "roof", items: true });
@@ -305,15 +305,24 @@ describe("Effects KO slowdown", () => {
     expect(fx.timeScale()).toBe(1);
     state.fighters[2]!.hp = 0;
     frames(fx, state, 1);
-    expect(fx.timeScale()).toBe(0.25);
-    expect(fx.koFrames(2)).toBe(0.25);
+    // The round goes on and the server keeps running: no slowdown, the collapse plays at normal speed.
+    expect(fx.timeScale()).toBe(1);
+    expect(fx.koFrames(2)).toBe(1);
     frames(fx, state, 200);
     expect(fx.timeScale()).toBe(1);
     expect(fx.koFrames(2)).toBeGreaterThan(30); // still collapsed while the round goes on
     expect(fx.koFrames(0)).toBe(0);
+    // The last KO ends the round: that collapse gets the 0.25x slowdown, the earlier one is already down.
+    state.fighters[3]!.hp = 0;
+    state.phase = "ROUND_END";
+    frames(fx, state, 1);
+    expect(fx.timeScale()).toBe(0.25);
+    expect(fx.koFrames(3)).toBe(0.25);
     state.phase = "COUNTDOWN";
     frames(fx, state, 1);
     expect(fx.koFrames(2)).toBe(0);
+    expect(fx.koFrames(3)).toBe(0);
+    expect(fx.timeScale()).toBe(1);
   });
 
   it("(11.05) a laser hit flashes the target without hit-stop; a blocked one chips", () => {

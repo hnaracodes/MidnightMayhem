@@ -376,8 +376,9 @@ export class ItemFx {
 
   private drawBubble(i: PlayerIndex, f: FighterState | undefined): void {
     const item = f?.item;
-    // No bubble while the shield is still materialising (11.01 hides the item sprite until then too).
-    if (!f || !item || item.kind !== "shield" || this.materialiseFrames[i] > 0) {
+    // No bubble while the shield is still materialising (11.01 hides the item sprite until then too), nor while the
+    // fighter is down a pit: the sprite is hidden for those 40 ticks and the bubble is tied to the fighter (9.05 rule 4).
+    if (!f || !item || item.kind !== "shield" || this.materialiseFrames[i] > 0 || f.pitTicks > 0) {
       const old = this.bubbles[i];
       if (old) {
         old.destroy();

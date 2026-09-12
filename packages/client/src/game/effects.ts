@@ -90,6 +90,8 @@ export class Effects {
   private readonly walkDustTick: Per<number | null> = per(null);
   private readonly koActive: Per<boolean> = per(false);
   private readonly koCount: Per<number> = per(0);
+  /** Displayed phase from the last consume(): the slowdown only plays over ROUND_END / MATCH_END. */
+  private koPhase: MatchState["phase"] = "COUNTDOWN";
   private readonly oobPulseFrames: Per<number> = per(0);
   private clockSec = 0;
 
@@ -142,10 +144,14 @@ export class Effects {
   }
 
   /**
-   * (integrator amendment) 0.25 while a KO collapse is playing (some `koFrames(i)` below 30), else 1. Scales the
-   * scene's render clock only; the collapse counter advances by the same factor so both end together.
+   * (integrator amendment) 0.25 while a KO collapse is playing (some `koFrames(i)` below 30) over ROUND_END or
+   * MATCH_END, else 1. Scales the scene's render clock only; the collapse counter advances by the same factor so
+   * both end together. A mid-round KO with three or four fighters collapses at 1x: the server keeps running and
+   * the 200 ms snapshot buffer cannot hold a 1.5 s render lag, so slowing there would pin the display to the
+   * oldest snapshot with no interpolation (11.05 rule 10 only asks that the KO'd fighter stays down).
    */
   timeScale(): number {
+    if (this.koPhase !== "ROUND_END" && this.koPhase !== "MATCH_END") return 1;
     for (const i of PLAYERS) {
       if (this.koActive[i] && this.koCount[i] < FRAMES.KO_SLOW) return KO_TIME_SCALE;
     }
@@ -313,6 +319,7 @@ export class Effects {
    * of the next round stands everyone back up.
    */
   private readKo(state: MatchState): void {
+    this.koPhase = state.phase;
     if (state.phase === "COUNTDOWN") {
       for (const i of PLAYERS) { this.koActive[i] = false; this.koCount[i] = 0; }
       return;
@@ -321,7 +328,7 @@ export class Effects {
       const f = state.fighters[i];
       if (!f || f.hp > 0 || this.koActive[i]) continue;
       this.koActive[i] = true;
-      this.koCount[i] = 0; // timeScale() drops to 0.25 until this reaches KO_SLOW
+      this.koCount[i] = 0; // over ROUND_END, timeScale() drops to 0.25 until this reaches KO_SLOW
     }
   }
 

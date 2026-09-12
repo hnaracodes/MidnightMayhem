@@ -52,6 +52,18 @@ const CAR_LABEL: Record<MatchState["trainCar"], string> = {
 
 const GLYPH: Record<ItemId, string> = { molotov: "▲", sword: "/", shield: "▣", banana: "◗", flash: "✦" };
 
+/** The slice of a Phaser Text this file recolours; `style.color` is the CSS string last given to setColor. */
+export interface ColorableText { style: { color: unknown }; setColor(color: string): unknown }
+
+/**
+ * `Text.setColor` re-renders the canvas and re-uploads the texture with no equality guard (unlike setText), so
+ * only call it when the colour actually changes: 7–17 Text objects per frame at 4p otherwise (11.05 budget).
+ */
+export function setColorIfChanged<T extends ColorableText>(text: T, css: string): T {
+  if (text.style.color !== css) text.setColor(css);
+  return text;
+}
+
 /** Character key colours for the team outline, from the rig data (11.01 owns the tokens). */
 function keyColor(id: CharacterId): number {
   return CHARACTER_RIG[id].key;
@@ -397,7 +409,7 @@ export class Hud {
 
     const tag = t.tag;
     if (state.config.teams === "2v2") {
-      tag.setText(f.team === 0 ? "A" : "B").setColor(cssOf(color));
+      setColorIfChanged(tag.setText(f.team === 0 ? "A" : "B"), cssOf(color));
       tag.setOrigin(left ? 0 : 1, 0).setPosition(cursor, y + (size - TAG.SIZE) / 2 + 1).setVisible(true);
       cursor += dir * (tag.displayWidth + TAG.GAP);
     } else {
@@ -408,7 +420,7 @@ export class Hud {
     t.dazzle.setText("✦").setOrigin(left ? 0 : 1, 0).setPosition(cursor, y).setVisible(dazzled && blinkOn(this.clock));
     if (dazzled) cursor += dir * (t.dazzle.displayWidth + TAG.GAP);
 
-    t.out.setText("OUT").setPosition(bar.x + bar.w / 2, bar.y + h / 2).setColor(CSS_P.moon).setVisible(ko);
+    setColorIfChanged(t.out.setText("OUT").setPosition(bar.x + bar.w / 2, bar.y + h / 2), CSS_P.moon).setVisible(ko);
     return { cursor, y, size };
   }
 
@@ -456,7 +468,7 @@ export class Hud {
       g.lineStyle(1, isHeld ? P.moon : used ? P.steel1 : P.steel2, 1);
       g.strokeRect(m.x + 0.5, m.y + 0.5, size - 1, size - 1);
       const mini = t.minis[k];
-      mini.setText(GLYPH[kind]).setColor(isHeld ? CSS_P.moon : used ? CSS_P.steel1 : CSS_P.steel2);
+      setColorIfChanged(mini.setText(GLYPH[kind]), isHeld ? CSS_P.moon : used ? CSS_P.steel1 : CSS_P.steel2);
       mini.setPosition(m.x + size / 2, m.y + size / 2 - 1).setVisible(true);
       if (used) {
         g.lineStyle(2, P.steel2, 1);
@@ -506,7 +518,7 @@ export class Hud {
     const seconds = timerSeconds(state);
     this.timer.setText(text);
     this.timer.setFontSize(seconds === null ? TIMER.SIZE_INFINITY : text.length > 2 ? TIMER.SIZE_LONG : TIMER.SIZE);
-    this.timer.setColor(seconds !== null && seconds < TIMER.DANGER_BELOW ? CSS_P.danger : CSS_P.moon);
+    setColorIfChanged(this.timer, seconds !== null && seconds < TIMER.DANGER_BELOW ? CSS_P.danger : CSS_P.moon);
   }
 
   private updateBanner(next: Banner | null, dt: number): void {

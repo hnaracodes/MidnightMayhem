@@ -4,7 +4,7 @@ import {
 } from "@midnight/shared";
 import {
   HUD_BAND, bannerFor, barHeight, barLayout, blinkOn, cooldownFraction, isOut, itemGlyph, pipCount, readyEdge, roundPipRow,
-  teamColor, timerText,
+  setColorIfChanged, teamColor, timerText,
 } from "../src/game/hud";
 import { P } from "../src/game/palette";
 
@@ -227,5 +227,19 @@ describe("bannerFor (rule 9)", () => {
     expect(bannerFor(f, false)?.text).toBe("MUTUAL DERAILMENT");
     f.winner = 0;
     expect(bannerFor(f, false)?.text).toBe(`${CHARACTER_LABEL.drifter} WINS`);
+  });
+});
+
+describe("setColorIfChanged (11.05 update budget)", () => {
+  it("calls setColor only when the colour differs from the style's current one", () => {
+    const calls: string[] = [];
+    const text = { style: { color: "#ffffff" }, setColor(css: string) { this.style.color = css; calls.push(css); return this; } };
+    setColorIfChanged(text, "#ffffff");
+    expect(calls).toEqual([]);
+    setColorIfChanged(text, "#ff0000");
+    setColorIfChanged(text, "#ff0000");
+    expect(calls).toEqual(["#ff0000"]);
+    expect(setColorIfChanged(text, "#ffffff")).toBe(text);
+    expect(calls).toEqual(["#ff0000", "#ffffff"]);
   });
 });
