@@ -4,10 +4,82 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Midnight Mayhem</title>
-  <style>html,body{margin:0;background:#070B18;color:#E8F0FF;font-family:system-ui,sans-serif}</style>
+  <style>
+    :root {
+      color-scheme: dark;
+      --night-0: #070B18;
+      --night-1: #101A33;
+      --night-2: #1E2B4D;
+      --steel-0: #232733;
+      --steel-1: #3A404F;
+      --steel-2: #5B6375;
+      --moon: #E8F0FF;
+      --amber-1: #F2A03D;
+      --amber-2: #C2601B;
+      --danger: #E8434F;
+      --outline: #05070F;
+      font-family: system-ui, sans-serif;
+      background: var(--night-0);
+      color: var(--moon);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    [hidden] { display: none !important; }
+    #game { width: 100%; min-height: 100dvh; }
+    #game canvas { display: block; max-width: 100%; }
+    #lobby, #calibration, #result {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      padding: 2rem;
+      overflow-y: auto;
+      background: var(--night-0);
+    }
+    h1, h2, h3 { font-weight: 800; }
+    button, input {
+      font: inherit;
+      padding: 0.75rem 1rem;
+      border: 2px solid var(--steel-2);
+      border-radius: 0.375rem;
+    }
+    input { background: var(--night-1); color: var(--moon); max-width: 100%; }
+    button {
+      background: var(--amber-1);
+      color: var(--night-0);
+      border-color: var(--amber-2);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover:not(:disabled) { background: var(--moon); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:focus-visible, input:focus-visible {
+      outline: 3px solid var(--moon);
+      outline-offset: 3px;
+    }
+    #banner {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 0.75rem 1rem;
+      background: var(--danger);
+      color: var(--night-0);
+      font-weight: 700;
+      text-align: center;
+    }
+  </style>
 </head>
 <body>
   <div id="game"></div>
+  <div id="lobby" hidden></div>
+  <div id="calibration" hidden></div>
+  <div id="result" hidden></div>
+  <div id="banner" role="alert" hidden></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
