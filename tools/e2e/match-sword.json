@@ -1,0 +1,216 @@
+{
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
+  "steps": [
+    {
+      "page": 0
+    },
+    {
+      "goto": "http://localhost:5181/?debug=1"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Alice"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT2P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 1
+    },
+    {
+      "goto": "http://localhost:5181/"
+    },
+    {
+      "fill": [
+        "#landing input[name=name]",
+        "Bob"
+      ]
+    },
+    {
+      "fill": [
+        "#landing input[name=room]",
+        "INT2P"
+      ]
+    },
+    {
+      "click": "#landing button:text-is(\"Board the train\")"
+    },
+    {
+      "waitFor": "#lobby .seats"
+    },
+    {
+      "page": 0
+    },
+    {
+      "click": "#lobby .item[data-item=flash]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 1
+    },
+    {
+      "click": "#lobby .item[data-item=sword]"
+    },
+    {
+      "wait": 300
+    },
+    {
+      "page": 1
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "page": 0
+    },
+    {
+      "waitFor": "button:text-is(\"Ready\")"
+    },
+    {
+      "click": "button:text-is(\"Ready\")"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/integration-2p-countdown.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 2300
+    },
+    {
+      "shot": ".shots/integration-2p-fight-start.png",
+      "selector": "canvas"
+    },
+    {
+      "page": 1
+    },
+    {
+      "hold": [
+        "Digit2",
+        200
+      ]
+    },
+    {
+      "wait": 200
+    },
+    {
+      "shot": ".shots/integration-2p-sword-equip.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [f.item && f.item.kind, f.item && f.item.ticksLeft])"
+    },
+    {
+      "hold": [
+        "KeyA",
+        600
+      ]
+    },
+    {
+      "wait": 200
+    },
+    {
+      "hold": [
+        "KeyE",
+        60
+      ]
+    },
+    {
+      "wait": 120
+    },
+    {
+      "shot": ".shots/integration-2p-sword-chop.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "(function(){var f=window.__arena.latest().fighters[1];return f.action&&f.action.kind+':'+f.action.style})()"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "hold": [
+        "KeyR",
+        60
+      ]
+    },
+    {
+      "wait": 100
+    },
+    {
+      "shot": ".shots/integration-2p-sword-sweep.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "(function(){var f=window.__arena.latest().fighters[1];return f.action&&f.action.kind+':'+f.action.style})()"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "hold": [
+        "KeyF",
+        60
+      ]
+    },
+    {
+      "wait": 100
+    },
+    {
+      "eval": "(function(){var f=window.__arena.latest().fighters[1];return f.action&&f.action.kind})()"
+    },
+    {
+      "wait": 600
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind, f.item && f.item.ticksLeft])"
+    },
+    {
+      "wait": 7000
+    },
+    {
+      "shot": ".shots/integration-2p-sword-expiring.png",
+      "selector": "canvas"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "eval": "window.__arena.latest().fighters.map(f => [Math.round(f.x), f.hp, f.item && f.item.kind])"
+    },
+    {
+      "shot": ".shots/integration-2p-sword-expired.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    },
+    {
+      "page": 0
+    },
+    {
+      "eval": "window.__arena.updateMs()"
+    }
+  ]
+}

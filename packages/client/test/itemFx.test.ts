@@ -4,7 +4,7 @@ import {
   ARSENAL, BALANCE, ITEM_IDS, ITEMS, WORLD, createMatch,
   type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile, type SimEvent,
 } from "@midnight/shared";
-import { ItemFx, type HandPoint } from "../src/game/itemFx";
+import { ItemFx, slashArc, type HandPoint } from "../src/game/itemFx";
 import { P } from "../src/game/palette";
 import { THROW, chargeToRange, chargingThrow, predictFlight, throwVelocity } from "../src/game/throwPreview";
 
@@ -282,14 +282,14 @@ describe("ItemFx laser", () => {
 });
 
 describe("ItemFx sword", () => {
-  it("PUNCH with a sword draws a 3-frame moon slash; without a sword nothing", () => {
+  it("SLASH draws a 3-frame moon crescent; a plain PUNCH (even with a sword) draws nothing", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
+    state.fighters[0]!.item = { kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ITEMS.sword.ttl ?? null };
     fx.consume([{ type: "PUNCH", player: 0, arm: "R" }], state, hands);
     expect(created).toHaveLength(0);
-    state.fighters[0]!.item = { kind: "sword", uses: ITEMS.sword.uses };
-    frames(fx, state, 1, [{ type: "PUNCH", player: 0, arm: "R" }]);
+    frames(fx, state, 1, [{ type: "SLASH", player: 0, style: "chop" }]);
     expect(created).toHaveLength(1);
     const g = created[0]!;
     expect(g.depth).toBe(4);
@@ -298,6 +298,34 @@ describe("ItemFx sword", () => {
     expect(g.destroyed).toBe(false);
     frames(fx, state, 1);
     expect(g.destroyed).toBe(true);
+  });
+
+  it("chop sweeps the crescent through the vertical, sweep runs it flat; both mirror with facing", () => {
+    const chopR = slashArc("chop", 1, 1);
+    const sweepR = slashArc("sweep", 1, 1);
+    // chop: starts straight up (-90°) and comes down past horizontal on the facing side
+    expect(chopR.start).toBeCloseTo(-Math.PI / 2);
+    expect(chopR.end).toBeGreaterThan(0);
+    // sweep: a narrow band hugging the horizontal, centred on the facing side
+    expect(Math.abs(sweepR.start)).toBeLessThan(Math.PI / 4);
+    expect(Math.abs(sweepR.end)).toBeLessThan(Math.PI / 4);
+    expect(Math.abs(sweepR.end - sweepR.start)).toBeLessThan(Math.abs(chopR.end - chopR.start));
+    // mirrored: cos flips sign, sin is the same
+    const chopL = slashArc("chop", -1, 1);
+    expect(Math.cos(chopL.end)).toBeCloseTo(-Math.cos(chopR.end));
+    expect(Math.sin(chopL.end)).toBeCloseTo(Math.sin(chopR.end));
+    // the arc grows over the 3 frames
+    expect(Math.abs(slashArc("sweep", 1, 0).end - slashArc("sweep", 1, 0).start)).toBeLessThan(Math.abs(sweepR.end - sweepR.start));
+  });
+
+  it("the SLASH crescent reaches further for a sweep than a chop", () => {
+    expect(ARSENAL.SWEEP_REACH).toBeGreaterThan(ARSENAL.CHOP_REACH);
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    frames(fx, state, 1, [{ type: "SLASH", player: 0, style: "sweep" }]);
+    expect(created).toHaveLength(1);
+    expect(created[0]!.colors().has(P.moon)).toBe(true);
   });
 
   it("PARRY: 6-frame white spark star at the parrier's hand and a 2 px shake", () => {
@@ -323,7 +351,7 @@ describe("ItemFx shield barrier", () => {
     const fx = new ItemFx(scene);
     const state = fighting();
     const f = state.fighters[0]!;
-    f.item = { kind: "shield", uses: 3 };
+    f.item = { kind: "shield", uses: 3, ticksLeft: null };
     fx.draw(state, hands, 0);
     expect(created).toHaveLength(1);
     const barrier = created[0]!;
@@ -341,7 +369,7 @@ describe("ItemFx shield barrier", () => {
     const edge = barrier.styles().find((s) => s.kind === "line" && s.color === P.steel2);
     expect(edge).toBeDefined();
     expect(barrier.count("lineBetween")).toBe(0); // no cracks at full uses
-    f.item = { kind: "shield", uses: 1 };
+    f.item = { kind: "shield", uses: 1, ticksLeft: null };
     fx.draw(state, hands, 0);
     expect(barrier.count("strokePoints")).toBeGreaterThanOrEqual(1 + 2); // the edge plus two jagged cracks
     f.item = null;
@@ -355,7 +383,7 @@ describe("ItemFx shield barrier", () => {
     const fx = new ItemFx(scene);
     const state = fighting();
     const f = state.fighters[0]!;
-    f.item = { kind: "shield", uses: 3 };
+    f.item = { kind: "shield", uses: 3, ticksLeft: null };
     f.facing = -1;
     fx.draw(state, hands, 0);
     const hex = created[0]!.calls.find((c) => c.m === "fillPoints")!.args[0] as Array<{ x: number }>;
@@ -367,7 +395,7 @@ describe("ItemFx shield barrier", () => {
     const fx = new ItemFx(scene);
     const state = fighting();
     const f = state.fighters[0]!;
-    f.item = { kind: "shield", uses: 3 };
+    f.item = { kind: "shield", uses: 3, ticksLeft: null };
     fx.draw(state, hands, 0);
     const g = created[0]!;
     const bandY = () => {
@@ -393,7 +421,7 @@ describe("ItemFx shield barrier", () => {
     const fx = new ItemFx(scene);
     const state = fighting();
     const f = state.fighters[0]!;
-    f.item = { kind: "shield", uses: 3 };
+    f.item = { kind: "shield", uses: 3, ticksLeft: null };
     fx.draw(state, hands, 0);
     expect(created).toHaveLength(1);
     f.pitTicks = 40; f.y = 520;
@@ -409,7 +437,7 @@ describe("ItemFx shield barrier", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
-    state.fighters[0]!.item = { kind: "shield", uses: 3 };
+    state.fighters[0]!.item = { kind: "shield", uses: 3, ticksLeft: null };
     frames(fx, state, 1, [{ type: "ITEM_EQUIP", player: 0, item: "shield" }]);
     expect(created.filter((g) => g.depth === 4)).toHaveLength(1); // the materialise only
     frames(fx, state, 25);
@@ -422,7 +450,7 @@ describe("ItemFx shield barrier", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
-    state.fighters[0]!.item = { kind: "shield", uses: 2 };
+    state.fighters[0]!.item = { kind: "shield", uses: 2, ticksLeft: null };
     fx.draw(state, hands, 0);
     const barrier = created[0]!;
     fx.consume([{ type: "SHIELD_ABSORB", player: 0, left: 2 }], state, hands);
@@ -496,10 +524,10 @@ describe("throw preview (rule 5)", () => {
     }
   });
 
-  it("chargeToRange is linear 120 → 640 over 0 → 45 and clamps", () => {
+  it("chargeToRange is linear MIN → MAX over 0 → CHARGE_MAX (90 since 9.10) and clamps", () => {
     expect(chargeToRange(0)).toBe(THROW.MIN_RANGE);
     expect(chargeToRange(THROW.CHARGE_MAX)).toBe(THROW.MAX_RANGE);
-    expect(chargeToRange(22.5)).toBeCloseTo(380, 5);
+    expect(chargeToRange(THROW.CHARGE_MAX / 2)).toBeCloseTo((THROW.MIN_RANGE + THROW.MAX_RANGE) / 2, 5);
     expect(chargeToRange(999)).toBe(THROW.MAX_RANGE);
     expect(chargeToRange(-5)).toBe(THROW.MIN_RANGE);
   });
@@ -516,7 +544,7 @@ describe("throw preview (rule 5)", () => {
     const fx = new ItemFx(scene);
     const state = fighting();
     const f = state.fighters[0]!;
-    f.item = { kind: "molotov", uses: 2 };
+    f.item = { kind: "molotov", uses: 2, ticksLeft: null };
     f.action = charging("molotov", 0);
     fx.draw(state, hands, 0);
     const preview = created.find((g) => g.depth === 4.2)!;
@@ -713,7 +741,7 @@ describe("ItemFx lifecycle", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
-    state.fighters[1]!.item = { kind: "shield", uses: 3 }; // player 0 is materialising, which hides a bubble
+    state.fighters[1]!.item = { kind: "shield", uses: 3, ticksLeft: null }; // player 0 is materialising, which hides a bubble
     state.fighters[1]!.action = { kind: "laser", elapsed: 0, hit: [] };
     state.projectiles = [{ id: 1, kind: "molotov", owner: 0, x: 300, y: 330, vx: 6, vy: -7 }];
     state.hazards = [{ id: 2, kind: "peel", owner: 0, x: 500, y: WORLD.ROOF_Y, w: 40, ticks: 900, age: 0 }];

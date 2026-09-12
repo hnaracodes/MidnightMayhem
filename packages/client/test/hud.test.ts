@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import {
-  ARSENAL, CHARACTER_LABEL, ITEM_IDS, MODES, WORLD, createMatch, type ItemId, type MatchState, type PlayerIndex,
+  ARSENAL, CHARACTER_LABEL, ITEM_IDS, ITEMS, MODES, WORLD, createMatch, type ItemId, type MatchState, type PlayerIndex,
 } from "@midnight/shared";
 import {
   HUD_BAND, Hud, TOAST, bannerFor, barHeight, barLayout, blinkOn, cooldownFraction, isOut, itemEdge, itemGlyph, pipCount,
-  readyEdge, roundPipRow, setColorIfChanged, teamColor, timerText, toastLayout, toastSlide,
+  readyEdge, roundPipRow, setColorIfChanged, teamColor, timerText, toastLayout, toastSlide, itemTimerFraction, itemTimerFlash, toastLabel, TIMER_FLASH_TICKS, TIMER_FLASH_PERIOD,
 } from "../src/game/hud";
 import { P } from "../src/game/palette";
 
@@ -98,14 +98,14 @@ describe("timerText", () => {
 
 describe("itemGlyph", () => {
   it("maps every item to a distinct glyph and none to blank", () => {
-    const glyphs = ITEM_IDS.map((kind: ItemId) => itemGlyph({ kind, uses: 1 }));
+    const glyphs = ITEM_IDS.map((kind: ItemId) => itemGlyph({ kind, uses: 1, ticksLeft: null }));
     expect(new Set(glyphs).size).toBe(ITEM_IDS.length);
     for (const g of glyphs) expect(g.length).toBeGreaterThan(0);
-    expect(itemGlyph({ kind: "molotov", uses: 2 })).toBe("▲");
-    expect(itemGlyph({ kind: "sword", uses: 6 })).toBe("/");
-    expect(itemGlyph({ kind: "shield", uses: 3 })).toBe("▣");
-    expect(itemGlyph({ kind: "banana", uses: 1 })).toBe("◗");
-    expect(itemGlyph({ kind: "flash", uses: 1 })).toBe("✦");
+    expect(itemGlyph({ kind: "molotov", uses: 2, ticksLeft: null })).toBe("▲");
+    expect(itemGlyph({ kind: "sword", uses: 6, ticksLeft: null })).toBe("/");
+    expect(itemGlyph({ kind: "shield", uses: 3, ticksLeft: null })).toBe("▣");
+    expect(itemGlyph({ kind: "banana", uses: 1, ticksLeft: null })).toBe("◗");
+    expect(itemGlyph({ kind: "flash", uses: 1, ticksLeft: null })).toBe("✦");
     expect(itemGlyph(null)).toBe("");
   });
 });
@@ -308,11 +308,11 @@ describe("toastSlide and itemEdge (9.08 rule 2)", () => {
 
   it("reads equip / use / break from the held item's change", () => {
     expect(itemEdge(null, null)).toBeNull();
-    expect(itemEdge(null, { kind: "molotov", uses: 2 })).toBe("equip");
-    expect(itemEdge({ kind: "sword", uses: 3 }, { kind: "molotov", uses: 2 })).toBe("equip");
-    expect(itemEdge({ kind: "molotov", uses: 2 }, { kind: "molotov", uses: 1 })).toBe("use");
-    expect(itemEdge({ kind: "molotov", uses: 2 }, { kind: "molotov", uses: 2 })).toBeNull();
-    expect(itemEdge({ kind: "molotov", uses: 1 }, null)).toBe("break");
+    expect(itemEdge(null, { kind: "molotov", uses: 2, ticksLeft: null })).toBe("equip");
+    expect(itemEdge({ kind: "sword", uses: 3, ticksLeft: null }, { kind: "molotov", uses: 2, ticksLeft: null })).toBe("equip");
+    expect(itemEdge({ kind: "molotov", uses: 2, ticksLeft: null }, { kind: "molotov", uses: 1, ticksLeft: null })).toBe("use");
+    expect(itemEdge({ kind: "molotov", uses: 2, ticksLeft: null }, { kind: "molotov", uses: 2, ticksLeft: null })).toBeNull();
+    expect(itemEdge({ kind: "molotov", uses: 1, ticksLeft: null }, null)).toBe("break");
   });
 });
 
@@ -370,7 +370,7 @@ describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
     const s = fighting();
     hud.update(s, DT);
     expect(shown(texts, "EQUIPPED")).toHaveLength(0);
-    s.fighters[0]!.item = { kind: "molotov", uses: 2 };
+    s.fighters[0]!.item = { kind: "molotov", uses: 2, ticksLeft: null };
     hud.update(s, DT); // frame 0 of the slide
     expect(shown(texts, "MOLOTOV ×2")).toHaveLength(1);
     expect(shown(texts, "EQUIPPED")).toHaveLength(1);
@@ -393,9 +393,9 @@ describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
     const hud = new Hud(scene);
     const s = fighting();
     hud.update(s, DT);
-    s.fighters[0]!.item = { kind: "molotov", uses: 2 };
+    s.fighters[0]!.item = { kind: "molotov", uses: 2, ticksLeft: null };
     hud.update(s, DT);
-    s.fighters[0]!.item = { kind: "molotov", uses: 1 };
+    s.fighters[0]!.item = { kind: "molotov", uses: 1, ticksLeft: null };
     graphics.calls.length = 0;
     hud.update(s, DT);
     expect(shown(texts, "MOLOTOV ×1")).toHaveLength(1);
@@ -419,7 +419,7 @@ describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
     const { scene, texts } = hudScene();
     const hud = new Hud(scene);
     const s = fighting();
-    s.fighters[1]!.item = { kind: "sword", uses: 6 };
+    s.fighters[1]!.item = { kind: "sword", uses: 6, ticksLeft: null };
     hud.update(s, DT); // first sight of a held item: no toast
     expect(shown(texts, "EQUIPPED")).toHaveLength(0);
     s.phase = "ROUND_END";
@@ -427,7 +427,7 @@ describe("Hud equip toast lifecycle (9.08 rule 2)", () => {
     hud.update(s, DT);
     expect(shown(texts, "BROKEN")).toHaveLength(0);
     s.phase = "FIGHTING";
-    s.fighters[1]!.item = { kind: "shield", uses: 3 };
+    s.fighters[1]!.item = { kind: "shield", uses: 3, ticksLeft: null };
     hud.update(s, DT);
     for (let k = 0; k < TOAST.IN; k += 1) hud.update(s, DT);
     const name = shown(texts, "SHIELD ×3")[0]!;
@@ -479,5 +479,36 @@ describe("12.05 HUD restyle helpers", () => {
   it("rule 2: the HUD uses the landing's condensed stack, no network fonts", () => {
     expect(HUD_FONT).toContain("Avenir Next Condensed");
     expect(HUD_FONT).not.toMatch(/https?:/);
+  });
+});
+
+describe("9.10 timed item bar", () => {
+  it("itemTimerFraction drains ticksLeft over the item's ttl and is null for a use-counted item", () => {
+    const ttl = ITEMS.sword.ttl ?? 0;
+    expect(ttl).toBeGreaterThan(0);
+    expect(itemTimerFraction(null)).toBeNull();
+    expect(itemTimerFraction({ kind: "molotov", uses: 2, ticksLeft: null })).toBeNull();
+    expect(itemTimerFraction({ kind: "sword", uses: 0, ticksLeft: ttl })).toBe(1);
+    expect(itemTimerFraction({ kind: "sword", uses: 0, ticksLeft: ttl / 2 })).toBeCloseTo(0.5);
+    expect(itemTimerFraction({ kind: "sword", uses: 0, ticksLeft: 0 })).toBe(0);
+  });
+
+  it("the last 180 ticks flash on a 10-tick period; earlier never", () => {
+    expect(itemTimerFlash({ kind: "sword", uses: 0, ticksLeft: TIMER_FLASH_TICKS + 1 })).toBe(false);
+    expect(itemTimerFlash({ kind: "molotov", uses: 1, ticksLeft: null })).toBe(false);
+    const on = itemTimerFlash({ kind: "sword", uses: 0, ticksLeft: 100 });
+    const off = itemTimerFlash({ kind: "sword", uses: 0, ticksLeft: 100 - TIMER_FLASH_PERIOD / 2 });
+    expect(on).not.toBe(off);
+    expect(itemTimerFlash({ kind: "sword", uses: 0, ticksLeft: 100 - TIMER_FLASH_PERIOD })).toBe(on);
+  });
+
+  it("the equip toast reads SWORD 10s for the timed sword and MOLOTOV ×2 for a use-counted item", () => {
+    expect(toastLabel("sword", 0)).toBe("SWORD 10s");
+    expect(toastLabel("molotov", 2)).toBe("MOLOTOV ×2");
+  });
+
+  it("a draining timer is not a use edge", () => {
+    expect(itemEdge({ kind: "sword", uses: 0, ticksLeft: 600 }, { kind: "sword", uses: 0, ticksLeft: 599 })).toBeNull();
+    expect(itemEdge({ kind: "sword", uses: 0, ticksLeft: 1 }, null)).toBe("break");
   });
 });

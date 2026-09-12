@@ -1,5 +1,6 @@
 import type Phaser from "phaser";
 import {
+  ITEMS,
   ARSENAL, BALANCE, CHARACTER_LABEL, MODES, TICK, WORLD, roundWinner, timerSeconds,
   type CharacterId, type FighterState, type HeldItem, type ItemId, type MatchState, type Phase, type PlayerIndex, type Winner,
 } from "@midnight/shared";
@@ -116,9 +117,36 @@ export type ItemEdge = "equip" | "use" | "break";
 /** What changed in a held item between two frames: the state-side view of ITEM_EQUIP / ITEM_USE / ITEM_BREAK. */
 export function itemEdge(prev: HeldItem | null, next: HeldItem | null): ItemEdge | null {
   if (next && (!prev || prev.kind !== next.kind)) return "equip";
+  if (next && prev && next.ticksLeft !== null) return null; // 9.10: a timed item drains, it is not "used"
   if (next && prev && next.uses < prev.uses) return "use";
   if (!next && prev) return "break";
   return null;
+}
+
+/** 9.10: the last 3 s of a timed item flash. */
+export const TIMER_FLASH_TICKS = 180;
+export const TIMER_FLASH_PERIOD = 10;
+
+/** 9.10: how full a timed item's draining bar is (1 → 0), or null for a use-counted item. */
+export function itemTimerFraction(item: HeldItem | null): number | null {
+  if (!item || item.ticksLeft === null) return null;
+  const ttl = ITEMS[item.kind].ttl ?? 0;
+  if (ttl <= 0) return 0;
+  return Math.min(1, Math.max(0, item.ticksLeft / ttl));
+}
+
+/** 9.10: whether the draining bar is on its flashing "on" phase this tick (last 180 ticks, 10-tick period). */
+export function itemTimerFlash(item: HeldItem | null): boolean {
+  if (!item || item.ticksLeft === null || item.ticksLeft > TIMER_FLASH_TICKS) return false;
+  return Math.floor(item.ticksLeft / (TIMER_FLASH_PERIOD / 2)) % 2 === 0;
+}
+
+/** 9.10: the equip toast's name line: `SWORD 10s` for a timed item, `MOLOTOV ×2` for a use-counted one. */
+export function toastLabel(kind: ItemId, uses: number): string {
+  const label = kind.toUpperCase(); // MOLOTOV, SWORD, SHIELD, BANANA, FLASH: the words the keys 1–5 are taught by
+  const ttl = ITEMS[kind].ttl;
+  if (ttl !== undefined && ttl > 0) return `${label} ${Math.round(ttl / 60)}s`;
+  return `${label} ×${uses}`;
 }
 
 /** Character key colours for the team outline, from the rig data (11.01 owns the tokens). */
@@ -405,7 +433,7 @@ export class Hud {
   /** Item edges from the state (equip / use / break) drive the toast and the pip pulse; round resets are not breaks. */
   private trackItem(state: MatchState, i: PlayerIndex, f: FighterState): void {
     const prev = this.lastItem[i];
-    const next = f.item ? { kind: f.item.kind, uses: f.item.uses } : null;
+    const next: HeldItem | null = f.item ? { kind: f.item.kind, uses: f.item.uses, ticksLeft: f.item.ticksLeft } : null;
     this.lastItem[i] = next;
     if (prev === undefined || state.phase !== "FIGHTING") return;
     const edge = itemEdge(prev, next);
@@ -454,8 +482,8 @@ export class Hud {
     const textX = left ? x + 36 : x + 36; // text block always reads left → right; it sits after the glyph on the left side
     t.toastGlyph.setText(GLYPH[toast.item]).setPosition(glyphX, cy - 1).setAlpha(k).setVisible(true);
     setColorIfChanged(t.toastGlyph, toast.broken ? CSS_P.steel2 : CSS_P.bone);
-    const label = toast.item.toUpperCase(); // MOLOTOV, SWORD, SHIELD, BANANA, FLASH: the words the keys 1–5 are taught by
-    const name = toast.broken ? label : `${label} ×${toast.uses}`;
+    const label = toast.item.toUpperCase();
+    const name = toast.broken ? label : toastLabel(toast.item, toast.uses);
     t.toastName.setText(name).setAlpha(k).setVisible(true);
     setColorIfChanged(t.toastName, toast.broken ? CSS_P.bone : CSS_P.amber1);
     t.toastStatus.setText(toast.broken ? "BROKEN" : "EQUIPPED").setAlpha(k).setVisible(true);
@@ -662,7 +690,20 @@ export class Hud {
 
     t.glyph.setText(itemGlyph(held)).setPosition(x + s / 2, y + s / 2 - 2).setVisible(held !== null);
 
-    if (held) {
+    const timer = itemTimerFraction(held);
+    if (held && timer !== null) {
+      // 9.10: a timed item drains a bar along the slot's bottom instead of counting pips; the last 3 s flash
+      const flash = itemTimerFlash(held);
+      const barW = s - 4;
+      g.fillStyle(P.night2, 1);
+      g.fillRect(x + 2, y + s - SLOT.PIP_H - 2, barW, SLOT.PIP_H);
+      g.fillStyle(flash ? P.white : P.amber1, 1);
+      g.fillRect(x + 2, y + s - SLOT.PIP_H - 2, Math.round(barW * timer), SLOT.PIP_H);
+      if (flash) {
+        g.lineStyle(2, P.white, 0.8);
+        g.strokeRect(x - 1, y - 1, s + 2, s + 2);
+      }
+    } else if (held) {
       const pitch = SLOT.PIP_W + SLOT.PIP_GAP;
       const total = held.uses * pitch - SLOT.PIP_GAP;
       let px = x + (s - total) / 2;

@@ -120,8 +120,11 @@ describe("Customize", () => {
   it("shows each item's uses as pips and names the real-world object", () => {
     const el = root();
     new Customize(vi.fn()).render(el, { character: "stoker", loadout: ["banana", "flash"] }, []);
+    const molotov = el.querySelector<HTMLElement>('.item[data-item="molotov"]')!;
+    expect(molotov.querySelectorAll(".pip").length).toBe(2);
     const sword = el.querySelector<HTMLElement>('.item[data-item="sword"]')!;
-    expect(sword.querySelectorAll(".pip").length).toBe(6);
+    expect(sword.querySelectorAll(".pip").length).toBe(0);
+    expect(sword.querySelector(".pips")!.textContent).toBe("10s");
     expect(sword.textContent).toMatch(/racket/i);
     expect(sword.textContent).toMatch(/bring/i);
   });

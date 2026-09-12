@@ -173,11 +173,18 @@ export class Customize {
       name.textContent = ITEMS[id].label;
       const pips = document.createElement("span");
       pips.className = "pips";
-      pips.setAttribute("aria-label", `${ITEMS[id].uses} uses`);
-      for (let i = 0; i < ITEMS[id].uses; i++) {
-        const pip = document.createElement("i");
-        pip.className = "pip";
-        pips.append(pip);
+      const ttl = ITEMS[id].ttl;
+      if (ttl !== undefined) {
+        // 9.10: a timed item shows its clock instead of use pips.
+        pips.setAttribute("aria-label", `${ttl / 60} seconds`);
+        pips.textContent = `${ttl / 60}s`;
+      } else {
+        pips.setAttribute("aria-label", `${ITEMS[id].uses} uses`);
+        for (let i = 0; i < ITEMS[id].uses; i++) {
+          const pip = document.createElement("i");
+          pip.className = "pip";
+          pips.append(pip);
+        }
       }
       const bring = document.createElement("span");
       bring.className = "item-bring";
