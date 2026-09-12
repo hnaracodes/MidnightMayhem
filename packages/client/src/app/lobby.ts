@@ -1,9 +1,15 @@
-import { CHARACTER_LABEL, type LobbyPlayer, type PlayerIndex } from "@midnight/shared";
+import {
+  CHARACTER_LABEL, DEFAULT_LOADOUT, ITEMS, TEAM_OF,
+  type CharacterId, type LobbyPlayer, type Loadout, type MatchConfig, type PlayerIndex,
+} from "@midnight/shared";
+import { Customize, HostControls, describeConfig } from "./setup";
+import { portrait } from "./sprites/portrait";
 
 interface LobbyHandlers {
-  onJoin(name: string, roomId?: string): void;
   onReady(ready: boolean): void;
   onEnableCamera(): void;
+  onConfig(config: MatchConfig): void;
+  onCustomize(character: CharacterId, loadout: Loadout): void;
 }
 
 /**
@@ -12,69 +18,65 @@ interface LobbyHandlers {
  */
 export type CameraButton = "button" | "starting" | "hidden";
 
-const NAME_STORAGE_KEY = "midnight-mayhem:name";
-const SUBTITLE = "on the roof of the Midnight Express";
+/** Short glyph per item for the seat row. */
+const ITEM_GLYPH: Record<keyof typeof ITEMS, string> = {
+  molotov: "bottle", sword: "umbrella", shield: "backpack", banana: "banana", flash: "phone",
+};
 
+/**
+ * The carriage manifest: room code, one seat per configured player, the route board (live for the host,
+ * read-only with a sentence for guests), your seat (character and two items), the camera button and Ready.
+ */
 export class Lobby {
   private readonly root: HTMLElement;
-  private ready = false;
+  private readonly hostControls: HostControls;
+  private readonly customize: Customize;
 
   constructor(private readonly handlers: LobbyHandlers) {
     this.root = requiredElement("lobby");
-  }
-
-  renderJoin(): void {
-    this.root.replaceChildren();
-    this.root.hidden = false;
-
-    const name = input("Player name", localStorage.getItem(NAME_STORAGE_KEY) ?? "");
-    name.maxLength = 16;
-    const room = input("Room code (blank creates one)");
-    room.maxLength = 8;
-    room.autocapitalize = "characters";
-    room.addEventListener("input", () => {
-      room.value = room.value.toUpperCase();
-    });
-    const join = button("Join", true);
-    const legend = document.createElement("p");
-    legend.textContent = "A/D walk · W jump · S block · F/G punch";
-
-    const submit = (): void => {
-      const playerName = name.value.trim();
-      if (!playerName) {
-        name.focus();
-        return;
-      }
-      localStorage.setItem(NAME_STORAGE_KEY, playerName);
-      const roomId = room.value.trim().toUpperCase();
-      this.handlers.onJoin(playerName, roomId || undefined);
-    };
-    join.addEventListener("click", submit);
-    room.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") submit();
-    });
-
-    this.root.append(title(), name, room, join, legend);
+    this.hostControls = new HostControls((config) => this.handlers.onConfig(config));
+    this.customize = new Customize((character, loadout) => this.handlers.onCustomize(character, loadout));
   }
 
   renderRoom(
     roomId: string,
     players: (LobbyPlayer | null)[],
+    config: MatchConfig,
+    host: PlayerIndex,
+    localIndex: PlayerIndex,
     visionAvailable: boolean,
     cameraButton: CameraButton = "button",
   ): void {
     this.root.replaceChildren();
     this.root.hidden = false;
+    const seated = players.filter((p): p is LobbyPlayer => p !== null);
+    const local = players[localIndex] ?? null;
+    const isHost = host === localIndex;
 
-    const code = document.createElement("h2");
+    // Left column: the manifest.
+    const manifest = document.createElement("section");
+    manifest.className = "manifest";
+    const code = document.createElement("h1");
     code.className = "room-code";
-    code.textContent = roomId;
+    code.innerHTML = "";
+    const codeLabel = document.createElement("span");
+    codeLabel.textContent = "Room";
+    const codeValue = document.createElement("strong");
+    codeValue.textContent = roomId;
+    code.append(codeLabel, codeValue);
     code.setAttribute("aria-label", `Room ${roomId}`);
 
-    const roster = document.createElement("div");
-    roster.className = "roster";
-    // Every slot the server sent (four after 08-contracts); the real lobby with picks and host controls is 11.03.
-    roster.append(...players.map((player, index) => playerRow(index as PlayerIndex, player)));
+    const seats = document.createElement("ol");
+    seats.className = "seats";
+    for (let i = 0; i < config.players; i++) {
+      seats.append(seat(i as PlayerIndex, players[i] ?? null, config, host, localIndex));
+    }
+
+    const missing = Math.max(0, config.players - seated.length);
+    const ready = button(missing > 0 ? `Waiting for ${missing} more` : local?.ready ? "Not ready" : "Ready", true);
+    ready.disabled = missing > 0;
+    ready.setAttribute("aria-pressed", String(local?.ready ?? false));
+    ready.addEventListener("click", () => this.handlers.onReady(!(local?.ready ?? false)));
 
     const camera = button(
       visionAvailable ? "Camera on" : cameraButton === "starting" ? "Starting camera…" : "Enable camera",
@@ -82,21 +84,35 @@ export class Lobby {
     camera.disabled = visionAvailable || cameraButton === "starting";
     camera.addEventListener("click", () => this.handlers.onEnableCamera());
 
-    const ready = button(this.ready ? "Not ready" : "Ready", true);
-    ready.setAttribute("aria-pressed", String(this.ready));
-    ready.addEventListener("click", () => {
-      this.ready = !this.ready;
-      ready.textContent = this.ready ? "Not ready" : "Ready";
-      ready.setAttribute("aria-pressed", String(this.ready));
-      this.handlers.onReady(this.ready);
-    });
-
     const actions = document.createElement("div");
     actions.className = "actions";
     if (cameraButton !== "hidden") actions.append(camera);
     actions.append(ready);
+    manifest.append(code, seats, actions);
 
-    this.root.append(title(), code, roster, actions);
+    // Right column: the route board, then your seat.
+    const board = document.createElement("section");
+    board.className = "board";
+    const routeHead = document.createElement("h2");
+    routeHead.textContent = isHost ? "Route" : "Route, set by the host";
+    const route = document.createElement("div");
+    this.hostControls.render(route, config, isHost);
+    const summary = document.createElement("p");
+    summary.className = "route-summary";
+    summary.textContent = describeConfig(config);
+    const seatHead = document.createElement("h2");
+    seatHead.textContent = "Your seat";
+    const pick = document.createElement("div");
+    const taken = players
+      .filter((p, i): p is LobbyPlayer => p !== null && i !== localIndex && i < config.players)
+      .map((p) => p.character);
+    this.customize.render(pick, {
+      character: local?.character ?? "drifter",
+      loadout: local?.loadout ?? DEFAULT_LOADOUT,
+    }, taken);
+    board.append(routeHead, route, summary, seatHead, pick);
+
+    this.root.append(manifest, board);
   }
 
   hide(): void {
@@ -104,40 +120,51 @@ export class Lobby {
   }
 }
 
-function title(): HTMLElement {
-  const heading = document.createElement("h1");
-  heading.className = "title";
-  heading.textContent = "MIDNIGHT MAYHEM";
-  const subtitle = document.createElement("small");
-  subtitle.textContent = SUBTITLE;
-  heading.append(subtitle);
-  return heading;
-}
-
-function playerRow(index: PlayerIndex, player: LobbyPlayer | null): HTMLElement {
-  const slug = player?.character ?? (index === 0 ? "drifter" : "conductor");
-  const character = { slug, label: CHARACTER_LABEL[slug] };
-  const row = document.createElement("section");
-  row.className = "player-row";
-  row.dataset["character"] = character.slug;
+function seat(index: PlayerIndex, player: LobbyPlayer | null, config: MatchConfig, host: PlayerIndex, localIndex: PlayerIndex): HTMLElement {
+  const row = document.createElement("li");
+  row.className = "seat";
   row.dataset["ready"] = String(player?.ready ?? false);
+  if (player && host === index) row.dataset["host"] = "true";
+  if (index === localIndex) row.dataset["you"] = "true";
+  if (config.teams === "2v2") row.dataset["team"] = String(TEAM_OF["2v2"](index, config.players));
+  if (!player) {
+    row.dataset["empty"] = "true";
+    const text = document.createElement("p");
+    text.className = "seat-empty";
+    text.textContent = `Empty seat, share the room code`;
+    row.append(text);
+    return row;
+  }
+  row.dataset["character"] = player.character;
   const text = document.createElement("div");
-  const heading = document.createElement("h2");
-  heading.textContent = character.label;
-  const status = document.createElement("p");
-  status.textContent = player
-    ? `${player.name} · ${player.ready ? "ready" : "not ready"}`
-    : "waiting";
-  text.append(heading, status);
-  row.append(text);
+  text.className = "seat-text";
+  const name = document.createElement("h3");
+  name.textContent = player.name;
+  if (host === index) {
+    const mark = document.createElement("small");
+    mark.className = "seat-host";
+    mark.textContent = "host";
+    name.append(mark);
+  }
+  if (config.teams === "2v2") {
+    const team = document.createElement("small");
+    team.className = "seat-team";
+    team.textContent = TEAM_OF["2v2"](index, config.players) === 0 ? "team A" : "team B";
+    name.append(team);
+  }
+  const character = document.createElement("p");
+  character.className = "seat-character";
+  character.textContent = CHARACTER_LABEL[player.character];
+  const loadout = document.createElement("p");
+  loadout.className = "seat-loadout";
+  loadout.textContent = player.loadout.map((id) => ITEM_GLYPH[id]).join(" + ");
+  text.append(name, character, loadout);
+  const mark = document.createElement("span");
+  mark.className = "seat-ready";
+  mark.setAttribute("aria-label", player.ready ? "ready" : "not ready");
+  mark.textContent = player.ready ? "ready" : "";
+  row.append(portrait(player.character), text, mark);
   return row;
-}
-
-function input(placeholder: string, value = ""): HTMLInputElement {
-  const element = document.createElement("input");
-  element.placeholder = placeholder;
-  element.value = value;
-  return element;
 }
 
 function button(label: string, primary = false): HTMLButtonElement {

@@ -1,7 +1,8 @@
-import { PROTOCOL_VERSION, type LobbyPlayer } from "@midnight/shared";
+import { PROTOCOL_VERSION, type LobbyPlayer, type MatchConfig, type PlayerIndex } from "@midnight/shared";
 import { PAUSED_BANNER, pausedByVisibility, showBanner } from "./app/banner";
 import { CalibrationOverlay } from "./app/calibrationOverlay";
 import { CameraPreview, debugFanOut } from "./app/cameraPreview";
+import { Landing } from "./app/landing";
 import { type CameraButton, Lobby } from "./app/lobby";
 import { ResultOverlay } from "./app/result";
 import { startGame } from "./game/config";
@@ -37,7 +38,7 @@ let connected = false;
 let hasSnapshot = false;
 let resultTimer: ReturnType<typeof setTimeout> | null = null;
 let matchRunning = false;
-let lastLobby: { roomId: string; players: (LobbyPlayer | null)[] } | null = null;
+let lastLobby: { roomId: string; players: (LobbyPlayer | null)[]; config: MatchConfig; host: PlayerIndex } | null = null;
 
 // ---- Camera (Phase 6 rules 1–3) ----
 const overlay = new CalibrationOverlay();
@@ -53,7 +54,10 @@ function cameraButton(): CameraButton {
 
 function renderRoom(): void {
   if (!lastLobby || matchRunning) return;
-  lobby.renderRoom(lastLobby.roomId, lastLobby.players, session.visionAvailable, cameraButton());
+  lobby.renderRoom(
+    lastLobby.roomId, lastLobby.players, lastLobby.config, lastLobby.host, session.localIndex,
+    session.visionAvailable, cameraButton(),
+  );
 }
 
 /** The camera counts as on once calibration has begun: camera open, model loaded, worker ready. */
@@ -104,9 +108,10 @@ async function enableCamera(): Promise<void> {
 }
 
 // ---- Screens ----
+// Landing → Lobby (11.03): the landing owns the join form; the lobby renders from every LOBBY message.
 const result = new ResultOverlay(() => client.send({ type: "READY", ready: true }));
-const lobby = new Lobby({
-  onJoin: async (name, roomId) => {
+const landing = new Landing({
+  onEnter: async (name, roomId) => {
     showBanner(null);
     try {
       await client.connect();
@@ -118,12 +123,16 @@ const lobby = new Lobby({
       showBanner("Cannot reach the server");
     }
   },
+});
+const lobby = new Lobby({
   onReady: (ready) => client.send({ type: "READY", ready }),
   onEnableCamera: () => void enableCamera(),
+  onConfig: (config) => client.send({ type: "CONFIG", config }),
+  onCustomize: (character, loadout) => client.send({ type: "CUSTOMIZE", character, loadout }),
 });
 
 void inputSource.start();
-lobby.renderJoin();
+landing.render();
 // 4.08 rule 1: the arena boots under the lobby so the roof scrolls behind every overlay from the first frame.
 startGame();
 
@@ -178,8 +187,11 @@ client.on("WELCOME", (message) => {
 
 client.on("LOBBY", (message) => {
   session.playerNames = message.players.map((p, i) => p?.name || session.playerNames[i] || DEFAULT_PLAYER_NAMES[i] || "");
-  // Only the slots the host's config seats; the four-slot lobby with picks and host controls is 11.03.
-  lastLobby = { roomId: message.roomId, players: message.players.slice(0, message.config.players) };
+  session.config = message.config;
+  session.roster = message.players.slice(0, message.config.players)
+    .map((p) => p ? { character: p.character, loadout: p.loadout } : { character: "drifter", loadout: ["molotov", "shield"] });
+  lastLobby = { roomId: message.roomId, players: message.players, config: message.config, host: message.host };
+  landing.hide();
   renderRoom();
   if (sourceChoice === "vision" && !autoCameraDone) {
     autoCameraDone = true;
@@ -221,7 +233,7 @@ client.on("SNAPSHOT", (message) => {
     if (resultTimer !== null) clearTimeout(resultTimer);
     resultTimer = setTimeout(() => {
       resultTimer = null;
-      result.show(matchEnd.winner, session.localIndex, session.buffer.latest());
+      result.show(matchEnd.winner, session.buffer.latest(), session.localIndex);
     }, RESULT_DELAY_MS);
   }
 });
