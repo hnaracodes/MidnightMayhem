@@ -120,6 +120,17 @@ describe("HoldTracker", () => {
     expect(out[HOLD_ON - 1]).toBe("sword");
   });
 
+  it("peek applies only the timeout: it never breaks a pending run or refreshes the item", () => {
+    const t = new HoldTracker();
+    t.update("molotov", 0);
+    expect(t.peek(50)).toBeNull();
+    t.update("molotov", 100);
+    expect(t.peek(150)).toBeNull();
+    expect(t.update("molotov", 200)).toBe("molotov");
+    expect(t.peek(200 + HOLD_OFF_MS - 1)).toBe("molotov");
+    expect(t.peek(200 + HOLD_OFF_MS)).toBeNull();
+  });
+
   it("reset clears the item and the run", () => {
     const t = new HoldTracker();
     for (let i = 0; i < HOLD_ON; i++) t.update("molotov", i * 100);

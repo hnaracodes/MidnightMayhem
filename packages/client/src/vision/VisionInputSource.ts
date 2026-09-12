@@ -1,4 +1,4 @@
-import { EMPTY_FRAME, type InputFrame, type InputSource } from "@midnight/shared";
+import { EMPTY_FRAME, type InputFrame, type InputSource, type ItemId } from "@midnight/shared";
 import { type Baseline, Calibration, type CalibrationPhase } from "./calibration";
 import { frameLoop, openCamera } from "./camera";
 import { classify, type GestureFlags } from "./classify";
@@ -6,14 +6,16 @@ import { VisionInputError } from "./errors";
 import { emaLandmarks, RingBuffer } from "./filters";
 import { Block } from "./gestures/block";
 import { Jump } from "./gestures/jump";
+import { Laser } from "./gestures/laser";
 import { Punch, type PunchDiag } from "./gestures/punch";
 import { Walk } from "./gestures/walk";
 import {
   clearMetricBuffers, computeMetrics, createMetricBuffers, type MetricBuffers, type Metrics,
 } from "./metrics";
+import { HoldTracker, heldItem } from "./objects";
 import { EMA_ALPHA, RECORDER_SECONDS } from "./thresholds";
 import {
-  WorkerClient, type Landmark, type PoseResult, type ResultMessage, type WorkerStats,
+  WorkerClient, type Landmark, type ObjectBox, type PoseResult, type ResultMessage, type WorkerStats,
 } from "./workerClient";
 
 /** Everything the harness and the calibration preview may look at. Landmarks leave the layer only here. */
@@ -28,6 +30,10 @@ export interface DebugFrame {
   ts: number;
   /** Per-arm punch gates (integrator amendment); absent unless calibration is ready. */
   punch?: { L: PunchDiag; R: PunchDiag };
+  /** Detector boxes for this result (9.04), or null when the detector did not run on it. */
+  objects: ObjectBox[] | null;
+  /** The debounced held item (9.04), or null. */
+  item: ItemId | null;
 }
 
 export type { PunchDiag } from "./gestures/punch";
@@ -39,6 +45,7 @@ export interface RecorderSample {
   gestures: GestureFlags;
   frame: Readonly<InputFrame>;
   punch?: { L: PunchDiag; R: PunchDiag };
+  item: ItemId | null;
 }
 
 /**
@@ -54,6 +61,8 @@ export interface Pipeline {
   readonly block: Block;
   readonly punchL: Punch;
   readonly punchR: Punch;
+  readonly laser: Laser;
+  readonly hold: HoldTracker;
   readonly gestures: GestureFlags;
   smoothed: Landmark[] | null;
   smoothedWorld: Landmark[] | null;
@@ -69,7 +78,11 @@ export function createPipeline(): Pipeline {
     block: new Block(),
     punchL: new Punch("L"),
     punchR: new Punch("R"),
-    gestures: { left: false, right: false, jump: false, punchL: false, punchR: false, block: false },
+    laser: new Laser(),
+    hold: new HoldTracker(),
+    gestures: {
+      left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null,
+    },
     smoothed: null,
     smoothedWorld: null,
     frame: EMPTY_FRAME,
@@ -83,16 +96,26 @@ function resetGestures(p: Pipeline): void {
   p.block.reset();
   p.punchL.reset();
   p.punchR.reset();
+  p.laser.reset();
+  p.hold.reset();
   clearMetricBuffers(p.buffers);
   const g = p.gestures;
-  g.left = g.right = g.jump = g.punchL = g.punchR = g.block = false;
+  g.left = g.right = g.jump = g.punchL = g.punchR = g.block = g.special = false;
+  g.item = null;
 }
 
 /**
  * One worker result through the whole layer (5.04 rule 6): EMA → calibration.update → if ready:
- * metrics → gestures → classify → store frame. Touches no camera, worker or DOM.
+ * metrics → gestures → held item → classify → store frame. Touches no camera, worker or DOM.
+ * `objects` (9.04) is the detector's boxes for this result; null means it did not run, in which case
+ * the hold tracker keeps its last item (it times out by itself).
  */
-export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: number): DebugFrame {
+export function processLandmarks(
+  p: Pipeline,
+  pose: PoseResult | null,
+  ts: number,
+  objects: ObjectBox[] | null = null,
+): DebugFrame {
   if (pose) {
     p.smoothed = emaLandmarks(p.smoothed, pose.landmarks, EMA_ALPHA);
     p.smoothedWorld = emaLandmarks(p.smoothedWorld, pose.worldLandmarks, EMA_ALPHA);
@@ -117,6 +140,8 @@ export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: numbe
     g.block = p.block.update(metrics, ts);
     g.punchL = p.punchL.update(metrics, ts);
     g.punchR = p.punchR.update(metrics, ts);
+    g.special = p.laser.update(metrics, ts);
+    g.item = objects !== null ? p.hold.update(heldItem(objects, p.smoothed, baseline.S), ts) : p.hold.peek(ts);
     p.frame = classify(g);
     punch = { L: p.punchL.diag(), R: p.punchR.diag() };
   } else {
@@ -132,6 +157,8 @@ export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: numbe
     calibration: { phase, progress, baseline },
     ts,
     ...(punch ? { punch } : {}),
+    objects,
+    item: p.gestures.item,
   };
 }
 
@@ -216,7 +243,7 @@ export class VisionInputSource implements InputSource {
   }
 
   private handleResult(r: ResultMessage): void {
-    const debug = processLandmarks(this.pipeline, r.pose, r.ts);
+    const debug = processLandmarks(this.pipeline, r.pose, r.ts, r.objects);
     // The pipeline reuses its gesture object, so the sample takes a copy; metrics, frame and punch are fresh.
     this.recorder.push(r.ts, {
       ts: debug.ts,
@@ -224,6 +251,7 @@ export class VisionInputSource implements InputSource {
       gestures: { ...debug.gestures },
       frame: debug.frame,
       ...(debug.punch ? { punch: debug.punch } : {}),
+      item: debug.item,
     });
     this.debugCb?.(debug);
   }

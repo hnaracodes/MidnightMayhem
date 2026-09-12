@@ -1,18 +1,23 @@
 import { EMPTY_FRAME, framesEqual, type InputFrame, type InputKey } from "@midnight/shared";
 import { describe, expect, it } from "vitest";
-import { createPipeline, processLandmarks, type DebugFrame, type Pipeline } from "../src/vision/VisionInputSource";
+import {
+  VisionInputSource, createPipeline, processLandmarks, type DebugFrame, type Pipeline,
+} from "../src/vision/VisionInputSource";
 import {
   CALIBRATION_MS,
+  HOLD_OFF_MS,
+  HOLD_ON,
   JAB_EXT,
   JAB_WINDOW_MS,
   JUMP_LAND,
   JUMP_RISE,
+  LASER_DEBOUNCE_ON,
   LEAN_ENTER,
   LEAN_EXIT,
   RELOST_MS,
   THRUST_WINDOW_MS,
 } from "../src/vision/thresholds";
-import type { Landmark, PoseResult } from "../src/vision/workerClient";
+import type { Landmark, ObjectBox, PoseResult, ResultMessage } from "../src/vision/workerClient";
 
 /**
  * End-to-end pipeline tests: synthetic 33-landmark frames (image + world) go through the exact
@@ -101,15 +106,26 @@ const CROSSED_R: Wrist = { dx: 0.2, dy: 0.5, z: 0 };
 // Hands on the hips: just outside the hip line, slightly below hip height.
 const ON_HIP_L: Wrist = { dx: -0.2, dy: 1.35, z: 0 };
 const ON_HIP_R: Wrist = { dx: 0.2, dy: 1.35, z: 0 };
+// The beam pose (9.04): both wrists thrust forward together, meeting just in front of the chest at shoulder
+// height. Each wrist sits 0.05 S from the midline (inside CROSS_MARGIN, so it is not a block).
+const BEAM_L: Wrist = { dx: -0.45, dy: 0.25, z: -0.5 };
+const BEAM_R: Wrist = { dx: 0.45, dy: 0.25, z: -0.5 };
+
+/** A detector box of `label` centred on landmark `idx` of `pose`, 0.5 S wide. */
+function boxAt(pose: PoseResult, idx: number, label = "bottle", score = 0.8): ObjectBox {
+  const l = pose.landmarks[idx] as Landmark;
+  const S = 0.2;
+  return { label, score, x: l.x - 0.25 * S, y: l.y - 0.25 * S, w: 0.5 * S, h: 0.5 * S };
+}
 
 class Driver {
   readonly pipeline: Pipeline = createPipeline();
   readonly debug: DebugFrame[] = [];
   t = 0;
 
-  /** Feeds one frame and returns its debug output. */
-  step(pose: PoseResult | null): DebugFrame {
-    const d = processLandmarks(this.pipeline, pose, this.t);
+  /** Feeds one frame (and, for 9.04, the detector's boxes or null) and returns its debug output. */
+  step(pose: PoseResult | null, objects: ObjectBox[] | null = null): DebugFrame {
+    const d = processLandmarks(this.pipeline, pose, this.t, objects);
     this.debug.push(d);
     this.t += FRAME_MS;
     return d;
@@ -493,5 +509,141 @@ describe("vision pipeline: dropout", () => {
     expect(drv.pipeline.calibration.baseline).not.toBeNull();
     const resume = drv.hold(600, body({ lean: LEAN_ENTER + 0.1 }));
     expect(resume[resume.length - 1]?.frame.right).toBe(true);
+  });
+});
+
+describe("vision pipeline: laser (9.04)", () => {
+  it("both arms thrust forward together sets special after the debounce and never punches or blocks", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const beam = drv.hold(400, body({ wristL: BEAM_L, wristR: BEAM_R }));
+    expect(risingEdges(beam, "special")).toBe(1);
+    expect(beam.slice(0, LASER_DEBOUNCE_ON - 1).every((f) => !f.frame.special)).toBe(true);
+    expect(beam[beam.length - 1]?.frame.special).toBe(true);
+    expect(anyTrue(beam, "block")).toBe(false);
+    expect(anyTrue(beam, "punchL")).toBe(false);
+    expect(anyTrue(beam, "punchR")).toBe(false);
+    const m = beam[beam.length - 1]!.metrics!;
+    expect(m.wristGap).toBeLessThan(0.5);
+    expect(m.extL).toBeLessThan(0.55);
+    expect(m.extR).toBeLessThan(0.55);
+
+    const rest = drv.hold(400, body());
+    expect(rest[rest.length - 1]?.frame.special).toBe(false);
+  });
+
+  it("a single-arm thrust is a punch, not a laser", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    drv.run(2, (i) => body({ wristL: mixWrist(HANGING_L, THRUST_L, (i + 1) / 2) }));
+    const held = drv.hold(300, body({ wristL: THRUST_L }));
+    expect(anyTrue(held, "special")).toBe(false);
+    expect(held.some((f) => f.frame.punchL)).toBe(true);
+  });
+
+  it("the pipeline reports special in gestures and the debug frame carries objects and item", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const f = drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R }));
+    const last = f[f.length - 1]!;
+    expect(last.gestures.special).toBe(true);
+    expect(last.objects).toBeNull();
+    expect(last.item).toBeNull();
+  });
+});
+
+describe("vision pipeline: held items (9.04)", () => {
+  it("a bottle box near the wrist for HOLD_ON consecutive results yields item molotov", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const pose = body();
+    const out: DebugFrame[] = [];
+    for (let i = 0; i < HOLD_ON; i++) out.push(drv.step(pose, [boxAt(pose, 15)]));
+    expect(out.slice(0, HOLD_ON - 1).every((f) => f.frame.item === null)).toBe(true);
+    expect(out[HOLD_ON - 1]?.frame.item).toBe("molotov");
+    expect(out[HOLD_ON - 1]?.item).toBe("molotov");
+    expect(out[HOLD_ON - 1]?.objects).toHaveLength(1);
+    expect(out[HOLD_ON - 1]?.gestures.item).toBe("molotov");
+  });
+
+  it("results with objects: null in between (the detector's off frames) do not reset the item or a pending run", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const pose = body();
+    // Detector every third frame: box, null, null, box, null, null, box.
+    let last: DebugFrame | undefined;
+    for (let i = 0; i < 3 * HOLD_ON; i++) last = drv.step(pose, i % 3 === 0 ? [boxAt(pose, 15)] : null);
+    expect(last?.frame.item).toBe("molotov");
+    expect(last?.objects).toBeNull();
+
+    // Still on through a run of off frames; the debug frame keeps the item while objects is null.
+    expect(drv.run(6, () => pose).every((f) => f.frame.item === "molotov")).toBe(true);
+    const skip = drv.step(pose, null);
+    expect(skip.item).toBe("molotov");
+    expect(skip.frame.item).toBe("molotov");
+  });
+
+  it("the item times out HOLD_OFF_MS after the last positive, and a box away from both wrists is nothing", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const pose = body();
+    for (let i = 0; i < HOLD_ON; i++) drv.step(pose, [boxAt(pose, 15)]);
+    expect(drv.pipeline.frame.item).toBe("molotov");
+    const gone = drv.run(Math.ceil((HOLD_OFF_MS + 3 * FRAME_MS) / FRAME_MS), () => pose);
+    expect(gone[0]?.frame.item).toBe("molotov");
+    expect(gone[gone.length - 1]?.frame.item).toBeNull();
+    const away: ObjectBox = { label: "bottle", score: 0.9, x: 0.02, y: 0.02, w: 0.05, h: 0.05 };
+    for (let i = 0; i < 2 * HOLD_ON; i++) expect(drv.step(pose, [away]).frame.item).toBeNull();
+  });
+
+  it("losing the pose clears the item and calibrating again starts from nothing", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const pose = body();
+    for (let i = 0; i < HOLD_ON; i++) drv.step(pose, [boxAt(pose, 16, "umbrella")]);
+    expect(drv.pipeline.frame.item).toBe("sword");
+    const gone = drv.hold(RELOST_MS + 3 * FRAME_MS, null);
+    expect(gone.every((f) => f.frame.item === null && f.item === null)).toBe(true);
+  });
+});
+
+describe("vision pipeline: recorder and debug frame (9.04 rule 8)", () => {
+  /** handleResult is the only private step between a worker result and the recorder; drive it directly. */
+  const feed = (src: VisionInputSource, r: ResultMessage) =>
+    (src as unknown as { handleResult(r: ResultMessage): void }).handleResult(r);
+  const result = (ts: number, pose: PoseResult | null, objects: ObjectBox[] | null = null): ResultMessage => ({
+    type: "result", ts, pose, poseMs: 5, delegate: "GPU", objects, objectMs: objects ? 12 : 0,
+  });
+
+  it("samples and debug frames carry item and special", () => {
+    const src = new VisionInputSource();
+    const seen: DebugFrame[] = [];
+    src.onDebug((f) => seen.push(f));
+    void src.calibrate();
+    let t = 0;
+    const n = Math.ceil((CALIBRATION_MS + 4 * FRAME_MS) / FRAME_MS);
+    for (let i = 0; i < n; i++, t += FRAME_MS) feed(src, result(t, body()));
+    expect(src.calibrationState().phase).toBe("ready");
+
+    const pose = body();
+    for (let i = 0; i < HOLD_ON; i++, t += FRAME_MS) feed(src, result(t, pose, [boxAt(pose, 15)]));
+    expect(src.sample().item).toBe("molotov");
+    for (let i = 0; i < 6; i++, t += FRAME_MS) feed(src, result(t, body({ wristL: BEAM_L, wristR: BEAM_R }), null));
+    expect(src.sample().special).toBe(true);
+
+    const dump = src.dump();
+    const last = dump[dump.length - 1]!;
+    expect(last.item).toBe("molotov");
+    expect(last.frame.special).toBe(true);
+    expect(last.frame.item).toBe("molotov");
+    expect(last.gestures.special).toBe(true);
+    expect(dump.some((s) => s.item === null)).toBe(true);
+
+    const lastDebug = seen[seen.length - 1]!;
+    expect(lastDebug.item).toBe("molotov");
+    expect(lastDebug.objects).toBeNull();
+    expect(lastDebug.frame.special).toBe(true);
+    const withBoxes = seen.find((f) => f.objects !== null)!;
+    expect(withBoxes.objects).toHaveLength(1);
   });
 });

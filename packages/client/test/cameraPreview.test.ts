@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { EMPTY_FRAME, INPUT_KEYS } from "@midnight/shared";
+import { EMPTY_FRAME, INPUT_KEYS, ITEMS } from "@midnight/shared";
 import {
   DOT_KEYS, DOT_LABELS, type PreviewFrame, type PunchDiag, debugFanOut, previewModel,
 } from "../src/app/cameraPreview";
@@ -8,10 +8,14 @@ function frame(overrides: Partial<PreviewFrame> = {}): PreviewFrame {
   return {
     landmarks: null,
     metrics: null,
-    gestures: { left: false, right: false, jump: false, punchL: false, punchR: false, block: false },
+    gestures: {
+      left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null,
+    },
     frame: EMPTY_FRAME,
     calibration: { phase: "ready", progress: 1, baseline: null },
     ts: 0,
+    objects: null,
+    item: null,
     ...overrides,
   };
 }
@@ -26,23 +30,36 @@ function diag(overrides: Partial<PunchDiag> = {}): PunchDiag {
 }
 
 describe("previewModel", () => {
-  it("lists one dot per input key in display order L R J PL PR B", () => {
-    expect(DOT_LABELS).toEqual(["L", "R", "J", "PL", "PR", "B"]);
-    // The `special` dot (and the item label) join the preview in 09.04.
-    expect([...DOT_KEYS].sort()).toEqual([...INPUT_KEYS].filter((k) => k !== "special").sort());
-    expect(DOT_KEYS).toEqual(["left", "right", "jump", "punchL", "punchR", "block"]);
+  it("lists one dot per input key in display order L R J PL PR B SP", () => {
+    expect(DOT_LABELS).toEqual(["L", "R", "J", "PL", "PR", "B", "SP"]);
+    expect([...DOT_KEYS].sort()).toEqual([...INPUT_KEYS].sort());
+    expect(DOT_KEYS).toEqual(["left", "right", "jump", "punchL", "punchR", "block", "special"]);
   });
 
   it("shows no camera and dark dots before the first frame", () => {
     const m = previewModel(null);
-    expect(m.dots).toEqual([false, false, false, false, false, false]);
+    expect(m.dots).toEqual([false, false, false, false, false, false, false]);
     expect(m.status).toBe("no camera");
     expect(m.gates).toBeNull();
+    expect(m.item).toBeNull();
+    expect(m.itemLabel).toBe("");
+    expect(m.special).toBe(false);
   });
 
   it("lights the dots whose InputFrame key is true", () => {
     const m = previewModel(frame({ frame: { ...EMPTY_FRAME, right: true, punchL: true } }));
-    expect(m.dots).toEqual([false, true, false, true, false, false]);
+    expect(m.dots).toEqual([false, true, false, true, false, false, false]);
+  });
+
+  it("9.04: exposes special and the held item with its label", () => {
+    const m = previewModel(frame({ frame: { ...EMPTY_FRAME, special: true, item: "molotov" } }));
+    expect(m.dots[6]).toBe(true);
+    expect(m.special).toBe(true);
+    expect(m.item).toBe("molotov");
+    expect(m.itemLabel).toBe(ITEMS.molotov.label);
+    const none = previewModel(frame());
+    expect(none.item).toBeNull();
+    expect(none.itemLabel).toBe("");
   });
 
   it("reports the calibration phase with progress while calibrating", () => {

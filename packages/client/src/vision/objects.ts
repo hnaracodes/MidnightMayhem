@@ -69,6 +69,12 @@ export class HoldTracker {
     return this.current;
   }
 
+  /** The current item at `ts` without a new candidate (the detector skipped this frame); only the timeout applies. */
+  peek(ts: number): ItemId | null {
+    if (this.current !== null && ts - this.lastPositive >= HOLD_OFF_MS) this.current = null;
+    return this.current;
+  }
+
   reset(): void {
     this.current = null;
     this.lastPositive = 0;

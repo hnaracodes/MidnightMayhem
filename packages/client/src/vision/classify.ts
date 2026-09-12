@@ -1,4 +1,4 @@
-import { framesEqual, type InputFrame } from "@midnight/shared";
+import { framesEqual, type InputFrame, type ItemId } from "@midnight/shared";
 
 export interface GestureFlags {
   left: boolean;
@@ -7,18 +7,23 @@ export interface GestureFlags {
   punchL: boolean;
   punchR: boolean;
   block: boolean;
+  /** The laser beam pose (9.04). */
+  special: boolean;
+  /** The debounced held item (9.04), or null. */
+  item: ItemId | null;
 }
 
 let last: Readonly<InputFrame> | null = null;
 
 /**
- * Priority: jump cancels block and punches; block cancels punches; walk is independent.
- * Returns a frozen frame that is reused (same object) until a field changes.
+ * Priority: jump cancels everything but walk; block cancels special and punches; special cancels punches;
+ * walk and item pass through. Returns a frozen frame that is reused (same object) until a field changes.
  */
 export function classify(g: GestureFlags): Readonly<InputFrame> {
   const jump = g.jump;
   const block = !jump && g.block;
-  const punch = !jump && !block;
+  const special = !jump && !block && g.special;
+  const punch = !jump && !block && !special;
   const next: InputFrame = {
     left: g.left,
     right: g.right,
@@ -26,8 +31,8 @@ export function classify(g: GestureFlags): Readonly<InputFrame> {
     punchL: punch && g.punchL,
     punchR: punch && g.punchR,
     block,
-    special: false, // laser gesture lands in 09.04
-    item: null,     // object detection lands in 09.04
+    special,
+    item: g.item,
   };
   if (last && framesEqual(last, next)) return last;
   last = Object.freeze(next);

@@ -1,17 +1,22 @@
+import type { ItemId } from "@midnight/shared";
 import { describe, expect, it } from "vitest";
-import { classify } from "../src/vision/classify";
+import { classify, type GestureFlags } from "../src/vision/classify";
 
-const g = (o: Partial<Record<"left" | "right" | "jump" | "punchL" | "punchR" | "block", boolean>> = {}) => ({
+type Bools = Partial<Record<"left" | "right" | "jump" | "punchL" | "punchR" | "block" | "special", boolean>>;
+
+const g = (o: Bools = {}, item: ItemId | null = null): GestureFlags => ({
   left: false,
   right: false,
   jump: false,
   punchL: false,
   punchR: false,
   block: false,
+  special: false,
   ...o,
+  item,
 });
-/** classify emits the full InputFrame; `special` and `item` stay off until 09.04 wires the laser gesture and objects. */
-const frame = (o: Parameters<typeof g>[0] = {}) => ({ ...g(o), special: false, item: null });
+/** The expected InputFrame: every flag false and no item unless overridden. */
+const frame = (o: Bools = {}, item: ItemId | null = null) => ({ ...g(o), item });
 
 describe("classify priority", () => {
   it("jump beats block and punches", () => {
@@ -31,6 +36,28 @@ describe("classify priority", () => {
     expect(classify(g({ right: true, block: true, punchR: true }))).toEqual(frame({ right: true, block: true }));
   });
 
+  it("9.04: special cancels punches", () => {
+    expect(classify(g({ special: true, punchL: true }))).toEqual(frame({ special: true }));
+    expect(classify(g({ special: true, punchL: true, punchR: true, left: true }))).toEqual(
+      frame({ special: true, left: true }),
+    );
+  });
+
+  it("9.04: block cancels special", () => {
+    expect(classify(g({ block: true, special: true }))).toEqual(frame({ block: true }));
+  });
+
+  it("9.04: jump cancels special", () => {
+    expect(classify(g({ jump: true, special: true }))).toEqual(frame({ jump: true }));
+    expect(classify(g({ jump: true, special: true, block: true, punchL: true }))).toEqual(frame({ jump: true }));
+  });
+
+  it("9.04: item passes through with everything", () => {
+    expect(classify(g({}, "molotov"))).toEqual(frame({}, "molotov"));
+    expect(classify(g({ jump: true, block: true, special: true }, "sword"))).toEqual(frame({ jump: true }, "sword"));
+    expect(classify(g({ punchL: true }, "flash"))).toEqual(frame({ punchL: true }, "flash"));
+  });
+
   it("returns a frozen object reused until a field changes", () => {
     const a = classify(g({ right: true }));
     const b = classify(g({ right: true }));
@@ -43,5 +70,10 @@ describe("classify priority", () => {
     const d = classify(g({ right: true, punchL: true, jump: true }));
     const e = classify(g({ right: true, jump: true }));
     expect(e).toBe(d);
+    // An item change is a change.
+    const f = classify(g({ right: true, jump: true }, "banana"));
+    expect(f).not.toBe(e);
+    expect(f.item).toBe("banana");
+    expect(classify(g({ right: true, jump: true }, "banana"))).toBe(f);
   });
 });
