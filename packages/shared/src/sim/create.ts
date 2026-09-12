@@ -67,8 +67,9 @@ export function createMatch(config: MatchConfig = DEFAULT_CONFIG, roster?: Roste
 }
 
 /**
- * Reset fighters for a new round. Keeps each fighter's prev input so held keys do not re-edge, plus character,
- * loadout and team; clears the held item and the items used this round.
+ * Reset for a new round: a fresh field (no projectiles, no hazards) and fresh fighters at spawn with full hp, no
+ * held item, an empty `itemsUsed`, no dazzle, no laser cooldown. Keeps each fighter's prev input so held keys do
+ * not re-edge, plus character, loadout and team. `roundsWon` is untouched (per team, `teamCount(config)` long).
  */
 export function resetForRound(s: MatchState, round: number): void {
   s.round = round;
