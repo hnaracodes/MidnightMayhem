@@ -26,3 +26,21 @@ Modify: `packages/client/src/game/ArenaScene.ts`.
 
 ## Done when
 - [ ] owner approves the screenshot set
+
+## Integrator amendments
+
+- `packages/client/src/game/punchHint.ts` holds the pure parts of the scene: `advanceHint` / `hintedFighter`
+  (06-integration rule 4, drawn on the local fighter only, never the active pose) and `RenderClock` (wall time
+  scaled by `effects.timeScale()`, catching up at 2× after the KO slowdown so the six-entry snapshot buffer never
+  stays pinned to its oldest snapshot). Tested in `test/punchHint.test.ts`. (integrator amendment)
+- `session.localEdge: InputFrame` and `session.playerNames: [string, string]` (defaults `THE DRIFTER` /
+  `THE CONDUCTOR`, set from the LOBBY message in `main.ts`); the scene calls `hud.setNames` when they change.
+  (integrator amendment)
+- `window.__arena = { updateMs(), hint(), latest() }` dev hook for the headless driver: rolling `update()` cost,
+  the current punch hint, the newest snapshot. (integrator amendment)
+- Debug text (`?debug=1`): tick, snapshot age (render frames since the newest tick changed; the buffer does not
+  expose arrival times), render-clock lag, rolling `update()` cost. RTT reads `n/a`: nothing in the client sends
+  `PING`, so no RTT exists to show. (integrator amendment)
+- Owner screenshot gate script: `tools/e2e/arena-states.json` (server on 8087, client on 5187, captures into
+  `.shots/arena/`), a full keyboard match through all three cars. Taps are 80 ms holds because the headless
+  input pump samples at 16 ms and a zero-length press can fall between samples. (integrator amendment)
