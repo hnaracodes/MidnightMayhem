@@ -6,8 +6,10 @@
  * is identical on both laptops. No image files anywhere.
  */
 import Phaser from "phaser";
-import { WORLD, type TrainCar } from "@midnight/shared";
+import { WORLD, type MapId, type TrainCar } from "@midnight/shared";
 import { P } from "./palette";
+import { Motion } from "./stage/motion";
+import { createMapLayer, type MapLayer } from "./stage/mapDraw";
 
 // ---------------------------------------------------------------------------------------------------------------
 // Table (design/03, verbatim)
@@ -44,8 +46,8 @@ type TextureKey = keyof typeof TEXTURE_SIZE;
 /** The six parallax TileSprites, in `Layers.tiles` order (the moon is an Image, not a tile). */
 const TILE_ROWS = PARALLAX.filter((row) => row.key !== "bg_moon");
 const STARS_INDEX = TILE_ROWS.findIndex((row) => row.key === "bg_stars");
-const ROOF_INDEX = TILE_ROWS.findIndex((row) => row.key === "bg_train_roof");
-const BODY_INDEX = TILE_ROWS.findIndex((row) => row.key === "bg_train_body");
+export const ROOF_INDEX = TILE_ROWS.findIndex((row) => row.key === "bg_train_roof");
+export const BODY_INDEX = TILE_ROWS.findIndex((row) => row.key === "bg_train_body");
 
 const STANDARD_ROOF_SPEED = 240;
 const FINAL_CAR_ROOF_SPEED = 180;
@@ -53,6 +55,8 @@ const TUNNEL_SPEED = 420;
 const TRACK_SPEED = 300;
 const TRANSITION_MS = 400;
 const FLASH_MS = 120;
+const WHOOSH_MS = 300;
+const EXIT_FLASH_ALPHA = 0.1;
 
 /** Resting alpha of each tile in the STANDARD car (clouds are drawn opaque and faded as a whole). */
 const TILE_ALPHA: Record<ParallaxKey, number> = {
@@ -64,10 +68,14 @@ const DARK_ALPHA_TUNNEL = 0.78;
 const TINT_ALPHA_FINAL = 0.12;
 const FLASH_ALPHA = 0.3;
 
-/** Draw order, back to front. All below 0 so the assembler's shadow (1), rigs (2, 3) and debug (9) sit on top. */
-const DEPTH = {
+/**
+ * Draw order, back to front. All below 0 so the assembler's shadow (1), rigs (2, 3) and debug (9) sit on top.
+ * The 11.02 motion and map layers sit between these (poles -14.5, smoke -12.5, wheels -9.5, gaps -9.3, racks -6);
+ * the final-car track trail moved under the wheels so the bogies stay visible on the last car.
+ */
+export const DEPTH = {
   sky: -20, stars: -19, twinkle: -18, moon: -17, cloudsFar: -16, cloudsNear: -15,
-  dark: -14, tunnel: -13, roof: -12, glow: -11, body: -10, track: -9, railing: -8, lamp: -7, tint: -1, flash: 50,
+  dark: -14, tunnel: -13, roof: -12, glow: -11, body: -10, track: -9.7, railing: -8, lamp: -7, tint: -1, flash: 50,
 } as const;
 const TILE_DEPTH: Record<ParallaxKey, number> = {
   bg_sky: DEPTH.sky, bg_stars: DEPTH.stars, bg_moon: DEPTH.moon, bg_clouds_far: DEPTH.cloudsFar,
@@ -76,7 +84,9 @@ const TILE_DEPTH: Record<ParallaxKey, number> = {
 
 // Roof lip: the roof tile is visible from ROOF_Y down to the carriage gutter; the body tile is transparent above it.
 const ROOF_LIP = 30;
-const WINDOW = { w: 60, h: 40, every: 120, startX: 30, top: 36 } as const; // top is a body-texture row (world 466)
+// The bottom 40 px of the body texture stay transparent for the 11.02 wheel band (world 500–540).
+const WHEEL_BAND = 40;
+const WINDOW = { w: 60, h: 32, every: 120, startX: 30, top: 36 } as const; // top is a body-texture row (world 466)
 // Track trail rows above this stay transparent so the final-car ballast starts under the windows (world 508).
 const TRACK_TOP = 28;
 const RAILING = { x0: 900, x1: 960, top: 380, bottom: 430, post: 20 } as const;
@@ -86,8 +96,8 @@ const LAMP = { x: 950, y: 372, r: 6, glow: 15 } as const;
 // Seeded generator
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Numerical Recipes LCG; identical sequence on every machine. */
-class Lcg {
+/** Numerical Recipes LCG; identical sequence on every machine. Shared with stage/motion.ts. */
+export class Lcg {
   private state: number;
   constructor(seed: number) { this.state = seed >>> 0; }
   next(): number {
@@ -240,10 +250,14 @@ const drawRoof: Draw = (g, w, h) => {
   }
 };
 
-const drawBody: Draw = (g, w, h) => {
-  // Rows above ROOF_LIP stay transparent so the roof lip and its glow strip show through.
+const drawBody: Draw = (g, w, fullH) => {
+  // Rows above ROOF_LIP stay transparent so the roof lip and its glow strip show through; rows below h belong
+  // to the wheels.
+  const h = fullH - WHEEL_BAND;
   g.fillStyle(P.steel0, 1);
   g.fillRect(0, ROOF_LIP, w, h - ROOF_LIP);
+  g.fillStyle(P.outline, 1);
+  g.fillRect(0, h - 2, w, 2);
   g.fillStyle(P.steel2, 1);
   g.fillRect(0, ROOF_LIP, w, 3);
   g.fillStyle(P.outline, 1);
@@ -362,6 +376,10 @@ export interface Layers {
   lamp: Phaser.GameObjects.Graphics;
   /** Current roof and body scroll speed in px/s (240, or 180 in the final car). Rigs use it as wind speed. */
   roofSpeed: number;
+  /** 11.02 wheels, sparks, smoke, poles, bob, lightning; stepped by `scrollBackgrounds`. */
+  motion: Motion;
+  /** 11.02 gap couplings and cargo racks for the current map. */
+  map: MapLayer;
 }
 
 /** Per-Layers state that is not part of the contract. */
@@ -407,8 +425,8 @@ function drawLamp(g: Phaser.GameObjects.Graphics): void {
   g.fillCircle(LAMP.x - 2, LAMP.y - 2, 1.5);
 }
 
-/** Builds the stage in the STANDARD car state. Generates textures first if the scene has not done so. */
-export function createBackgrounds(scene: Phaser.Scene): Layers {
+/** Builds the stage in the STANDARD car state on `map`. Generates textures first if the scene has not done so. */
+export function createBackgrounds(scene: Phaser.Scene, map: MapId = "roof"): Layers {
   generateTextures(scene);
   const W = WORLD.WIDTH;
   const H = WORLD.HEIGHT;
@@ -454,7 +472,11 @@ export function createBackgrounds(scene: Phaser.Scene): Layers {
 
   const tint = scene.add.rectangle(0, 0, W, H, P.danger, 1).setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.tint);
 
-  const layers: Layers = { tiles, tunnel, track, dark, tint, moon, glow, railing, lamp, roofSpeed: STANDARD_ROOF_SPEED };
+  const base = { tiles, tunnel, track, dark, tint, moon, glow, railing, lamp, roofSpeed: STANDARD_ROOF_SPEED };
+  const mapLayer = createMapLayer(scene, base);
+  mapLayer.setMap(map);
+  const layers = { ...base, map: mapLayer } as Layers;
+  layers.motion = new Motion(scene, layers);
   extras.set(layers, { twinkle, dots, car: "STANDARD" });
   placeTwinkle(layers, dots);
   return layers;
@@ -487,10 +509,13 @@ export function scrollBackgrounds(layers: Layers, dtSec: number): void {
   layers.track.tilePositionX += TRACK_SPEED * dt;
   const ex = extras.get(layers);
   if (ex) placeTwinkle(layers, ex.dots);
+  layers.map.update(dt, layers.roofSpeed);
+  layers.motion.update(dt, layers.roofSpeed, ex?.car ?? "STANDARD");
 }
 
 /**
- * Cross-fades the stage to a train car over 400 ms. Idempotent: running tweens on the same targets are killed
+ * Cross-fades the stage to a train car over 400 ms. Entering the tunnel also sweeps a `night0` wipe in from the
+ * right over 300 ms ahead of the fade; leaving it flashes `moon` at 10 %. Idempotent: running tweens on the same targets are killed
  * first, so it is safe to call again before an earlier transition has finished.
  */
 export function applyTrainCar(scene: Phaser.Scene, layers: Layers, car: TrainCar): void {
@@ -508,6 +533,18 @@ export function applyTrainCar(scene: Phaser.Scene, layers: Layers, car: TrainCar
 
   const tunnel = car === "TUNNEL";
   const finalCar = car === "FINAL_CAR";
+  if (tunnel && previous !== "TUNNEL") {
+    const sweep = scene.add.rectangle(WORLD.WIDTH, 0, WORLD.WIDTH, WORLD.HEIGHT, P.night0, 1)
+      .setOrigin(0, 0).setDepth(DEPTH.flash);
+    scene.tweens.add({
+      targets: sweep, x: 0, duration: WHOOSH_MS, ease: "Quad.easeOut",
+      onComplete: () => scene.tweens.add({ targets: sweep, alpha: 0, duration: TRANSITION_MS, onComplete: () => sweep.destroy() }),
+    });
+  } else if (!tunnel && previous === "TUNNEL") {
+    const flash = scene.add.rectangle(0, 0, WORLD.WIDTH, WORLD.HEIGHT, P.moon, 1)
+      .setOrigin(0, 0).setAlpha(EXIT_FLASH_ALPHA).setDepth(DEPTH.flash);
+    scene.tweens.add({ targets: flash, alpha: 0, duration: FLASH_MS, onComplete: () => flash.destroy() });
+  }
   const sky = tunnel ? 0 : 1;
   const fade = (target: object, alpha: number, onComplete?: () => void): void => {
     scene.tweens.add({ targets: target, alpha, duration: TRANSITION_MS, ease: "Sine.easeInOut", ...(onComplete ? { onComplete } : {}) });

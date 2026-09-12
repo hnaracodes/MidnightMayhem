@@ -10,12 +10,16 @@
     #stage { width: 960px; height: 540px; }
     #stage canvas { display: block; }
     #help { padding: 8px 12px; color: #5B6375; }
-    kbd { color: #E8F0FF; }
+    #cost { padding: 0 12px; color: #5B6375; font-variant-numeric: tabular-nums; }
+    kbd, code { color: #E8F0FF; }
   </style>
 </head>
 <body>
   <div id="stage"></div>
-  <p id="help">Dev preview (not built). <kbd>1</kbd> standard, <kbd>2</kbd> tunnel, <kbd>3</kbd> final car. <code>window.__stage.setCar(car)</code>, <code>window.__stage.scroll(sec)</code>.</p>
+  <p id="help">Dev preview (not built). Query: <code>?map=roof|gaps|platforms|chaos&amp;car=STANDARD|TUNNEL|FINAL_CAR</code>.
+    Keys: <kbd>1</kbd> standard, <kbd>2</kbd> tunnel, <kbd>3</kbd> final car; <kbd>Q</kbd> roof, <kbd>W</kbd> gaps, <kbd>E</kbd> platforms, <kbd>R</kbd> chaos; <kbd>L</kbd> lightning.
+    <code>window.__stage.setCar(car)</code>, <code>setMap(map)</code>, <code>scroll(sec)</code>, <code>strike()</code>, <code>cost()</code>.</p>
+  <p id="cost"></p>
   <script type="module" src="../src/dev/stagePreview.ts"></script>
 </body>
 </html>
