@@ -9,7 +9,9 @@ import type { Part } from "../grid";
 const GLASS = 0x7FA98F;
 const RAG = 0xD8D2C4;
 const SHAFT = 0x2B2F45;
-const HOOK = P.amber2;
+const FRAME = P.amber2;
+const STRING = P.moon;
+const GRIP = P.steel2;
 const PACK = 0x6B7A45;
 const PACK_DARK = 0x46522C;
 const BANANA = 0xF2D23D;
@@ -37,17 +39,22 @@ const molotov: Part = {
   palette: { "1": GLASS, h: RAG, a: P.amber1, ".": null },
 };
 
-/** Folded umbrella held like a sabre: hooked handle at the grip, shaft forward, metal ferrule. */
+/**
+ * Tennis racket held like a sabre (9.08 rule 6; the "sword" is a racket because a closed umbrella is undetectable):
+ * short grip at the anchor, then the oval head with a 3 x 3 string grid. 13 x 7 px.
+ */
 const sword: Part = {
   grid: [
-    ".AA...........",
-    "A..A..........",
-    "...A111111111h",
-    "...A111111111h",
-    "...A1.1.1.1...",
+    "......FFFFF..",
+    ".....FsssssF.",
+    "....F.s.s.s.F",
+    "GGHHFsssssssF",
+    "....F.s.s.s.F",
+    ".....FsssssF.",
+    "......FFFFF..",
   ],
-  anchor: { x: 4, y: 2 },
-  palette: { "1": SHAFT, A: HOOK, h: P.moon, ".": null },
+  anchor: { x: 1, y: 3 },
+  palette: { F: FRAME, s: STRING, H: SHAFT, G: GRIP, ".": null },
 };
 
 /** Backpack worn on the back: straps on the right edge (the anchor), pack hanging behind. */
