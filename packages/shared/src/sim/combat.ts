@@ -20,7 +20,7 @@ export function isActivePunch(f: FighterState): boolean {
 
 export function punchHitbox(f: FighterState): Rect | null {
   if (!isActivePunch(f)) return null;
-  const reach = BALANCE.PUNCH_REACH;
+  const reach = f.action?.kind === "punch" && f.action.sword ? ARSENAL.SWORD_REACH : BALANCE.PUNCH_REACH;
   const x = f.facing === 1 ? f.x + BALANCE.PUNCH_GAP : f.x - BALANCE.PUNCH_GAP - reach;
   return { x, y: f.y - BALANCE.PUNCH_HITBOX_TOP, w: reach, h: BALANCE.PUNCH_HITBOX_H };
 }
@@ -128,7 +128,7 @@ export function resolvePunches(s: MatchState, events: SimEvent[]): void {
       let damage: number;
       let push = 1;
       if (action.kind === "punch") {
-        damage = blocked ? BALANCE.CHIP_DAMAGE : BALANCE.PUNCH_DAMAGE;
+        damage = blocked ? BALANCE.CHIP_DAMAGE : action.sword ? ARSENAL.SWORD_DAMAGE : BALANCE.PUNCH_DAMAGE;
       } else {
         const spec = slashSpec(action.style);
         push = spec.push;

@@ -50,7 +50,7 @@ export type ItemId = (typeof ITEM_IDS)[number];
 /** `ttl` (ticks) makes an item timed: unlimited uses, breaks when the clock runs out (9.10). */
 export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; cocoLabel: string }> = {
   molotov: { uses: 2, label: "Molotov", cocoLabel: "bottle" },
-  sword: { uses: 0, ttl: 600, label: "Racket sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
+  sword: { uses: 0, ttl: 600, label: "Sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
   shield: { uses: 3, label: "Backpack shield", cocoLabel: "backpack" },
   banana: { uses: 1, label: "Banana peel", cocoLabel: "banana" },
   flash: { uses: 1, label: "Phone flash", cocoLabel: "cell phone" },
@@ -58,7 +58,8 @@ export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; 
 export const DEFAULT_LOADOUT: Loadout = ["molotov", "shield"];
 
 export const ARSENAL = {
-  PARRY_WINDOW: 10, PARRY_STUN: 24,
+  // Owner 2026-09-12 (decision 52): a punch with the sword reaches SWORD_REACH for SWORD_DAMAGE (the pre-9.10 rule is back).
+  SWORD_REACH: 130, SWORD_DAMAGE: 10, PARRY_WINDOW: 10, PARRY_STUN: 24,
   // 9.10 sword slashes. Chop: slow, tall, guard-crushing (a blocking target takes half). Sweep: fast, wide, shoves.
   CHOP_STARTUP: 8, CHOP_ACTIVE: 4, CHOP_RECOVERY: 14, CHOP_DAMAGE: 18, CHOP_GAP: 10, CHOP_REACH: 90,
   CHOP_HITBOX_TOP: 170, CHOP_HITBOX_H: 140, CHOP_GUARD_FRACTION: 0.5,

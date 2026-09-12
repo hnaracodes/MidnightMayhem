@@ -105,13 +105,13 @@ describe("rule 1: every grid parses and every character has every part at the mi
     expect(diff).toHaveLength(1);
   });
 
-  it("every item part parses and is 10–14 px on its long side", () => {
+  it("every item part parses and is 10–14 px on its long side; the sword blade is longer (owner 2026-09-12)", () => {
     for (const id of ITEM_IDS) {
       const p = ITEM_PARTS[id];
       expect(() => parsePart(p)).not.toThrow();
       const { w, h } = parsePart(p);
       expect(Math.max(w, h), id).toBeGreaterThanOrEqual(10);
-      expect(Math.max(w, h), id).toBeLessThanOrEqual(14);
+      expect(Math.max(w, h), id).toBeLessThanOrEqual(id === "sword" ? 18 : 14);
     }
   });
 });

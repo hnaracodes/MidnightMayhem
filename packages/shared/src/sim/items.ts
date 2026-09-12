@@ -27,13 +27,15 @@ export function tickCooldowns(s: MatchState, events: SimEvent[] = []): void {
   }
 }
 
-/** Spec §4.2: items on, COUNTDOWN or FIGHTING, in the loadout, unused this round, hands free, not stunned, alive, not in a pit. */
+/**
+ * Spec §4.2: items on, COUNTDOWN or FIGHTING, unused this round, hands free, not stunned, alive, not in a pit.
+ * Owner 2026-09-12 (decision 52): the loadout no longer gates equipping — any of the five objects works when held.
+ */
 export function canEquip(s: MatchState, i: PlayerIndex, item: ItemId): boolean {
   const f = s.fighters[i];
   if (!f) return false;
   if (!s.config.items) return false;
   if (s.phase !== "COUNTDOWN" && s.phase !== "FIGHTING") return false;
-  if (!f.loadout.includes(item)) return false;
   if (f.itemsUsed.includes(item)) return false;
   if (f.item !== null) return false;
   if (f.hitstun !== 0) return false;
@@ -42,12 +44,15 @@ export function canEquip(s: MatchState, i: PlayerIndex, item: ItemId): boolean {
   return true;
 }
 
-/** Equip on the `item` edge (`prev.item !== item && item !== null`) when `canEquip`. */
+/**
+ * Equips the item in view whenever `canEquip` allows it (owner 2026-09-12: not only on the `item` edge — a phone
+ * that stays in view while the hands are busy equips as soon as they are free; `itemsUsed` keeps it once a round).
+ */
 export function applyEquip(s: MatchState, i: PlayerIndex, input: InputFrame, events: SimEvent[]): void {
   const f = s.fighters[i];
   if (!f) return;
   const item = input.item;
-  if (item === null || item === f.prev.item) return;
+  if (item === null) return;
   if (!canEquip(s, i, item)) return;
   f.item = { kind: item, uses: ITEMS[item].uses, ticksLeft: ITEMS[item].ttl ?? null };
   f.itemsUsed.push(item);
@@ -77,8 +82,11 @@ export function usePunchWithItem(s: MatchState, i: PlayerIndex, arm: Arm, events
   if (!f || !f.item) return false;
   switch (f.item.kind) {
     case "sword":
-      // 9.10: a punch with a sword is a plain punch (slashes are `startSlash`); the timer, not uses, ends the sword.
-      return false;
+      // Owner 2026-09-12: a punch with the sword is the sword swing (SWORD_REACH / SWORD_DAMAGE); the timer, not
+      // uses, ends the sword. `startSlash` (E / R) stays for the keyboard.
+      f.action = { kind: "punch", arm, elapsed: 0, landed: false, sword: true };
+      events.push({ type: "PUNCH", player: i, arm });
+      return true;
     case "flash":
       // `landed: true` from the start: this swing can never connect.
       f.action = { kind: "punch", arm, elapsed: 0, landed: true, sword: false };
