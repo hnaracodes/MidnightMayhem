@@ -1,6 +1,7 @@
 import { BALANCE, MATCH, MODES, WORLD } from "../constants";
 import { applyDamage } from "./combat";
 import { playerIndices, resetForRound } from "./create";
+import { hasTimer } from "./modes";
 import type { MatchState, SimEvent, Winner } from "./types";
 
 export function applyOutOfBounds(s: MatchState, events: SimEvent[]): void {
@@ -48,15 +49,22 @@ function best(candidates: number[], value: (team: number) => number): Winner {
   return winners.length === 1 ? winners[0]! : "draw";
 }
 
+/**
+ * Exactly one living team → it; none → "draw"; otherwise, in a timed mode with the clock at zero, the team with
+ * the highest total hp (ties "draw"); otherwise null (the round goes on — a deathmatch only ends on KO).
+ */
 export function roundWinner(s: MatchState): Winner | null {
   const living = livingTeams(s);
   if (living.length === 0) return "draw";
   if (living.length === 1) return living[0]!;
-  if (MODES[s.config.mode].roundTicks === null) return null;
-  if (s.roundTicks > 0) return null;
+  if (!hasTimer(s.config) || s.roundTicks > 0) return null;
   return best(teams(s), (t) => teamHp(s, t));
 }
 
+/**
+ * First team with `roundsWon ≥ roundsToWin`; two reaching it on the same round → "draw"; after `maxRounds` rounds →
+ * most rounds won, ties "draw". Never null once the round limit is reached, so a match never ends with winner null.
+ */
 export function matchWinner(s: MatchState): Winner | null {
   const { roundsToWin, maxRounds } = MODES[s.config.mode];
   const reached = teams(s).filter((t) => (s.roundsWon[t] ?? 0) >= roundsToWin);
@@ -66,19 +74,42 @@ export function matchWinner(s: MatchState): Winner | null {
   return null;
 }
 
-/** Decrement the timer (timed modes only), then end the round if health or time says so. Last step of a fighting tick. */
+/**
+ * A fighter at 0 hp stays down: whatever it was doing when the KO landed (a punch in startup, a block, knockback)
+ * is dropped so nothing of his resolves on a later tick. Runs every fighting tick after damage has been applied.
+ */
+function settleKnockouts(s: MatchState): void {
+  for (const f of s.fighters) {
+    if (f.hp > 0) continue;
+    f.action = null;
+    f.blocking = false;
+    f.blockTicks = 0;
+    f.vx = 0;
+    f.hitstun = 0;
+    f.knockbackVx = 0;
+  }
+}
+
+/**
+ * Settle KOs, decrement the timer (only when the mode has one), then end the round if health or time says so.
+ * Last step of a fighting tick.
+ */
 export function tickRound(s: MatchState, events: SimEvent[]): void {
-  if (MODES[s.config.mode].roundTicks !== null) s.roundTicks = Math.max(0, s.roundTicks - 1);
+  settleKnockouts(s);
+  if (hasTimer(s.config)) s.roundTicks = Math.max(0, s.roundTicks - 1);
   const w = roundWinner(s);
   if (w !== null) endRound(s, w, events);
 }
 
+/** Scores the round (every team on a draw — owner rule B), freezes every fighter and clears the field. */
 export function endRound(s: MatchState, winner: Winner, events: SimEvent[]): void {
   if (winner === "draw") for (const t of teams(s)) s.roundsWon[t]!++;
   else s.roundsWon[winner] = (s.roundsWon[winner] ?? 0) + 1;
   s.phase = "ROUND_END";
   s.phaseTicks = MATCH.ROUND_END_TICKS;
-  for (const f of s.fighters) { f.vx = 0; f.action = null; f.blocking = false; }
+  for (const f of s.fighters) { f.vx = 0; f.action = null; f.blocking = false; f.blockTicks = 0; }
+  s.projectiles = [];
+  s.hazards = [];
   events.push({ type: "ROUND_END", round: s.round, winner });
 }
 
