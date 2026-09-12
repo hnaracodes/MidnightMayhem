@@ -5,6 +5,7 @@ import { CameraPreview, debugFanOut } from "./app/cameraPreview";
 import { Landing } from "./app/landing";
 import { type CameraButton, Lobby } from "./app/lobby";
 import { ResultOverlay } from "./app/result";
+import { irisWipe } from "./app/wipe";
 import { startGame } from "./game/config";
 import { DEFAULT_PLAYER_NAMES, session } from "./game/session";
 import { MUTE_KEY, Sfx } from "./game/sfx";
@@ -233,8 +234,12 @@ client.on("LOBBY", (message) => {
   session.roster = message.players.slice(0, message.config.players)
     .map((p) => p ? { character: p.character, loadout: p.loadout } : { character: "drifter", loadout: DEFAULT_LOADOUT });
   lastLobby = { roomId: message.roomId, players: message.players, config: message.config, host: message.host };
-  landing.hide();
-  renderRoom();
+  // 12.06 rule 4: an iris wipe carries the landing (or the result / arena) into the lobby; later LOBBY updates just re-render
+  const landingEl = document.getElementById("landing");
+  const lobbyEl = document.getElementById("lobby");
+  const entering = (landingEl && !landingEl.hidden) || (lobbyEl?.hidden ?? false);
+  if (entering) void irisWipe(session.reducedMotion, () => { landing.hide(); renderRoom(); });
+  else renderRoom();
   if (sourceChoice === "vision" && !autoCameraDone) {
     autoCameraDone = true;
     void enableCamera();
@@ -269,7 +274,10 @@ client.on("SNAPSHOT", (message) => {
   const wasRunning = matchRunning;
   matchRunning = message.state.phase !== "MATCH_END";
   setMatchBanner(matchRunning);
-  if (matchRunning) lobby.hide();
+  if (matchRunning) {
+    const lobbyEl = document.getElementById("lobby");
+    if (lobbyEl && !lobbyEl.hidden) void irisWipe(session.reducedMotion, () => lobby.hide());
+  }
   // Rule 6: the preview comes up with every match on a camera player and goes away with the result screen.
   if (matchRunning && !wasRunning && session.visionAvailable) preview.show();
   if (message.state.phase === "COUNTDOWN") {
@@ -283,7 +291,7 @@ client.on("SNAPSHOT", (message) => {
     if (resultTimer !== null) clearTimeout(resultTimer);
     resultTimer = setTimeout(() => {
       resultTimer = null;
-      result.show(matchEnd.winner, session.buffer.latest(), session.localIndex);
+      void irisWipe(session.reducedMotion, () => result.show(matchEnd.winner, session.buffer.latest(), session.localIndex));
     }, RESULT_DELAY_MS);
   }
 });

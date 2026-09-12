@@ -8,6 +8,8 @@ export const gameConfig: Phaser.Types.Core.GameConfig = {
   height: WORLD.HEIGHT,
   parent: "game",
   backgroundColor: "#070B18",
+  // 12.01: camera and game-object positions land on whole pixels so walking sprites stop crawling. Scale.FIT stays.
+  render: { roundPixels: true },
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,

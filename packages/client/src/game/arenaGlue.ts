@@ -62,20 +62,11 @@ export function attractSetup(characters: readonly CharacterId[]): { config: Matc
 }
 
 /**
- * What `computePose` sees for a fighter: a throw is posed as the same arm's punch (clamped to the punch length)
- * and a laser as the guard-up block stance (both fists forward) for its whole duration; every other state is
- * the fighter itself.
+ * What `computePose` sees for a fighter. Since 12.04 `rig/pose.ts` poses throws and lasers itself, so this is the
+ * identity; it stays as the single seam where a drawn fighter could still differ from the sim one.
  */
 export function posedFighter(f: FighterState): FighterState {
-  const action = f.action;
-  if (!action || action.kind === "punch") return f;
-  if (action.kind === "throw") {
-    const total = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH_RECOVERY;
-    const throwTotal = ARSENAL.THROW_STARTUP + ARSENAL.THROW_RECOVERY;
-    const elapsed = Math.min(total - 1, Math.round((action.elapsed / throwTotal) * total));
-    return { ...f, action: { kind: "punch", arm: action.arm, elapsed, landed: false, sword: false } };
-  }
-  return { ...f, action: null, blocking: true, vx: 0 };
+  return f;
 }
 
 /** Respawn i-frames after a pit fall are drawn at half alpha (10.01 rule: invuln 30 ticks, 50 % alpha). */

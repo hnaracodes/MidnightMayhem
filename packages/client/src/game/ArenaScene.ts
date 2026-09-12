@@ -14,16 +14,20 @@ import {
   type FighterState, type InputFrame, type MapId, type MatchState, type PlayerIndex, type SimEvent, type TrainCar,
 } from "@midnight/shared";
 import { attractInputs, attractSetup, drawOrder, fighterAlpha, fireLoopTransition, posedFighter } from "./arenaGlue";
-import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
+import { ROOF_INDEX, applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
 import { Effects } from "./effects";
 import { Hud } from "./hud";
 import { ItemFx, type HandPoint } from "./itemFx";
 import { CSS_P, P } from "./palette";
 import { RenderClock, advanceHint, hintedFighter, type PunchHint } from "./punchHint";
 import { drawFighter, drawShadow } from "./rig/draw";
-import { computePose, type Clock } from "./rig/pose";
+import { computePose, laserHands, type Clock } from "./rig/pose";
+import { mix } from "./sprites/grid";
 import { session } from "./session";
 import { SpriteFighter } from "./sprites/SpriteFighter";
+import { Lighting } from "./stage/lighting";
+import { Particulate } from "./stage/particulate";
+import { initialQualityState, qualityStep, resolveQuality, type Quality, type QualityState } from "./stage/quality";
 
 /**
  * Fighter depths run RIG0 + rank · RIG_STEP for the rank in the back-to-front draw order (four fighters fit
@@ -35,8 +39,11 @@ const DEBUG_TEXT = { X: 20, Y: 84, SIZE: 11 } as const;
 const BUDGET_EMA = 0.05;
 /** Attract mode steps the sim at most this many ticks per render frame (a hidden tab must not spiral). */
 const ATTRACT_MAX_STEPS = 5;
-/** Rim stroke colour of the vector rig (design/02). */
-const VECTOR_RIM = P.amber1;
+/** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
+const CHEST_ABOVE_FEET = 60;
+const FRAME_BUDGET_LABEL = "6 ms";
+/** 12.04 rule 9: how far into gloom a fallen fighter sinks (the 12.02 floor). */
+const KO_GLOOM = 0.25;
 
 /** Dev hook: the headless driver reads the measured update cost and the current hint through it. */
 declare global {
@@ -49,6 +56,11 @@ declare global {
       drawn: () => MatchState | null;
       fighters: () => number;
       attract: () => boolean;
+      /** 12.02: live light count (static instances + transients). */
+      lights: () => number;
+      /** 12.03: live particle counts and the resolved quality tier. */
+      particles: () => { motes: number; embers: number };
+      quality: () => Quality;
     };
   }
 }
@@ -69,6 +81,9 @@ export class ArenaScene extends Phaser.Scene {
   private hud!: Hud;
   private effects!: Effects;
   private itemFx!: ItemFx;
+  private lighting!: Lighting;
+  private particulate!: Particulate;
+  private quality: QualityState = initialQualityState("high");
   private dazzle!: Phaser.GameObjects.Rectangle;
 
   private readonly clock = new RenderClock();
@@ -96,8 +111,11 @@ export class ArenaScene extends Phaser.Scene {
     this.shadow = this.add.graphics().setDepth(DEPTH.SHADOW);
     this.debug = this.add.graphics().setDepth(DEPTH.DEBUG);
     this.hud = new Hud(this);
-    this.effects = new Effects(this);
-    this.itemFx = new ItemFx(this);
+    this.lighting = new Lighting(this);
+    this.particulate = new Particulate(this);
+    this.applyQuality(resolveQuality(session.quality, this.renderer.type === Phaser.WEBGL), true);
+    this.effects = new Effects(this, this.lighting);
+    this.itemFx = new ItemFx(this, this.lighting);
     this.dazzle = this.add.rectangle(0, 0, WORLD.WIDTH, WORLD.HEIGHT, P.white, 1)
       .setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.DAZZLE);
     if (session.debug) {
@@ -115,6 +133,9 @@ export class ArenaScene extends Phaser.Scene {
       drawn: () => this.drawnState,
       fighters: () => this.views.length,
       attract: () => this.attract !== null,
+      lights: () => this.lighting.lights().length,
+      particles: () => this.particulate.live(),
+      quality: () => this.quality.quality,
     };
   }
 
@@ -122,11 +143,26 @@ export class ArenaScene extends Phaser.Scene {
     const start = performance.now();
     this.frame(start, delta);
     this.updateMs += (performance.now() - start - this.updateMs) * BUDGET_EMA;
+    const step = qualityStep(this.quality, this.updateMs);
+    this.quality = step.state;
+    if (step.changed) {
+      console.info(`[ambience] quality → low: update ${this.updateMs.toFixed(2)} ms over ${FRAME_BUDGET_LABEL} for ~2 s; bloom, god-rays and particulate off`);
+      this.applyQuality("low", false);
+    }
+  }
+
+  /** 12.03 rule 5: `high` blooms the light layers and the beam (WebGL only); god-rays and particulate read the tier every frame. */
+  private applyQuality(quality: Quality, initial: boolean): void {
+    if (initial) this.quality = initialQualityState(quality);
+    this.lighting.setQuality(quality === "high");
   }
 
   private frame(now: number, delta: number): void {
     const dt = delta / 1000;
     scrollBackgrounds(this.layers, session.reducedMotion ? 0 : dt);
+    const high = this.quality.quality === "high";
+    this.lighting.update(dt, this.tileOffsets(), { reducedMotion: session.reducedMotion, rays: high });
+    this.particulate.update(dt, { reducedMotion: session.reducedMotion, enabled: high, roofSpeed: this.layers.roofSpeed });
 
     const renderMs = this.clock.advance(now, this.effects.timeScale());
     const sampled = session.buffer.sample(renderMs);
@@ -153,6 +189,7 @@ export class ArenaScene extends Phaser.Scene {
     if (state.trainCar !== this.car) {
       this.car = state.trainCar;
       applyTrainCar(this, this.layers, this.car);
+      this.lighting.setCar(this.car);
     }
     if (state.config.map !== this.drawnMap) {
       this.drawnMap = state.config.map;
@@ -204,6 +241,7 @@ export class ArenaScene extends Phaser.Scene {
       koFrames: this.effects.koFrames(i),
       landFrames: this.effects.landFrames(i),
       win: isWinner(state, i),
+      beat: this.effects.flashBeat(i) > 0 ? { kind: "flash", frames: this.effects.flashBeat(i) } : undefined,
     };
     const joints = computePose(posedFighter(fighter), clock);
     const alpha = fighterAlpha(fighter);
@@ -212,18 +250,28 @@ export class ArenaScene extends Phaser.Scene {
     const ground = groundYAt(state.config.map, fighter.x, fighter.y);
     if (alpha > 0 && ground < PIT.Y) drawShadow(this.shadow, fighter.x, ground, Math.max(0, ground - fighter.y));
     const fill = this.effects.fillFor(i);
+    const rim = this.lighting.rimFor(fighter.x, fighter.y - CHEST_ABOVE_FEET);
+    // 12.04 rule 9: a KO'd fighter loses its rim light and sinks into gloom over the collapse
+    const koRim = this.effects.koRim(i);
+    if (koRim < 1) {
+      rim.color = mix(rim.color, P.night1, 1 - koRim);
+      rim.gloom = Math.max(rim.gloom, KO_GLOOM * (1 - koRim));
+    }
     if (view.kind === "sprite") {
       view.sprite.setVisible(alpha > 0);
       view.sprite.setDepth(depth);
       view.sprite.update(fighter, joints, {
-        rimBoth: this.car === "TUNNEL",
+        rimColor: rim.color,
+        rimSide: rim.side,
+        gloom: rim.gloom,
         flash: fill.fillOverride,
         flashAlpha: fill.fillAlpha,
         squash: this.effects.squashFor(i),
         itemVisible: !this.itemFx.materialising(i),
         blinkMs: renderMs,
       });
-      this.hands[i] = view.sprite.hand();
+      // 12.04 rule 1: the laser's ring and beam cap anchor to the cupped hands, not the front fist
+      this.hands[i] = fighter.action?.kind === "laser" ? laserHands(joints) : view.sprite.hand();
     } else {
       const g = view.g;
       g.clear();
@@ -231,19 +279,25 @@ export class ArenaScene extends Phaser.Scene {
       g.setVisible(alpha > 0);
       drawFighter(g, joints, fighter.character, {
         facing: fighter.facing,
-        rim: VECTOR_RIM,
-        rimBoth: this.car === "TUNNEL", // design/03: tunnel lamps light both edges
+        rim: rim.color,
+        rimSide: rim.side,
+        gloom: rim.gloom,
         squash: this.effects.squashFor(i),
         windSpeed: this.layers.roofSpeed,
         ...fill,
       });
-      this.hands[i] = { ...joints.arms.F.fist };
+      this.hands[i] = fighter.action?.kind === "laser" ? laserHands(joints) : { ...joints.arms.F.fist };
     }
     if (joints.punchingArm && isActivePunch(fighter)) {
       const arm = joints.arms[joints.punchingArm];
       this.effects.drawTrail(i, arm.shoulder, arm.fist);
     }
     if (session.debug) this.drawBoxes(fighter);
+  }
+
+  /** 12.02: the roof and tunnel tile offsets, so light pools sit on their fixtures. */
+  private tileOffsets(): { roof: number; tunnel: number } {
+    return { roof: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0, tunnel: this.layers.tunnel.tilePositionX };
   }
 
   /** Front-hand position for ItemFx: last drawn, else the chest-height guess from the newest snapshot. */
@@ -338,7 +392,7 @@ export class ArenaScene extends Phaser.Scene {
     const rtt = session.rtt === null ? "n/a" : `${session.rtt.toFixed(1)} ms`;
     const mode = attracting ? "ATTRACT" : state.phase;
     this.debugText!.setText(
-      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  ${mode}  ${state.config.map}/${state.config.mode}`,
+      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  q ${this.quality.quality}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  ${mode}  ${state.config.map}/${state.config.mode}`,
     );
   }
 }

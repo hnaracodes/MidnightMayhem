@@ -5,6 +5,7 @@
 //        &plain=1 (fresh match, no demo scenario)
 import Phaser from "phaser";
 import {
+  BALANCE,
   ARSENAL, CHARACTERS, ITEMS, WORLD, createMatch, normalizeConfig,
   type MatchConfig, type MatchState, type ModeId, type RosterEntry, type TeamsId,
 } from "@midnight/shared";
@@ -75,6 +76,11 @@ function demo(s: MatchState): void {
 }
 
 if (query.get("plain") !== "1") demo(state);
+// 12.05 rule 8: `?hp=<n>` sets every fighter's hp, `?low=<i>` puts one fighter at 1 HP for the low-HP state
+const hpQ = Number(query.get("hp"));
+if (Number.isFinite(hpQ) && query.get("hp") !== null) for (const f of state.fighters) f.hp = Math.max(0, Math.min(BALANCE.MAX_HP, hpQ));
+const lowQ = Number(query.get("low"));
+if (query.get("low") !== null && state.fighters[lowQ]) state.fighters[lowQ]!.hp = 1;
 const phase = query.get("phase") as MatchState["phase"] | null;
 if (phase) {
   state.phase = phase;

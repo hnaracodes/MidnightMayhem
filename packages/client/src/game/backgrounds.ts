@@ -39,6 +39,9 @@ const TEXTURE_SIZE = {
   bg_window_glow: [1920, 30],
   bg_tunnel_wall: [1920, 440],
   bg_track_trail: [1920, 60],
+  bg_roof_lamps:  [1920, 60],
+  bg_haze:        [64, 120],
+  bg_foreground:  [1920, 540],
 } as const;
 
 type TextureKey = keyof typeof TEXTURE_SIZE;
@@ -65,7 +68,8 @@ const TILE_ALPHA: Record<ParallaxKey, number> = {
 const GLOW_ALPHA = 0.3;
 const GLOW_ALPHA_TUNNEL = 0.45;
 const DARK_ALPHA_TUNNEL = 0.78;
-const TINT_ALPHA_FINAL = 0.12;
+/** 12.02: the final-car red wash is retired (0); the tail lamp is a real light in stage/lighting.ts. */
+const TINT_ALPHA_FINAL = 0;
 const FLASH_ALPHA = 0.3;
 
 /**
@@ -75,7 +79,7 @@ const FLASH_ALPHA = 0.3;
  */
 export const DEPTH = {
   sky: -20, stars: -19, twinkle: -18, moon: -17, cloudsFar: -16, cloudsNear: -15,
-  dark: -14, tunnel: -13, roof: -12, glow: -11, body: -10, track: -9.7, railing: -8, lamp: -7, tint: -1, flash: 50,
+  dark: -14, hazeFar: -15.5, hazeNear: -12.6, tunnel: -13, roofLamps: -12.2, roof: -12, foreground: 0.3, glow: -11, body: -10, track: -9.7, railing: -8, lamp: -7, tint: -1, flash: 50,
 } as const;
 const TILE_DEPTH: Record<ParallaxKey, number> = {
   bg_sky: DEPTH.sky, bg_stars: DEPTH.stars, bg_moon: DEPTH.moon, bg_clouds_far: DEPTH.cloudsFar,
@@ -91,6 +95,14 @@ const WINDOW = { w: 60, h: 32, every: 120, startX: 30, top: 36 } as const; // to
 const TRACK_TOP = 28;
 const RAILING = { x0: 900, x1: 960, top: 380, bottom: 430, post: 20 } as const;
 const LAMP = { x: 950, y: 372, r: 6, glow: 15 } as const;
+/** 12.02: window centres in body-texture x (windows every 120 px from x 30, 60 wide) for the spill pools. */
+export const WINDOW_CENTRE = { x: WINDOW.startX + WINDOW.w / 2, every: WINDOW.every } as const;
+/** 12.02: two roof lamps per roof tile (960 apart, so one is always on screen), in roof-texture x, heads above the roof. */
+export const ROOF_LAMPS: readonly { x: number; y: number }[] = [{ x: 300, y: WORLD.ROOF_Y - 46 }, { x: 1260, y: WORLD.ROOF_Y - 46 }];
+export const ROOF_LAMP_PERIOD = 1920;
+const ROOF_LAMP_H = 60;
+/** 12.02: the tunnel wall lamps of `drawTunnelWall`, in tunnel-texture x. */
+export const TUNNEL_LAMP = { x: 160, y: 150, every: 320 } as const;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Seeded generator
@@ -144,9 +156,11 @@ function lerpColor(a: number, b: number, t: number): number {
 
 type Draw = (g: Phaser.GameObjects.Graphics, w: number, h: number) => void;
 
-function makeTexture(scene: Phaser.Scene, key: TextureKey, draw: Draw): void {
+export function makeTexture(scene: Phaser.Scene, key: TextureKey | string, draw: Draw, width?: number, height?: number): void {
   if (scene.textures.exists(key)) return;
-  const [w, h] = TEXTURE_SIZE[key];
+  const size = (TEXTURE_SIZE as Record<string, readonly [number, number] | undefined>)[key];
+  const w = width ?? size?.[0] ?? 0;
+  const h = height ?? size?.[1] ?? 0;
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
   draw(g, w, h);
   g.generateTexture(key, w, h);
@@ -160,14 +174,16 @@ function wrapped(w: number, x: number, draw: (x: number) => void): void {
   draw(x + w);
 }
 
+// 12.02 contrast pass: the far sky runs from void0 to a hazed night2, so distance reads as air, not paint.
+const SKY_BOTTOM = lerpColor(P.night2, P.haze, 0.45);
 const drawSky: Draw = (g, w) => {
-  const bands = 8;
+  const bands = 12;
   const bandH = WORLD.ROOF_Y / bands;
   for (let i = 0; i < bands; i++) {
-    g.fillStyle(lerpColor(P.night0, P.night2, i / (bands - 1)), 1);
+    g.fillStyle(lerpColor(P.void0, SKY_BOTTOM, i / (bands - 1)), 1);
     g.fillRect(0, Math.round(i * bandH), w, Math.ceil(bandH) + 1);
   }
-  g.fillStyle(P.night2, 1);
+  g.fillStyle(SKY_BOTTOM, 1);
   g.fillRect(0, WORLD.ROOF_Y, w, TEXTURE_SIZE.bg_sky[1] - WORLD.ROOF_Y);
 };
 
@@ -179,7 +195,7 @@ const drawStars: Draw = (g) => {
       g.fillStyle(P.moon, 0.4);
       g.fillCircle(s.x + 1.5, s.y + 1.5, 5);
     }
-    g.fillStyle(P.moon, s.alpha);
+    g.fillStyle(P.moon, s.alpha * 0.8); // 12.02: stars sit behind haze
     g.fillRect(s.x, s.y, s.size, s.size);
   }
 };
@@ -187,11 +203,12 @@ const drawStars: Draw = (g) => {
 const drawMoon: Draw = (g, w, h) => {
   const cx = w / 2;
   const cy = h / 2;
-  g.fillStyle(P.moon, 0.05);
+  // 12.02: the moon is a source, not the brightest thing on screen — its disc leans toward haze and the halo is cold
+  g.fillStyle(P.glow1, 0.04);
   g.fillCircle(cx, cy, 105);
-  g.fillStyle(P.moon, 0.12);
+  g.fillStyle(P.glow1, 0.08);
   g.fillCircle(cx, cy, 90);
-  g.fillStyle(P.moon, 1);
+  g.fillStyle(lerpColor(P.moon, P.haze, 0.22), 1);
   g.fillCircle(cx, cy, 70);
   g.fillStyle(P.night2, 0.3);
   g.fillCircle(cx - 18, cy - 14, 13);
@@ -220,12 +237,13 @@ function drawClouds(spec: CloudSpec): Draw {
   };
 }
 
+// 12.02: far clouds are 60 % toward haze (lower contrast against the hazed sky), near clouds 30 %.
 const drawCloudsFar = drawClouds({
-  count: 7, seed: SEED.cloudsFar, color: P.night2, yMin: 40, yMax: 200, wMin: 90, wMax: 200, hMin: 24, hMax: 56,
+  count: 7, seed: SEED.cloudsFar, color: lerpColor(P.night2, P.haze, 0.6), yMin: 40, yMax: 200, wMin: 90, wMax: 200, hMin: 24, hMax: 56,
 });
 // Layer y = 150, so a texture y of about 180 puts the bottom edge near world y = 330.
 const drawCloudsNear = drawClouds({
-  count: 5, seed: SEED.cloudsNear, color: P.steel0, yMin: 130, yMax: 160, wMin: 200, wMax: 360, hMin: 44, hMax: 80,
+  count: 5, seed: SEED.cloudsNear, color: lerpColor(P.steel0, P.haze, 0.3), yMin: 130, yMax: 160, wMin: 200, wMax: 360, hMin: 44, hMax: 80,
 });
 
 const drawRoof: Draw = (g, w, h) => {
@@ -254,7 +272,7 @@ const drawBody: Draw = (g, w, fullH) => {
   // Rows above ROOF_LIP stay transparent so the roof lip and its glow strip show through; rows below h belong
   // to the wheels.
   const h = fullH - WHEEL_BAND;
-  g.fillStyle(P.steel0, 1);
+  g.fillStyle(lerpColor(P.steel0, P.void0, 0.25), 1); // 12.02: the near carriage falls toward the void
   g.fillRect(0, ROOF_LIP, w, h - ROOF_LIP);
   g.fillStyle(P.outline, 1);
   g.fillRect(0, h - 2, w, 2);
@@ -267,9 +285,9 @@ const drawBody: Draw = (g, w, fullH) => {
   for (let x = WINDOW.startX; x < w; x += WINDOW.every) {
     g.fillStyle(P.outline, 1);
     g.fillRect(x - 2, WINDOW.top - 2, WINDOW.w + 4, WINDOW.h + 4);
-    g.fillStyle(P.amber1, 1);
+    g.fillStyle(lerpColor(P.amber1, P.amber2, 0.15), 1); // 12.02: glass a touch darker than the pool it casts
     g.fillRect(x, WINDOW.top, WINDOW.w, WINDOW.h);
-    g.fillStyle(P.moon, 0.3);
+    g.fillStyle(P.moon, 0.2);
     g.fillRect(x, WINDOW.top, WINDOW.w, 14);
     g.fillStyle(P.outline, 1);
     g.fillRect(x + WINDOW.w / 2 - 1, WINDOW.top, 2, WINDOW.h);
@@ -315,6 +333,83 @@ const drawTunnelWall: Draw = (g, w, h) => {
   }
 };
 
+/**
+ * 12.02: roof lamp fixtures at `ROOF_LAMPS` — a steel bracket rising from the roof line with a `lamp` head and a
+ * white specular, so every pool of warm light on the roof has a thing casting it. Scrolls with the roof.
+ */
+const drawRoofLamps: Draw = (g, _w, h) => {
+  for (const { x } of ROOF_LAMPS) {
+    const top = 6;
+    g.fillStyle(P.outline, 1);
+    g.fillRect(x - 4, top + 6, 8, h - top - 6);
+    g.fillStyle(P.steel1, 1);
+    g.fillRect(x - 2, top + 8, 4, h - top - 8);
+    g.fillStyle(P.steel2, 1);
+    g.fillRect(x - 1, top + 8, 1, h - top - 8);
+    // hood
+    g.fillStyle(P.outline, 1);
+    g.fillRect(x - 11, top, 22, 9);
+    g.fillStyle(P.steel1, 1);
+    g.fillRect(x - 9, top + 2, 18, 5);
+    // head
+    g.fillStyle(P.lamp, 0.18);
+    g.fillCircle(x, top + 11, 16);
+    g.fillStyle(P.outline, 1);
+    g.fillCircle(x, top + 11, 7);
+    g.fillStyle(P.lamp, 1);
+    g.fillCircle(x, top + 11, 5);
+    g.fillStyle(P.white, 0.9);
+    g.fillCircle(x - 1.5, top + 9.5, 1.8);
+  }
+};
+
+/** 12.03 rule 1: a vertical strip, `haze` fading to transparent downward; stretched across the screen as an Image. */
+const drawHaze: Draw = (g, w, h) => {
+  for (let row = 0; row < h; row++) {
+    const t = 1 - row / h;
+    g.fillStyle(P.haze, t * t);
+    g.fillRect(0, row, w, 1);
+  }
+};
+
+/** 12.03 rule 1 alpha per car for the two haze strips (open / tunnel). */
+export const HAZE_ALPHA = { far: 0.35, near: 0.25 } as const;
+export const FOREGROUND_SPEED = 1.4;
+const FOREGROUND_SEED = 0xf06e;
+/** The fighter band the foreground never crosses (rule 2). */
+const FOREGROUND_BAND = { top: 100, bottom: WORLD.ROOF_Y + 40 } as const;
+
+/**
+ * 12.03 rule 2: near-camera silhouettes in `void0` — catenary cable sags across the top and pole stubs / a railing
+ * edge along the bottom — seeded, transparent through the fighter band, scrolled faster than the roof.
+ */
+const drawForeground: Draw = (g, w, h) => {
+  const rng = new Lcg(FOREGROUND_SEED);
+  g.fillStyle(P.void0, 1);
+  // cables: three sagging spans per 480 px, 3 px thick, hanging 12–30 px into the top band
+  const span = 480;
+  for (let x0 = 0; x0 < w; x0 += span) {
+    const sag = rng.range(12, 30);
+    const y0 = rng.range(6, 22);
+    for (let x = 0; x <= span; x += 3) {
+      const t = x / span;
+      const y = y0 + sag * 4 * t * (1 - t);
+      if (y + 3 < FOREGROUND_BAND.top) g.fillRect(x0 + x, Math.round(y), 3, 3);
+    }
+    // a hanger at the span's start
+    g.fillRect(x0, 0, 3, Math.round(y0));
+  }
+  // bottom: a railing rail along the very bottom with posts every 160 px, and pole stubs
+  const railY = h - 14;
+  g.fillRect(0, railY, w, 4);
+  for (let x = 0; x < w; x += 160) {
+    const post = rng.range(20, 36);
+    const y = h - post;
+    if (y > FOREGROUND_BAND.bottom) g.fillRect(x, y, 6, post);
+    else g.fillRect(x, FOREGROUND_BAND.bottom + 1, 6, h - FOREGROUND_BAND.bottom - 1);
+  }
+};
+
 const drawTrackTrail: Draw = (g, w, h) => {
   // Rows above TRACK_TOP stay transparent so the carriage windows show; the ballast bed starts under them.
   g.fillStyle(P.outline, 1);
@@ -347,6 +442,9 @@ const GENERATORS: Record<TextureKey, Draw> = {
   bg_window_glow: drawWindowGlow,
   bg_tunnel_wall: drawTunnelWall,
   bg_track_trail: drawTrackTrail,
+  bg_roof_lamps: drawRoofLamps,
+  bg_haze: drawHaze,
+  bg_foreground: drawForeground,
 };
 
 /** Creates every stage texture once from the seeded generators. Safe to call again; existing keys are kept. */
@@ -367,11 +465,18 @@ export interface Layers {
   track: Phaser.GameObjects.TileSprite;
   /** `night0` darkness over the sky layers, 78 % in the tunnel. */
   dark: Phaser.GameObjects.Rectangle;
-  /** `danger` tint over every layer, 12 % in the final car. */
+  /** `danger` tint over every layer; kept at 0 since 12.02 (the tail lamp lights the last car instead). */
   tint: Phaser.GameObjects.Rectangle;
   moon: Phaser.GameObjects.Image;
   /** Amber window spill on the roof lip; scrolls with the body. */
   glow: Phaser.GameObjects.TileSprite;
+  /** 12.02 roof lamp fixtures at `ROOF_LAMPS`; scrolls with the roof. */
+  lamps: Phaser.GameObjects.TileSprite;
+  /** 12.03 haze strips between the far bands (behind the near clouds) and between the clouds and the roof. */
+  hazeFar: Phaser.GameObjects.Image;
+  hazeNear: Phaser.GameObjects.Image;
+  /** 12.03 near-camera silhouettes, scrolled at `FOREGROUND_SPEED` × roof speed. */
+  foreground: Phaser.GameObjects.TileSprite;
   railing: Phaser.GameObjects.Graphics;
   lamp: Phaser.GameObjects.Graphics;
   /** Current roof and body scroll speed in px/s (240, or 180 in the final car). Rigs use it as wind speed. */
@@ -464,6 +569,13 @@ export function createBackgrounds(scene: Phaser.Scene, map: MapId = "roof"): Lay
     .setOrigin(0, 0).setAlpha(GLOW_ALPHA).setDepth(DEPTH.glow);
   const track = scene.add.tileSprite(0, H - TEXTURE_SIZE.bg_track_trail[1], W, TEXTURE_SIZE.bg_track_trail[1], "bg_track_trail")
     .setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.track);
+  const lamps = scene.add.tileSprite(0, WORLD.ROOF_Y - ROOF_LAMP_H, W, ROOF_LAMP_H, "bg_roof_lamps")
+    .setOrigin(0, 0).setDepth(DEPTH.roofLamps);
+  const [hazeW, hazeH] = TEXTURE_SIZE.bg_haze;
+  const hazeFar = scene.add.image(0, 150, "bg_haze").setOrigin(0, 0).setDisplaySize(W, hazeH * 1.5).setAlpha(HAZE_ALPHA.far).setDepth(DEPTH.hazeFar);
+  const hazeNear = scene.add.image(0, WORLD.ROOF_Y - hazeH, "bg_haze").setOrigin(0, 0).setDisplaySize(W, hazeH).setAlpha(HAZE_ALPHA.near).setDepth(DEPTH.hazeNear);
+  void hazeW;
+  const foreground = scene.add.tileSprite(0, 0, W, H, "bg_foreground").setOrigin(0, 0).setDepth(DEPTH.foreground);
 
   const railing = scene.add.graphics().setDepth(DEPTH.railing).setAlpha(0).setVisible(false);
   drawRailing(railing);
@@ -472,7 +584,7 @@ export function createBackgrounds(scene: Phaser.Scene, map: MapId = "roof"): Lay
 
   const tint = scene.add.rectangle(0, 0, W, H, P.danger, 1).setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.tint);
 
-  const base = { tiles, tunnel, track, dark, tint, moon, glow, railing, lamp, roofSpeed: STANDARD_ROOF_SPEED };
+  const base = { tiles, tunnel, track, dark, tint, moon, glow, lamps, hazeFar, hazeNear, foreground, railing, lamp, roofSpeed: STANDARD_ROOF_SPEED };
   const mapLayer = createMapLayer(scene, base);
   mapLayer.setMap(map);
   const layers = { ...base, map: mapLayer } as Layers;
@@ -505,6 +617,8 @@ export function scrollBackgrounds(layers: Layers, dtSec: number): void {
     if (speed !== 0) tile.tilePositionX += speed * dt;
   });
   layers.glow.tilePositionX += layers.roofSpeed * dt;
+  layers.lamps.tilePositionX += layers.roofSpeed * dt;
+  layers.foreground.tilePositionX += layers.roofSpeed * FOREGROUND_SPEED * dt;
   layers.tunnel.tilePositionX += TUNNEL_SPEED * dt;
   layers.track.tilePositionX += TRACK_SPEED * dt;
   const ex = extras.get(layers);
@@ -526,7 +640,7 @@ export function applyTrainCar(scene: Phaser.Scene, layers: Layers, car: TrainCar
 
   const targets: object[] = [
     ...layers.tiles, layers.tunnel, layers.track, layers.dark, layers.tint, layers.moon, layers.glow,
-    layers.railing, layers.lamp, layers,
+    layers.hazeFar, layers.hazeNear, layers.railing, layers.lamp, layers,
   ];
   if (twinkle) targets.push(twinkle);
   scene.tweens.killTweensOf(targets);
@@ -556,6 +670,8 @@ export function applyTrainCar(scene: Phaser.Scene, layers: Layers, car: TrainCar
     fade(tile, sky * TILE_ALPHA[row.key]);
   });
   fade(layers.moon, sky);
+  fade(layers.hazeFar, sky * HAZE_ALPHA.far);
+  fade(layers.hazeNear, sky * HAZE_ALPHA.near);
   if (twinkle) fade(twinkle, sky);
   fade(layers.dark, tunnel ? DARK_ALPHA_TUNNEL : 0);
   fade(layers.tunnel, tunnel ? 1 : 0);

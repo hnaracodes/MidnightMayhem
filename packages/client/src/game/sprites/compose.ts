@@ -59,8 +59,12 @@ export const CHARACTER_PARTS: Record<CharacterId, CharacterParts> = {
 
 export interface ComposeOpts {
   facing: 1 | -1;
-  /** Rim on both edges and no dark-side dither (tunnel: lamps on both walls). */
-  rimBoth: boolean;
+  /** 12.02: rim highlight colour, from the strongest light at the fighter (`lamp`, `glow1`, `amber1`). */
+  rimColor: number;
+  /** 12.02: the lit edge; `"both"` in the tunnel (lamps on both walls) and then no dark-side dither. */
+  rimSide: "left" | "right" | "both";
+  /** 12.02: 0..0.25 mix of every fill toward night1 (gloom); outline and rim untouched. */
+  gloom: number;
   flash?: number | undefined;
   flashAlpha?: number | undefined;
   alpha: number;
@@ -85,6 +89,8 @@ const BLINK_MS = 500;
 /** Dark-side dither colour and weight. */
 const SHADE = P.night1;
 const SHADE_ALPHA = 0.45;
+/** 12.02: fighters never drop below 75 % brightness (FIGHTER_MIN_BRIGHTNESS in stage/lighting.ts). */
+const MAX_GLOOM = 0.25;
 const DEFAULT_FLASH_ALPHA = 0.7;
 
 /** World joint -> frame px in the authored (facing-right) space, relative to the feet anchor, rounded. */
@@ -95,7 +101,8 @@ export function jointToSprite(joint: Pt, f: FighterState): { x: number; y: numbe
   };
 }
 
-const FIST_STATES: ReadonlySet<RigState> = new Set(["punch", "block", "hit"]);
+/** 12.04: the laser keeps open palms (the cupped hands and the thrust); a throw grips (holding covers it anyway). */
+const FIST_STATES: ReadonlySet<RigState> = new Set(["punch", "block", "hit", "throw"]);
 
 /** Which hand part a state uses; holding an item always grips. */
 function handPart(parts: CharacterParts, state: RigState, holding: boolean): Part {
@@ -186,9 +193,11 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
 
   // nothing sinks into the roof: the fill stops one row above the sole so the outline lands on it (KO sprawl)
   canvas.clearBelow(ANCHOR.y - 1);
+  // 12.02: gloom mixes the fills before the outline and rim passes so those stay crisp
+  if (opts.gloom > 0) canvas.mixAll(SHADE, Math.min(opts.gloom, MAX_GLOOM), P.outline);
   canvas.outline(P.outline);
-  canvas.rim(P.amber1, opts.rimBoth, P.outline);
-  if (!opts.rimBoth) canvas.edgeDither(2, SHADE, SHADE_ALPHA, "left", P.outline);
+  canvas.rim(opts.rimColor, opts.rimSide, P.outline);
+  if (opts.rimSide !== "both") canvas.edgeDither(2, SHADE, SHADE_ALPHA, opts.rimSide === "right" ? "left" : "right", P.outline);
 
   if (opts.flash !== undefined) canvas.mixAll(opts.flash, opts.flashAlpha ?? DEFAULT_FLASH_ALPHA);
   canvas.scaleAlpha(opts.alpha);

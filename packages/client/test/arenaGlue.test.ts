@@ -91,23 +91,11 @@ describe("posedFighter", () => {
     expect(posedFighter(punching)).toBe(punching);
   });
 
-  it("poses a throw as the same arm's punch, scaled onto the punch length and never past it", () => {
-    const total = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH_RECOVERY;
-    const throwTotal = ARSENAL.THROW_STARTUP + ARSENAL.THROW_RECOVERY;
-    const at = (elapsed: number) =>
-      posedFighter({ ...base(), action: { kind: "throw", item: "molotov", arm: "R", phase: "release", charge: 0, elapsed, released: elapsed >= ARSENAL.THROW_STARTUP } });
-    expect(at(0).action).toEqual({ kind: "punch", arm: "R", elapsed: 0, landed: false, sword: false });
-    expect(at(throwTotal - 1).action!.elapsed).toBeLessThan(total);
-    expect(at(throwTotal + 5).action!.elapsed).toBe(total - 1);
-  });
-
-  it("poses a laser as the block stance for its whole duration", () => {
-    for (const elapsed of [0, ARSENAL.LASER_CHARGE, ARSENAL.LASER_CHARGE + ARSENAL.LASER_ACTIVE + 3]) {
-      const posed = posedFighter({ ...base(), vx: 3, action: { kind: "laser", elapsed, hit: [] } });
-      expect(posed.action).toBeNull();
-      expect(posed.blocking).toBe(true);
-      expect(posed.vx).toBe(0);
-    }
+  it("12.04: throws and lasers reach computePose untouched (pose.ts poses them itself)", () => {
+    const throwing: FighterState = { ...base(), action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 10, elapsed: 0, released: false } };
+    expect(posedFighter(throwing)).toBe(throwing);
+    const lasering: FighterState = { ...base(), vx: 3, action: { kind: "laser", elapsed: ARSENAL.LASER_CHARGE, hit: [] } };
+    expect(posedFighter(lasering)).toBe(lasering);
   });
 });
 

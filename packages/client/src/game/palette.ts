@@ -24,6 +24,17 @@ export const P = {
   claudeGreen: 0x7CF29A,
   outline: 0x05070F,
   white: 0xFFFFFF,
+  // 12.02 ambience tokens: added, never repurposed (character colours depend on the ones above)
+  /** Deeper than night0: the furthest sky, near-camera silhouettes, the darkness fill. */
+  void0: 0x03050C,
+  /** Desaturated mid-blue that distance and fog fade toward. */
+  haze: 0x34426A,
+  /** Warm-leaning off-white for HUD ink and small type; softer than moon. */
+  bone: 0xE9E2CF,
+  /** Cold bioluminescent cyan: the laser core and the moon-side rim. */
+  glow1: 0x7FE7F0,
+  /** The warm light of lamps and window spill; lighter and less saturated than amber1 so a pool never reads as UI. */
+  lamp: 0xF7C77A,
 } as const;
 
 /** The same tokens as CSS "#RRGGBB" strings for DOM and Phaser Text styles. */
@@ -52,4 +63,9 @@ export const CSS_P = {
   claudeGreen: "#7CF29A",
   outline: "#05070F",
   white: "#FFFFFF",
+  void0: "#03050C",
+  haze: "#34426A",
+  bone: "#E9E2CF",
+  glow1: "#7FE7F0",
+  lamp: "#F7C77A",
 } as const;

@@ -3,6 +3,7 @@ import type Phaser from "phaser";
 import { BALANCE, WORLD, createMatch, type MatchState, type SimEvent } from "@midnight/shared";
 import { Effects } from "../src/game/effects";
 import { P } from "../src/game/palette";
+import { PIXEL } from "../src/game/pixel";
 
 /** Records fill alphas and destruction; every other Graphics method is a chainable no-op. */
 class FakeGraphics {
@@ -176,11 +177,29 @@ describe("Effects impact position", () => {
     const newest = structuredClone(state);
     newest.fighters[1]!.x = 460;
     fx.consume([hit(1, false)], state, newest);
-    const spark = created.at(-1)!;
+    // 12.04: a clean hit spawns the impact star, then the spark burst and the ring; the star is the one with circles
+    const spark = [...created].reverse().find((g) => g.circles.length > 0)!;
     const core = spark.circles.at(-1)!;
-    expect(core.x).toBe(460 - 20);
-    expect(core.y).toBe(WORLD.ROOF_Y - 90);
+    // 12.01: snapped to the pixel grid (440 → 441, 340 → 339)
+    expect(core.x).toBe(441);
+    expect(core.y).toBe(339);
+    expect(Math.abs(core.x - (460 - 20))).toBeLessThanOrEqual(PIXEL / 2);
+    expect(Math.abs(core.y - (WORLD.ROOF_Y - 90))).toBeLessThanOrEqual(PIXEL / 2);
     expect(fx.frozen(1)?.x).toBe(460);
+  });
+
+  it("12.01 rule 4: dust puffs land on the pixel grid", () => {
+    const { scene, created } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    state.fighters[0]!.x = 301;
+    state.fighters[0]!.y = WORLD.ROOF_Y;
+    fx.consume([{ type: "JUMP", player: 0 }], state);
+    const dust = created.at(-1)!;
+    expect(dust.circles.length).toBeGreaterThan(0);
+    // drawDust offsets puff 0 by dx −10 from the feet; feet 301 snap to 300, so the puff sits at 290 (not 291)
+    expect(dust.circles[0]!.x).toBe(290);
+    expect(PIXEL).toBe(3);
   });
 });
 
@@ -417,5 +436,69 @@ describe("Effects punch trail", () => {
     expect(created[1]!.destroyed).toBe(false);
     fx.update(DT);
     expect(created[1]!.destroyed).toBe(true);
+  });
+});
+
+// ---- 12.04 ----
+
+import { Lcg } from "../src/game/backgrounds";
+import { landingScale, sparkSpecks } from "../src/game/effects";
+
+describe("12.04 rules 7–9: impact juice, landing weight, KO rim", () => {
+  it("a clean hit spawns the impact star, a spark burst and a ring; a blocked hit only its ring", () => {
+    const { scene, created } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    const before = created.length;
+    fx.consume([hit(1, true)], state);
+    expect(created.length - before).toBe(1);
+    fx.consume([hit(1, false)], state);
+    expect(created.length - before).toBe(4);
+    const cam = (scene as unknown as { cameras: { main: { scrollX?: number } } }).cameras.main;
+    fx.update(DT);
+    expect(Math.abs(cam.scrollX ?? 0)).toBeGreaterThan(0);
+    for (let k = 0; k < 6; k++) fx.update(DT);
+    expect(cam.scrollX).toBe(0);
+  });
+
+  it("spark specks are seeded, fanned around the punch direction, and snapped when drawn", () => {
+    const a = sparkSpecks(new Lcg(1), 1), b = sparkSpecks(new Lcg(1), 1), c = sparkSpecks(new Lcg(2), 1);
+    expect(a).toEqual(b);
+    expect(a).not.toEqual(c);
+    expect(a.length).toBe(7);
+    for (const s of a) { expect(s.ux).toBeGreaterThan(0); expect(Math.abs(s.uy)).toBeLessThan(Math.sin((35 * Math.PI) / 180) + 1e-9); }
+    for (const s of sparkSpecks(new Lcg(1), -1)) expect(s.ux).toBeLessThan(0);
+  });
+
+  it("landing dust scales with the fall speed and a heavy landing pulses a light", () => {
+    expect(landingScale(0)).toBeCloseTo(0.6, 6);
+    expect(landingScale(6)).toBeCloseTo(1, 6);
+    expect(landingScale(20)).toBeCloseTo(1.4, 6);
+    const pulses: number[] = [];
+    const sink = { addLight: () => ({ id: 1 }), moveLight: () => undefined, removeLight: () => undefined, pulse: (l: { r: number }) => { pulses.push(l.r); }, glow: () => undefined };
+    const { scene, created } = stubScene();
+    const fx = new Effects(scene, sink);
+    const state = fighting();
+    const f = state.fighters[0]!;
+    f.grounded = false; f.vy = 9;
+    fx.consume([], state); fx.update(DT);
+    f.grounded = true; f.vy = 0;
+    fx.consume([], state); fx.update(DT);
+    const puff = created.at(-1)!;
+    expect(puff.circles[0]!.r).toBeGreaterThan(6);
+    expect(pulses).toContain(80);
+  });
+
+  it("koRim runs 1 → 0 over the collapse", () => {
+    const { scene } = stubScene();
+    const fx = new Effects(scene);
+    const state = fighting();
+    expect(fx.koRim(1)).toBe(1);
+    state.fighters[1]!.hp = 0;
+    state.phase = "ROUND_END";
+    frames(fx, state, 1);
+    expect(fx.koRim(1)).toBeLessThanOrEqual(1);
+    frames(fx, state, 130); // the collapse plays over 30 ko-frames at the 0.25 time scale
+    expect(fx.koRim(1)).toBe(0);
   });
 });

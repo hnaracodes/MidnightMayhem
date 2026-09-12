@@ -6,6 +6,7 @@
 import type Phaser from "phaser";
 import type { CharacterId } from "@midnight/shared";
 import { P } from "../palette";
+import { snap } from "../pixel";
 import { CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
 import type { Arm, Joints, Leg, Pt } from "./pose";
 
@@ -13,10 +14,12 @@ type G = Phaser.GameObjects.Graphics;
 
 export interface DrawOpts {
   facing: 1 | -1;
-  /** Rim stroke colour (0xRRGGBB), normally `P.amber1`. */
+  /** Rim stroke colour (0xRRGGBB): `lamp`, `glow1` or `amber1` from the light rig (12.02). */
   rim: number;
-  /** Rim on both edges of every shape (tunnel: wall lamps on both sides); default screen-right only. */
-  rimBoth?: boolean;
+  /** 12.02: the lit edge of every shape; `"both"` in the tunnel (wall lamps on both sides). Default screen-right. */
+  rimSide?: "left" | "right" | "both";
+  /** 12.02: 0..0.25 mix of every fill toward night1; outline and rim untouched. */
+  gloom?: number;
   /** Flash colour mixed into every fill (damage / chip flash). Outlines and rim stay; the rig stays opaque. */
   fillOverride?: number;
   /** With `fillOverride`: the mix weight toward it (0.7 = mostly flash colour). Without it: multiplies every alpha. */
@@ -28,6 +31,9 @@ export interface DrawOpts {
 }
 
 const OUTLINE_W = 3;
+const MAX_GLOOM = 0.25;
+/** Which edges carry the rim stroke: +1 screen-right, −1 screen-left. */
+const sides = (side: "left" | "right" | "both"): readonly (1 | -1)[] => (side === "both" ? [1, -1] : side === "left" ? [-1] : [1]);
 const ANKLE_LIFT = RIG.footW / 2 + 3;
 /** Drifter hair wedges, crown to nape: length, angle from straight up toward screen-left, base width. */
 const HAIR_LEN = [18, 24, 30, 22] as const;
@@ -42,7 +48,7 @@ interface Style {
   outline: number;
   rim: number | null;
   /** Rim on both edges (tunnel) instead of screen-right only. */
-  rimBoth: boolean;
+  rimSide: "left" | "right" | "both";
 }
 
 /** One capsule pass: a thick line with round caps. Exported for the preview page. */
@@ -55,10 +61,29 @@ export function capsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha:
   g.fillCircle(b.x, b.y, r);
 }
 
+/** 12.02 rule 10: shadow pool geometry at a height above the ground, 0 (planted) to 150 px (jump apex). Pure. */
+export function shadowPool(heightAboveGround: number): { w: number; alpha: number } {
+  const t = Math.max(0, Math.min(1, heightAboveGround / SHADOW_APEX));
+  return { w: SHADOW_W0 + (SHADOW_W1 - SHADOW_W0) * t, alpha: 1 - (1 - SHADOW_ALPHA_APEX) * t };
+}
+const SHADOW_APEX = 150;
+const SHADOW_W0 = 64;
+const SHADOW_W1 = 110;
+const SHADOW_ALPHA_APEX = 0.3;
+/** Three stacked ellipses, the outer ones softer, so the contact reads as a pool that tightens toward the ground. */
+const SHADOW_LAYERS = [
+  { k: 1, alpha: 0.32 },
+  { k: 0.66, alpha: 0.18 },
+  { k: 0.36, alpha: 0.14 },
+] as const;
+
 export function drawShadow(g: G, x: number, groundY: number, heightAboveGround: number): void {
-  const k = Math.max(0.35, 1 - heightAboveGround / 200);
-  g.fillStyle(P.outline, 0.35 * k);
-  g.fillEllipse(x, groundY + 2, 64 * k, 12);
+  const pool = shadowPool(heightAboveGround);
+  const cx = snap(x);
+  for (const layer of SHADOW_LAYERS) {
+    g.fillStyle(P.outline, layer.alpha * pool.alpha);
+    g.fillEllipse(cx, groundY + 2, snap(pool.w * layer.k), 12 * (0.6 + 0.4 * layer.k));
+  }
 }
 
 export function drawFighter(g: G, joints: Joints, characterId: CharacterId, opts: DrawOpts): void {
@@ -75,16 +100,19 @@ export function drawFighter(g: G, joints: Joints, characterId: CharacterId, opts
   for (const [i, ghost] of j.ghosts.entries()) {
     const gj = translateJoints(j, ghost.x - j.hip.x, ghost.y - j.hip.y);
     const ga = (i === 0 ? 0.35 : 0.18) * alpha;
-    drawBody(g, gj, rig, opts, { fill: () => P.moon, alpha: ga, outline: P.moon, rim: null, rimBoth: false }, wind, flap);
+    drawBody(g, gj, rig, opts, { fill: () => P.moon, alpha: ga, outline: P.moon, rim: null, rimSide: "right" }, wind, flap);
   }
 
   const mixWeight = opts.fillAlpha ?? 1;
+  // 12.02: gloom dims the fills toward night1 (never below 75 %); a flash still replaces them afterwards
+  const gloom = Math.min(opts.gloom ?? 0, MAX_GLOOM);
+  const shaded = gloom > 0 ? (c: number): number => mix(c, P.night1, gloom) : (c: number): number => c;
   const style: Style = {
-    fill: override === undefined ? (c) => c : (c) => mix(c, override, mixWeight),
+    fill: override === undefined ? shaded : (c) => mix(shaded(c), override, mixWeight),
     alpha,
     outline: P.outline,
     rim: opts.rim,
-    rimBoth: opts.rimBoth ?? false,
+    rimSide: opts.rimSide ?? "right",
   };
   drawBody(g, j, rig, opts, style, wind, flap);
 }
@@ -122,7 +150,7 @@ interface Seg { a: Pt; b: Pt; w: number; color: number }
 function limbGroup(g: G, segs: Seg[], st: Style): void {
   for (const s of segs) capsule(g, s.a, s.b, s.w + OUTLINE_W * 2, st.outline, st.alpha);
   for (const s of segs) capsule(g, s.a, s.b, s.w, st.fill(s.color), st.alpha);
-  if (st.rim !== null) for (const s of segs) rimCapsule(g, s.a, s.b, s.w, st.rim, st.alpha, st.rimBoth);
+  if (st.rim !== null) for (const s of segs) rimCapsule(g, s.a, s.b, s.w, st.rim, st.alpha, st.rimSide);
 }
 
 function drawLeg(g: G, leg: Leg, rig: CharacterRig, trouser: number, skin: number, st: Style, facing: 1 | -1, tornCuff: boolean): void {
@@ -219,8 +247,7 @@ function drawTorso(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, wi
   outlinedPoly(g, quad, c.coat, st);
   if (st.rim !== null) {
     const rightS = p.x > 0 ? 1 : -1;
-    const edges = [rightS];
-    if (st.rimBoth) edges.push(-rightS);
+    const edges = sides(st.rimSide).map((side) => side * rightS);
     g.lineStyle(3, st.rim, st.alpha);
     for (const s of edges) {
       const top = s === 1 ? neckR : neckL;
@@ -316,7 +343,7 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
     if (st.rim !== null) {
       // the rim arc continues over the cap on the screen-right edge (both edges in the tunnel)
       g.lineStyle(3, st.rim, st.alpha);
-      for (const side of st.rimBoth ? [1, -1] : [1]) {
+      for (const side of sides(st.rimSide)) {
         g.beginPath();
         g.arc(j.head.x, j.head.y, r - 1.5, side === 1 ? -0.95 : Math.PI + 0.05, side === 1 ? -0.05 : Math.PI + 0.95, false);
         g.strokePath();
@@ -337,8 +364,8 @@ function drawHead(g: G, j: Joints, rig: CharacterRig, c: Colours, st: Style, win
       g.lineStyle(3, st.rim, st.alpha);
       const rightEdge = facing === 1 ? [band[5]!, band[4]!] : [band[0]!, band[1]!];
       const leftEdge = facing === 1 ? [band[0]!, band[1]!] : [band[5]!, band[4]!];
-      g.lineBetween(rightEdge[0]!.x - 1.5, rightEdge[0]!.y, rightEdge[1]!.x - 1.5, rightEdge[1]!.y);
-      if (st.rimBoth) g.lineBetween(leftEdge[0]!.x + 1.5, leftEdge[0]!.y, leftEdge[1]!.x + 1.5, leftEdge[1]!.y);
+      if (st.rimSide !== "left") g.lineBetween(rightEdge[0]!.x - 1.5, rightEdge[0]!.y, rightEdge[1]!.x - 1.5, rightEdge[1]!.y);
+      if (st.rimSide !== "right") g.lineBetween(leftEdge[0]!.x + 1.5, leftEdge[0]!.y, leftEdge[1]!.x + 1.5, leftEdge[1]!.y);
     }
   }
 }
@@ -353,10 +380,12 @@ function outlinedCircle(g: G, c: Pt, r: number, color: number, st: Style): void 
   g.fillCircle(c.x, c.y, r);
   if (st.rim !== null) {
     g.lineStyle(3, st.rim, st.alpha);
-    g.beginPath();
-    g.arc(c.x, c.y, r - 1.5, -0.95, 0.95, false);
-    g.strokePath();
-    if (st.rimBoth) {
+    if (st.rimSide !== "left") {
+      g.beginPath();
+      g.arc(c.x, c.y, r - 1.5, -0.95, 0.95, false);
+      g.strokePath();
+    }
+    if (st.rimSide !== "right") {
       g.beginPath();
       g.arc(c.x, c.y, r - 1.5, Math.PI - 0.95, Math.PI + 0.95, false);
       g.strokePath();
@@ -375,7 +404,7 @@ function outlinedPoly(g: G, pts: Pt[], color: number, st: Style): void {
  * Warm rim along the screen-right edge of a capsule, plus a cap arc on the right-most end of horizontal limbs.
  * With `both` the screen-left edge and left-most end get the same stroke (tunnel: lamps on both walls).
  */
-function rimCapsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha: number, both = false): void {
+function rimCapsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha: number, rimSide: "left" | "right" | "both" = "right"): void {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const len = Math.hypot(dx, dy);
@@ -387,7 +416,7 @@ function rimCapsule(g: G, a: Pt, b: Pt, width: number, color: number, alpha: num
     let nx = -uy;
     let ny = ux;
     if (nx < 0) { nx = -nx; ny = -ny; }
-    for (const side of both ? [1, -1] : [1]) {
+    for (const side of sides(rimSide)) {
       if (nx > 0.35) g.lineBetween(a.x + side * nx * r, a.y + side * ny * r, b.x + side * nx * r, b.y + side * ny * r);
       if (Math.abs(ux) > 0.5) {
         const e = (b.x > a.x) === (side === 1) ? b : a;

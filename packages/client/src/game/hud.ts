@@ -44,7 +44,20 @@ const BLINK_HZ = 4;
 export const TOAST = { W: 168, H: 34, IN: 10, HOLD: 90, OUT: 10, BROKEN_HOLD: 45, GAP: 8, ROW: 38, STRIPE: 3, GLYPH: 18, NAME: 12, STATUS: 10 } as const;
 const PIP_PULSE_FRAMES = 12;
 const DEPTH = { HUD: 10, BANNER: 11 } as const;
-const FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif";
+/** 12.05 rule 2: the landing's condensed railway stack, local fonts only. */
+export const HUD_FONT = "'Avenir Next Condensed', Bahnschrift, 'Arial Narrow', 'Helvetica Neue', Impact, sans-serif";
+const FONT = HUD_FONT;
+/** 12.05: bone ink with a 2–3 px void0 stroke and a warm lamp shadow-glow instead of the old hard strokes. */
+const INK_STROKE = { NAME: 2, TIMER: 3, BANNER: 3 } as const;
+const INK_GLOW = "rgba(247, 199, 122, 0.35)";
+const INK_GLOW_BLUR = 6;
+/** 12.05 rule 1: the bar glow outside the frame, and its heartbeat under low HP (rule 5). */
+export const LOW_HP_FRACTION = 0.25;
+const GLOW = { LAYERS: 3, STEP: 3 } as const;
+const HEARTBEAT_SEC = 1.2;
+const LOW_VIGNETTE = { W: 40, STRIPS: 12, ALPHA: 0.18 } as const;
+const BANNER_FADE_SEC = 0.28;
+const HALO = { ALPHA0: 0.35, ALPHA1: 0.2, WIDTH: 1.4, DEPTH: 10.9 } as const;
 const MAX_BARS = 4;
 
 const CAR_LABEL: Record<MatchState["trainCar"], string> = {
@@ -267,8 +280,12 @@ export class Hud {
   private readonly pulseFrames: number[] = [];
   private names: string[] = [];
   private bannerText: string | null = null;
-  private popT: number = BANNER.POP_SEC;
+  private popT: number = BANNER_FADE_SEC;
   private clock = 0;
+  /** 12.05 rule 5: the low-HP breathing vignette (its own Graphics so the bars can be cleared per frame as before). */
+  private vig!: Phaser.GameObjects.Graphics;
+  /** 12.05 rule 6: the void0 halo under a banner as it bleeds in. */
+  private halo!: Phaser.GameObjects.Graphics;
   private lastPhase: MatchState["phase"] | null = null;
   private fightBannerLeft = 0;
   /** Text objects stay hidden until the first update: the arena boots under the lobby before any snapshot. */
@@ -276,9 +293,11 @@ export class Hud {
 
   constructor(scene: Phaser.Scene) {
     this.g = scene.add.graphics().setDepth(DEPTH.HUD);
+    this.vig = scene.add.graphics().setDepth(DEPTH.HUD);
+    this.halo = scene.add.graphics().setDepth(HALO.DEPTH);
 
     this.timer = scene.add
-      .text(TIMER.X, TIMER.Y, "", style(TIMER.SIZE, CSS_P.moon, TIMER.STROKE))
+      .text(TIMER.X, TIMER.Y, "", style(TIMER.SIZE, CSS_P.bone, INK_STROKE.TIMER))
       .setOrigin(0.5, 0.5)
       .setDepth(DEPTH.HUD);
 
@@ -288,7 +307,7 @@ export class Hud {
       .setDepth(DEPTH.HUD);
 
     this.banner = scene.add
-      .text(BANNER.X, BANNER.Y, "", style(BANNER_SIZE.COUNTDOWN, CSS_P.moon, BANNER.STROKE))
+      .text(BANNER.X, BANNER.Y, "", style(BANNER_SIZE.COUNTDOWN, CSS_P.bone, INK_STROKE.BANNER))
       .setOrigin(0.5, 0.5)
       .setDepth(DEPTH.BANNER)
       .setVisible(false);
@@ -298,15 +317,15 @@ export class Hud {
 
     for (let i = 0; i < MAX_BARS; i += 1) {
       this.texts.push({
-        name: text(NAME.SIZE, CSS_P.moon, 2),
+        name: text(NAME.SIZE, CSS_P.bone, INK_STROKE.NAME),
         tag: text(TAG.SIZE, CSS_P.amber1, 2),
-        out: text(NAME.SIZE_SMALL, CSS_P.moon, 2).setOrigin(0.5, 0.5),
+        out: text(NAME.SIZE_SMALL, CSS_P.bone, INK_STROKE.NAME).setOrigin(0.5, 0.5),
         dazzle: text(NAME.SIZE_SMALL, CSS_P.amber1, 2),
-        glyph: text(NAME.SIZE, CSS_P.moon, 0).setOrigin(0.5, 0.5),
+        glyph: text(NAME.SIZE, CSS_P.bone, 0).setOrigin(0.5, 0.5),
         minis: [text(9, CSS_P.steel2, 0).setOrigin(0.5, 0.5), text(9, CSS_P.steel2, 0).setOrigin(0.5, 0.5)],
-        toastGlyph: text(TOAST.GLYPH, CSS_P.moon, 0).setOrigin(0.5, 0.5),
+        toastGlyph: text(TOAST.GLYPH, CSS_P.bone, 0).setOrigin(0.5, 0.5),
         toastName: text(TOAST.NAME, CSS_P.amber1, 0).setOrigin(0, 0.5),
-        toastStatus: text(TOAST.STATUS, CSS_P.moon, 0).setOrigin(0, 0.5),
+        toastStatus: text(TOAST.STATUS, CSS_P.bone, 0).setOrigin(0, 0.5),
       });
       const full = BALANCE.MAX_HP;
       this.anim.push({ hp: full, ghost: full, from: full, t: GHOST_DRAIN_SEC });
@@ -346,6 +365,7 @@ export class Hud {
 
     const players = state.config.players;
     this.g.clear();
+    this.drawLowVignette(state);
     for (let i = 0; i < MAX_BARS; i += 1) {
       const fighter = state.fighters[i];
       const texts = this.texts[i]!;
@@ -370,7 +390,8 @@ export class Hud {
     const color = teamColor(state, i);
 
     this.advanceDrain(anim, f.hp, dt);
-    this.drawBar(bar, h, anim, ko ? P.steel2 : color);
+    const low = !ko && state.phase === "FIGHTING" && f.hp > 0 && f.hp / BALANCE.MAX_HP <= LOW_HP_FRACTION;
+    this.drawBar(bar, h, anim, ko ? P.steel2 : color, low);
     const after = this.drawNameRow(state, i, f, bar, h, t, color, ko);
     this.drawRoundPips(state, i, bar, h, after);
 
@@ -432,13 +453,13 @@ export class Hud {
     const glyphX = left ? x + 20 : x + l.w - 20;
     const textX = left ? x + 36 : x + 36; // text block always reads left → right; it sits after the glyph on the left side
     t.toastGlyph.setText(GLYPH[toast.item]).setPosition(glyphX, cy - 1).setAlpha(k).setVisible(true);
-    setColorIfChanged(t.toastGlyph, toast.broken ? CSS_P.steel2 : CSS_P.moon);
+    setColorIfChanged(t.toastGlyph, toast.broken ? CSS_P.steel2 : CSS_P.bone);
     const label = toast.item.toUpperCase(); // MOLOTOV, SWORD, SHIELD, BANANA, FLASH: the words the keys 1–5 are taught by
     const name = toast.broken ? label : `${label} ×${toast.uses}`;
     t.toastName.setText(name).setAlpha(k).setVisible(true);
-    setColorIfChanged(t.toastName, toast.broken ? CSS_P.moon : CSS_P.amber1);
+    setColorIfChanged(t.toastName, toast.broken ? CSS_P.bone : CSS_P.amber1);
     t.toastStatus.setText(toast.broken ? "BROKEN" : "EQUIPPED").setAlpha(k).setVisible(true);
-    setColorIfChanged(t.toastStatus, toast.broken ? CSS_P.danger : CSS_P.moon);
+    setColorIfChanged(t.toastStatus, toast.broken ? CSS_P.danger : CSS_P.bone);
     if (left) {
       t.toastName.setOrigin(0, 0.5).setPosition(textX, cy - 7);
       t.toastStatus.setOrigin(0, 0.5).setPosition(textX, cy + 8);
@@ -466,15 +487,28 @@ export class Hud {
     }
   }
 
-  private drawBar(bar: BarLayout, h: number, anim: BarAnim, outline: number): void {
+  private drawBar(bar: BarLayout, h: number, anim: BarAnim, outline: number, low = false): void {
     const g = this.g;
     const span = (hp: number): [number, number] => {
       const w = Math.round(bar.w * clamp01(hp / BALANCE.MAX_HP));
       return [bar.align === "left" ? bar.x : bar.x + bar.w - w, w];
     };
+    const fill = barColor(anim.hp);
 
-    g.fillStyle(P.steel0, 1);
+    // 12.05 rule 1: a glow outside the frame that grows as health drops, beating under low HP (rule 5)
+    const beat = low ? 0.6 + 0.4 * lowHpPulse(this.clock) : 1;
+    const glow = barGlowAlpha(anim.hp) * beat;
+    for (let k = GLOW.LAYERS; k >= 1; k -= 1) {
+      const pad = BORDER.TEAM / 2 + k * GLOW.STEP;
+      g.fillStyle(fill, glow / GLOW.LAYERS);
+      g.fillRect(bar.x - pad, bar.y - pad, bar.w + 2 * pad, h + 2 * pad);
+    }
+
+    // the recessed channel: void0 with a night2 line along its bottom edge
+    g.fillStyle(P.void0, 1);
     g.fillRect(bar.x, bar.y, bar.w, h);
+    g.fillStyle(P.night2, 1);
+    g.fillRect(bar.x, bar.y + h - 1, bar.w, 1);
 
     if (anim.ghost > anim.hp) {
       const [gx, gw] = span(anim.ghost);
@@ -484,8 +518,13 @@ export class Hud {
 
     const [fx, fw] = span(anim.hp);
     if (fw > 0) {
-      g.fillStyle(barColor(anim.hp), 1);
+      g.fillStyle(fill, 1);
       g.fillRect(fx, bar.y, fw, h);
+      // a bone highlight along the top, an outline inner shadow along the bottom
+      g.fillStyle(P.bone, 0.85);
+      g.fillRect(fx, bar.y, fw, 1);
+      g.fillStyle(P.outline, 0.45);
+      g.fillRect(fx, bar.y + h - 2, fw, 2);
     }
 
     // Team colour outside, a hairline of outline inside it so an amber fill never merges with an amber edge.
@@ -493,6 +532,25 @@ export class Hud {
     g.strokeRect(bar.x + 0.5, bar.y + 0.5, bar.w - 1, h - 1);
     g.lineStyle(BORDER.TEAM, outline, 1);
     g.strokeRect(bar.x - BORDER.TEAM / 2, bar.y - BORDER.TEAM / 2, bar.w + BORDER.TEAM, h + BORDER.TEAM);
+  }
+
+  /** 12.05 rule 5: a breathing danger vignette on the screen edges while any live fighter is at low HP. */
+  private drawLowVignette(state: MatchState): void {
+    const g = this.vig;
+    g.clear();
+    if (state.phase !== "FIGHTING") return;
+    const low = state.fighters.some((f) => f.hp > 0 && f.hp / BALANCE.MAX_HP <= LOW_HP_FRACTION);
+    if (!low) return;
+    const peak = LOW_VIGNETTE.ALPHA * (0.35 + 0.65 * lowHpPulse(this.clock));
+    const strip = LOW_VIGNETTE.W / LOW_VIGNETTE.STRIPS;
+    for (let k = 0; k < LOW_VIGNETTE.STRIPS; k += 1) {
+      const a = peak * (1 - k / LOW_VIGNETTE.STRIPS);
+      g.fillStyle(P.danger, a);
+      g.fillRect(k * strip, 0, strip, WORLD.HEIGHT);
+      g.fillRect(WORLD.WIDTH - (k + 1) * strip, 0, strip, WORLD.HEIGHT);
+      g.fillRect(0, k * strip, WORLD.WIDTH, strip);
+      g.fillRect(0, WORLD.HEIGHT - (k + 1) * strip, WORLD.WIDTH, strip);
+    }
   }
 
   /**
@@ -519,10 +577,22 @@ export class Hud {
     const g = this.g;
     for (let pip = 0; pip < pipCount(state); pip += 1) {
       const cx = inner + dir * (r + pip * gap);
+      // 12.05 rule 3: a carved diamond with an outline edge and a bone facet on the upper-left of a won pip
+      const wonPip = pip < won;
       g.lineStyle(2, P.outline, 1);
-      g.fillStyle(pip < won ? P.moon : P.steel1, 1);
-      g.fillCircle(cx, cy, r);
-      g.strokeCircle(cx, cy, r);
+      g.fillStyle(wonPip ? P.moon : P.steel1, 1);
+      g.beginPath();
+      g.moveTo(cx, cy - r);
+      g.lineTo(cx + r, cy);
+      g.lineTo(cx, cy + r);
+      g.lineTo(cx - r, cy);
+      g.closePath();
+      g.fillPath();
+      g.strokePath();
+      if (wonPip) {
+        g.lineStyle(1, P.bone, 1);
+        g.lineBetween(cx - r + 2, cy, cx, cy - r + 2);
+      }
     }
   }
 
@@ -556,7 +626,7 @@ export class Hud {
     t.dazzle.setText("✦").setOrigin(left ? 0 : 1, 0).setPosition(cursor, y).setVisible(dazzled && blinkOn(this.clock));
     if (dazzled) cursor += dir * (t.dazzle.displayWidth + TAG.GAP);
 
-    setColorIfChanged(t.out.setText("OUT").setPosition(bar.x + bar.w / 2, bar.y + h / 2), CSS_P.moon).setVisible(ko);
+    setColorIfChanged(t.out.setText("OUT").setPosition(bar.x + bar.w / 2, bar.y + h / 2), CSS_P.bone).setVisible(ko);
     return { cursor, y, size };
   }
 
@@ -571,7 +641,7 @@ export class Hud {
     const c = SLOT.CHAMFER;
     const held = f.item;
 
-    g.fillStyle(P.night0, 0.85);
+    g.fillStyle(P.void0, 0.92);
     g.lineStyle(2, held ? P.moon : P.steel2, 1);
     g.beginPath();
     g.moveTo(x, y);
@@ -582,6 +652,13 @@ export class Hud {
     g.closePath();
     g.fillPath();
     g.strokePath();
+    // 12.05 rule 4: a recessed bezel — shadow inside the top and left, a lip inside the bottom and right
+    g.fillStyle(P.night2, 1);
+    g.fillRect(x + 1, y + 1, s - c - 1, 1);
+    g.fillRect(x + 1, y + 1, 1, s - 2);
+    g.fillStyle(P.steel2, 0.8);
+    g.fillRect(x + 1, y + s - 2, s - 2, 1);
+    g.fillRect(x + s - 2, y + c + 1, 1, s - c - 3);
 
     t.glyph.setText(itemGlyph(held)).setPosition(x + s / 2, y + s / 2 - 2).setVisible(held !== null);
 
@@ -607,12 +684,14 @@ export class Hud {
       const size = SLOT.MINI;
       const isHeld = held?.kind === kind;
       const used = !isHeld && f.itemsUsed.includes(kind);
-      g.fillStyle(P.night0, 0.6);
+      g.fillStyle(P.void0, 0.75);
       g.fillRect(m.x, m.y, size, size);
+      g.fillStyle(P.night2, 1);
+      g.fillRect(m.x + 1, m.y + 1, size - 2, 1);
       g.lineStyle(1, isHeld ? P.moon : used ? P.steel1 : P.steel2, 1);
       g.strokeRect(m.x + 0.5, m.y + 0.5, size - 1, size - 1);
       const mini = t.minis[k];
-      setColorIfChanged(mini.setText(GLYPH[kind]), isHeld ? CSS_P.moon : used ? CSS_P.steel1 : CSS_P.steel2);
+      setColorIfChanged(mini.setText(GLYPH[kind]), isHeld ? CSS_P.bone : used ? CSS_P.steel1 : CSS_P.steel2);
       mini.setPosition(m.x + size / 2, m.y + size / 2 - 1).setVisible(true);
       if (used) {
         g.lineStyle(2, P.steel2, 1);
@@ -629,7 +708,9 @@ export class Hud {
     if (readyEdge(this.wasReady[i] ?? true, frac)) this.pulse[i] = 0;
     this.wasReady[i] = ready;
 
-    g.lineStyle(SLOT.RING_W, P.steel1, 1);
+    g.lineStyle(SLOT.RING_W + 2, P.void0, 1);
+    g.strokeCircle(ring.x, ring.y, SLOT.RING_R);
+    g.lineStyle(SLOT.RING_W, P.night2, 1);
     g.strokeCircle(ring.x, ring.y, SLOT.RING_R);
     if (ready) {
       g.lineStyle(SLOT.RING_W, P.moon, 1);
@@ -662,7 +743,7 @@ export class Hud {
     const seconds = timerSeconds(state);
     this.timer.setText(text);
     this.timer.setFontSize(seconds === null ? TIMER.SIZE_INFINITY : text.length > 2 ? TIMER.SIZE_LONG : TIMER.SIZE);
-    setColorIfChanged(this.timer, seconds !== null && seconds < TIMER.DANGER_BELOW ? CSS_P.danger : CSS_P.moon);
+    setColorIfChanged(this.timer, seconds !== null && seconds < TIMER.DANGER_BELOW ? CSS_P.danger : CSS_P.bone);
   }
 
   private updateBanner(next: Banner | null, dt: number): void {
@@ -678,10 +759,16 @@ export class Hud {
         this.banner.setVisible(false);
       }
     }
+    this.halo.clear();
     if (!next) return;
-    this.popT = Math.min(BANNER.POP_SEC, this.popT + dt);
-    const k = easeOut(this.popT / BANNER.POP_SEC);
-    this.banner.setScale(lerp(BANNER.POP_FROM, 1, k));
+    // 12.05 rule 6: ink-bleed — alpha and tint bloom up from dark under a void0 halo; no scale pop
+    this.popT = Math.min(BANNER_FADE_SEC, this.popT + dt);
+    const fade = bannerFade(this.popT);
+    this.banner.setScale(1).setAlpha(fade.alpha).setTint(fade.tint);
+    const w = this.banner.displayWidth * HALO.WIDTH;
+    const h = this.banner.displayHeight * 1.1;
+    this.halo.fillStyle(P.void0, lerp(HALO.ALPHA0, HALO.ALPHA1, fade.alpha));
+    this.halo.fillEllipse(BANNER.X, BANNER.Y, w, h);
   }
 }
 
@@ -744,11 +831,31 @@ function style(size: number, color: string, stroke: number): Phaser.Types.GameOb
   return {
     fontFamily: FONT,
     fontSize: `${size}px`,
-    fontStyle: "bold",
+    fontStyle: "800",
     color,
-    stroke: CSS_P.outline,
+    stroke: CSS_P.void0,
     strokeThickness: stroke,
+    shadow: { offsetX: 0, offsetY: 0, color: INK_GLOW, blur: INK_GLOW_BLUR, stroke: false, fill: true },
   };
+}
+
+/** 12.05 rule 1: glow alpha outside a bar's frame, growing as health drops. Pure. */
+export function barGlowAlpha(hp: number): number {
+  return 0.1 + 0.4 * (1 - clamp01(hp / BALANCE.MAX_HP));
+}
+
+/** 12.05 rule 5: a 0..1 heartbeat, two beats per 1.2 s cycle (lub-dub), used by the low-HP bar and vignette. Pure. */
+export function lowHpPulse(sec: number): number {
+  const k = ((sec % HEARTBEAT_SEC) + HEARTBEAT_SEC) % HEARTBEAT_SEC / HEARTBEAT_SEC;
+  const beat = (at: number, w: number): number => Math.max(0, 1 - Math.abs(k - at) / w);
+  return Math.min(1, beat(0.1, 0.1) + 0.7 * beat(0.32, 0.1));
+}
+
+/** 12.05 rule 6: the banner's ink-bleed entrance — alpha and tint bloom up from dark over 0.28 s, no scale. Pure. */
+export function bannerFade(sec: number): { alpha: number; tint: number } {
+  const k = easeOut(clamp01(sec / BANNER_FADE_SEC));
+  const ch = (shift: number): number => Math.round(((P.void0 >> shift) & 0xff) + (0xff - ((P.void0 >> shift) & 0xff)) * k) & 0xff;
+  return { alpha: k, tint: (ch(16) << 16) | (ch(8) << 8) | ch(0) };
 }
 
 function clamp01(v: number): number {

@@ -231,18 +231,23 @@ export class PixelCanvas {
     }
   }
 
-  /** 1 px highlight on the fill pixel just inside the right-hand outline of every run (both sides when `both`). */
-  rim(color: number, both: boolean, outlineColor: number): void {
+  /**
+   * 1 px highlight on the fill pixel just inside the outline of every run, on the lit `side` (12.02: the side
+   * facing the strongest light; `"both"` in the tunnel).
+   */
+  rim(color: number, side: "left" | "right" | "both", outlineColor: number): void {
     const o = rgba(outlineColor);
     const c = rgba(color);
     const { w, h, data } = this;
+    const doRight = side !== "left";
+    const doLeft = side !== "right";
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const px = data[y * w + x]!;
         if (px === 0 || px === o) continue;
         const right = x + 1 < w ? data[y * w + x + 1]! : 0;
         const left = x > 0 ? data[y * w + x - 1]! : 0;
-        if (right === o || (both && left === o)) data[y * w + x] = c;
+        if ((doRight && right === o) || (doLeft && left === o)) data[y * w + x] = c;
       }
     }
   }
@@ -267,12 +272,13 @@ export class PixelCanvas {
     if (from < this.data.length) this.data.fill(0, from);
   }
 
-  /** Mixes every opaque pixel toward `color` by `alpha`. */
-  mixAll(color: number, alpha: number): void {
+  /** Mixes every opaque pixel toward `color` by `alpha`; pixels of colour `except` (the outline) are left alone. */
+  mixAll(color: number, alpha: number, except?: number): void {
     const { data } = this;
+    const skip = except === undefined ? -1 : rgba(except);
     for (let i = 0; i < data.length; i++) {
       const px = data[i]!;
-      if (px !== 0) data[i] = rgba(mix(rgbOf(px), color, alpha), alphaOf(px));
+      if (px !== 0 && px !== skip) data[i] = rgba(mix(rgbOf(px), color, alpha), alphaOf(px));
     }
   }
 

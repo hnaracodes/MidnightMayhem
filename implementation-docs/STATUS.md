@@ -105,3 +105,13 @@ with `?detector=yolo` on every page. Every report must show zero page errors.
 - Laser gesture on a real body; tune `LASER_EXT`, `LASER_GAP`.
 - Four laptops over LAN HTTPS, 2v2 on `chaos`, `timed`.
 - Rig look approval of the pixel sprites on `sprites.html`, and of the arena screenshots in `.shots/integration-*.png`.
+
+## In flight: Phase 12 ambience (`feat/graphics-enhancement`)
+
+The look-and-feel overhaul (`docs/superpowers/specs/2026-09-12-ambience-overhaul.md`, specs in
+`implementation-docs/12-ambience/`) lives on `feat/graphics-enhancement`, branched after 9.08 merged. All six lanes
+are implemented and green there: pixel grid, light rig, atmosphere + quality tiers, action animation (the laser
+pose), HUD restyle, menus and wipes. Presentation only — no change under `packages/shared` or `packages/server`.
+Merge into `main` after the owner reviews `.shots/before/*` against `.shots/after/*` and approves the proposed
+`DECISIONS_CHANGED.md` row in the branch's final summary. New dev pages: `dev/ambience.html`; new switches:
+`?quality=high|low`.

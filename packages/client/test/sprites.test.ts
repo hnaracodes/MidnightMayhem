@@ -11,7 +11,7 @@ import { ITEM_PARTS } from "../src/game/sprites/parts/items";
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
 const base = (over: Partial<FighterState> = {}): FighterState => ({ ...createMatch().fighters[0]!, ...over });
-const OPTS: ComposeOpts = { facing: 1, rimBoth: true, alpha: 1, itemVisible: true };
+const OPTS: ComposeOpts = { facing: 1, rimColor: P.amber1, rimSide: "both", gloom: 0, alpha: 1, itemVisible: true };
 const OUTLINE = rgba(P.outline);
 
 function frame(f: FighterState, opts: Partial<ComposeOpts> = {}, clk: Clock = clock): PixelCanvas {
@@ -161,7 +161,7 @@ describe("rule 4: the silhouette edge is always outline", () => {
   for (const id of CHARACTERS) {
     for (const over of [{}, { hp: 0 }, { action: { kind: "punch" as const, arm: "L" as const, elapsed: 5, landed: false, sword: false } }]) {
       it(`${id} ${JSON.stringify(over)}`, () => {
-        const c = frame(base({ character: id, ...over }), { rimBoth: false });
+        const c = frame(base({ character: id, ...over }), { rimSide: "right" });
         let edge = 0;
         for (let y = 0; y < c.h; y++) {
           for (let x = 0; x < c.w; x++) {
@@ -297,13 +297,48 @@ describe("lighting and flash", () => {
     const c = frame(base({ character: "drifter" }), { alpha: 0.5 });
     for (const px of c.data) if (px !== 0) expect(alphaOf(px)).toBe(128);
   });
-  it("the rim sits on the screen-right edge only unless rimBoth", () => {
+  it("the rim sits on the chosen edge only, both in the tunnel", () => {
     const f = base({ character: "conductor" });
-    const one = frame(f, { rimBoth: false });
-    const both = frame(f, { rimBoth: true });
+    const right = frame(f, { rimSide: "right" });
+    const left = frame(f, { rimSide: "left" });
+    const both = frame(f, { rimSide: "both" });
     const amber = rgba(P.amber1);
     const count = (c: PixelCanvas): number => { let n = 0; for (const px of c.data) if (px === amber) n += 1; return n; };
-    expect(count(both)).toBeGreaterThan(count(one));
+    expect(count(both)).toBeGreaterThan(count(right));
+    expect(count(both)).toBeGreaterThan(count(left));
+    // 12.02 rule 9: a rim pixel on the right edge has the outline to its right; on the left edge, to its left
+    const outline = rgba(P.outline);
+    const sideOf = (c: PixelCanvas, dx: 1 | -1): number => {
+      let n = 0;
+      for (let y = 0; y < c.h; y++) for (let x = 1; x < c.w - 1; x++) if (c.data[y * c.w + x] === amber && c.data[y * c.w + x + dx] === outline) n += 1;
+      return n;
+    };
+    // (a one-pixel-wide run has outline on both sides, so the off side is small, not zero)
+    expect(sideOf(right, 1)).toBeGreaterThan(0);
+    expect(sideOf(right, -1)).toBeLessThan(sideOf(right, 1) / 4);
+    expect(sideOf(left, -1)).toBeGreaterThan(0);
+    expect(sideOf(left, 1)).toBeLessThan(sideOf(left, -1) / 4);
+  });
+  it("12.02 rule 8: the rim colour follows the light and gloom darkens fills but not the outline", () => {
+    const f = base({ character: "conductor" });
+    const cyan = frame(f, { rimSide: "right", rimColor: P.glow1 });
+    const warm = frame(f, { rimSide: "right", rimColor: P.amber1 });
+    const count = (c: PixelCanvas, color: number): number => { let n = 0; for (const px of c.data) if (px === rgba(color)) n += 1; return n; };
+    expect(count(cyan, P.glow1)).toBeGreaterThan(0);
+    expect(count(warm, P.glow1)).toBe(0);
+    expect(count(cyan, P.amber1)).toBeLessThan(count(warm, P.amber1)); // the cuffs stay amber; the rim moved to cyan
+    const lit = frame(f, { gloom: 0 });
+    const dim = frame(f, { gloom: 0.25 });
+    const outline = rgba(P.outline);
+    let outlines = 0, darker = 0, same = 0;
+    for (let i = 0; i < lit.data.length; i++) {
+      const a = lit.data[i]!, b = dim.data[i]!;
+      if (a === outline) { expect(b).toBe(outline); outlines += 1; continue; }
+      if (a === 0 || a === rgba(P.amber1)) continue;
+      if (b === a) same += 1; else darker += 1;
+    }
+    expect(outlines).toBeGreaterThan(0);
+    expect(darker).toBeGreaterThan(same);
   });
 });
 

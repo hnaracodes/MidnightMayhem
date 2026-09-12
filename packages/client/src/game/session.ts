@@ -6,6 +6,7 @@ import { SnapshotBuffer } from "../net/snapshotBuffer";
 import type { DetectorId } from "../vision/backends/ObjectBackend";
 import { selectDetector } from "../vision/selectDetector";
 import type { Sfx } from "./sfx";
+import { qualityFromQuery, type Quality } from "./stage/quality";
 
 export const DEFAULT_PLAYER_NAMES: readonly string[] = CHARACTERS.map((c) => CHARACTER_LABEL[c]);
 
@@ -33,6 +34,8 @@ export const session: {
   /** `?rig=vector`: draw the old vector rig instead of the pixel sprites (11.05). */
   useVectorRig: boolean;
   debug: boolean;
+  /** 12.03: `?quality=high|low`, else auto (high on WebGL, low on Canvas, dropping to low when the frame runs over). */
+  quality: Quality | "auto";
   /** Smoothed round-trip time in ms from the debug PING loop; null until the first PONG (or when not debugging). */
   rtt: number | null;
   visionAvailable: boolean;
@@ -55,6 +58,7 @@ export const session: {
   sfx: null,
   useVectorRig: typeof location !== "undefined" && new URLSearchParams(location.search).get("rig") === "vector",
   debug: typeof location !== "undefined" && new URLSearchParams(location.search).get("debug") === "1",
+  quality: typeof location !== "undefined" ? qualityFromQuery(location.search) : "auto",
   rtt: null,
   visionAvailable: false,
   detector: typeof location !== "undefined" ? selectDetector(location.search) : "mediapipe",

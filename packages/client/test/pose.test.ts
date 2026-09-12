@@ -222,3 +222,130 @@ describe("design/02 block: both fists in front of the face", () => {
     });
   }
 });
+
+// ---- 12.04 action animation ----
+
+import { ARSENAL, THROW } from "@midnight/shared";
+import { laserHands, laserStage, throwStage } from "../src/game/rig/pose";
+
+describe("12.04 rule 1: the kamehameha", () => {
+  const laser = (elapsed: number, ms = 0): Joints =>
+    computePose(fighter({ action: { kind: "laser", elapsed, hit: [] } }), { ...clock, renderMs: ms });
+  const guard = computePose(fighter(), clock);
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+  it("rigState: laser beats punch and jump, hit beats laser", () => {
+    const f = fighter({ action: { kind: "laser", elapsed: 5, hit: [] }, grounded: false });
+    expect(rigState(f, false)).toBe("laser");
+    expect(rigState({ ...f, hitstun: 3 }, false)).toBe("hit");
+    expect(rigState(fighter({ action: { kind: "throw", item: "banana", arm: "L", phase: "charge", charge: 3, elapsed: 0, released: false } }), false)).toBe("throw");
+  });
+
+  it("charge: both fists close on a cupped point behind the hip at 50 % and 100 %, torso coiling back", () => {
+    const c = ARSENAL.LASER_CHARGE;
+    const at0 = laser(0), at50 = laser(Math.floor(c / 2)), at100 = laser(c - 1);
+    expect(laserStage(0)).toEqual({ stage: "charge", t: 0 });
+    expect(laserStage(c - 1).stage).toBe("charge");
+    // converging at 50 %, cupped behind the hip at 100 %
+    expect(at50.arms.F.fist.x).toBeLessThan(at0.arms.F.fist.x);
+    expect(at50.arms.B.fist.x).toBeLessThan(at0.arms.B.fist.x);
+    expect(at50.arms.F.fist.y).toBeGreaterThan(at0.arms.F.fist.y);
+    expect(dist(at100.arms.F.fist, at100.arms.B.fist)).toBeLessThan(8);
+    expect(at100.arms.F.fist.x).toBeLessThan(at100.hip.x); // behind the hip (facing right)
+    expect(at100.arms.F.fist.y).toBeGreaterThan(at100.arms.F.shoulder.y); // below the shoulder
+    for (const j of [at50, at100]) {
+      const cup = laserHands(j);
+      expect(Math.abs(cup.x - (j.arms.F.fist.x + j.arms.B.fist.x) / 2)).toBeLessThan(1e-9);
+    }
+    expect(at50.lean).toBeLessThan(at0.lean);
+    expect(at100.lean).toBeLessThan(at50.lean);
+    expect(at100.head.y).toBeGreaterThan(guard.head.y); // head down and the hip dropped
+    // the tremble is deterministic from the render clock and grows with the charge
+    expect(laser(c - 1, 0).arms.F.fist).toEqual(laser(c - 1, 0).arms.F.fist);
+    expect(laser(c - 1, 18).arms.F.fist.x).not.toBe(laser(c - 1, 0).arms.F.fist.x);
+  });
+
+  it("release and hold: both palms thrust ahead of the shoulder inside the beam band", () => {
+    const c = ARSENAL.LASER_CHARGE;
+    for (const elapsed of [c, c + 2, c + ARSENAL.LASER_ACTIVE - 1]) {
+      const j = laser(elapsed);
+      const bandTop = WORLD.ROOF_Y - ARSENAL.LASER_BAND_TOP;
+      const bandBottom = WORLD.ROOF_Y - ARSENAL.LASER_BAND_BOTTOM;
+      for (const arm of [j.arms.F, j.arms.B]) {
+        expect(arm.fist.x).toBeGreaterThan(arm.shoulder.x + 40);
+        expect(arm.fist.y).toBeGreaterThan(bandTop);
+        expect(arm.fist.y).toBeLessThan(bandBottom);
+      }
+      expect(j.lean).toBeGreaterThan(guard.lean + 10);
+      expect(j.state).toBe("laser");
+    }
+    expect(laserStage(c).stage).toBe("release");
+    expect(laserStage(c + 3).stage).toBe("hold");
+  });
+
+  it("recovery: eases back to guard, passing it on the way", () => {
+    const c = ARSENAL.LASER_CHARGE + ARSENAL.LASER_ACTIVE;
+    const r = ARSENAL.LASER_RECOVERY;
+    expect(laserStage(c).stage).toBe("recover");
+    const mid = laser(c + Math.round(r * 0.6));
+    expect(mid.lean).toBeLessThan(guard.lean); // the −4 overshoot
+    const end = laser(c + r);
+    expect(dist(end.arms.F.fist, guard.arms.F.fist)).toBeLessThan(1);
+    expect(dist(end.arms.B.fist, guard.arms.B.fist)).toBeLessThan(1);
+    expect(Math.abs(end.lean - guard.lean)).toBeLessThan(1e-6);
+  });
+});
+
+describe("12.04 rule 2: throws", () => {
+  const throwing = (over: Partial<{ phase: "charge" | "release"; charge: number; elapsed: number }>): Joints =>
+    computePose(fighter({ item: { kind: "molotov", uses: 2 }, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 0, elapsed: 0, released: false, ...over } }), clock);
+  const guard = computePose(fighter(), clock);
+
+  it("winds the front arm back and up while charging, snaps it ahead on release, settles to guard", () => {
+    const full = throwing({ phase: "charge", charge: THROW.CHARGE_MAX });
+    expect(throwStage({ phase: "charge", charge: THROW.CHARGE_MAX, elapsed: 0 })).toEqual({ stage: "windup", t: 1 });
+    expect(full.arms.F.fist.x).toBeLessThan(full.arms.F.shoulder.x);
+    expect(full.arms.F.fist.y).toBeLessThan(full.arms.F.shoulder.y);
+    const rel = throwing({ phase: "release", charge: THROW.CHARGE_MAX, elapsed: 2 });
+    expect(rel.arms.F.fist.x).toBeGreaterThan(rel.arms.F.shoulder.x + 40);
+    expect(throwStage({ phase: "release", charge: 10, elapsed: 2 }).stage).toBe("release");
+    expect(throwStage({ phase: "release", charge: 10, elapsed: THROW.RELEASE_TICKS }).stage).toBe("recover");
+    const end = throwing({ phase: "release", charge: 10, elapsed: THROW.RELEASE_TICKS + THROW.RECOVERY });
+    expect(Math.hypot(end.arms.F.fist.x - guard.arms.F.fist.x, end.arms.F.fist.y - guard.arms.F.fist.y)).toBeLessThan(1);
+    expect(end.state).toBe("throw");
+  });
+});
+
+describe("12.04 rules 3–6: punch overshoot, jump weight, brace, flash beat", () => {
+  const guard = computePose(fighter(), clock);
+  it("punch recovery passes guard then settles", () => {
+    const s = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE;
+    const mid = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: s + BALANCE.PUNCH_RECOVERY / 2, landed: false, sword: false } }), clock);
+    const end = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: s + BALANCE.PUNCH_RECOVERY, landed: false, sword: false } }), clock);
+    const arm = mid.punchingArm!;
+    expect(mid.arms[arm].fist.x).toBeGreaterThan(guard.arms[arm].fist.x - 20);
+    expect(Math.abs(end.arms[arm].fist.x - guard.arms[arm].fist.x)).toBeLessThan(1);
+    const wind = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: BALANCE.PUNCH_STARTUP - 1, landed: false, sword: false } }), clock);
+    expect(wind.arms[wind.punchingArm!].fist.x).toBeLessThan(guard.arms[wind.punchingArm!].fist.x - 6);
+    const sword = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: BALANCE.PUNCH_STARTUP, landed: false, sword: true } }), clock);
+    expect(sword.arms[sword.punchingArm!].fist.y).toBeLessThan(WORLD.ROOF_Y - 110);
+  });
+  it("takeoff crouches the hip and the apex stretches the torso", () => {
+    const takeoff = computePose(fighter({ grounded: false, vy: -9, jumpTicks: 0 }), clock);
+    const rising = computePose(fighter({ grounded: false, vy: -9, jumpTicks: 10 }), clock);
+    expect(takeoff.hip.y).toBeGreaterThan(rising.hip.y);
+    const apex = computePose(fighter({ grounded: false, vy: 0, jumpTicks: 34 }), clock);
+    const len = (j: Joints): number => Math.hypot(j.head.x - j.hip.x, j.head.y - j.hip.y);
+    expect(len(apex)).toBeGreaterThan(len(rising) * 1.02);
+  });
+  it("the shield brace raises the front fist and the flash beat raises it overhead", () => {
+    const plain = computePose(fighter({ blocking: true }), clock);
+    const brace = computePose(fighter({ blocking: true, item: { kind: "shield", uses: 3 } }), clock);
+    expect(brace.arms.F.fist.y).toBeLessThan(plain.arms.F.fist.y);
+    expect(brace.arms.F.fist.x).toBeGreaterThan(plain.arms.F.fist.x);
+    const beat = computePose(fighter(), { ...clock, beat: { kind: "flash", frames: 4 } });
+    expect(beat.arms.F.fist.y).toBeLessThan(beat.head.y);
+    const noBeat = computePose(fighter(), { ...clock, beat: { kind: "flash", frames: 0 } });
+    expect(noBeat.arms.F.fist.y).toBe(guard.arms.F.fist.y);
+  });
+});

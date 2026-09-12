@@ -5,7 +5,7 @@ import { PixelCanvas, alphaOf, parsePart, rgbOf } from "../../game/sprites/grid"
 
 /**
  * Character portrait for the lobby: a 48 × 48 canvas drawn from 11.01's pixel paper-doll parts (head over
- * shoulders, outlined and rimmed like the in-game sprite) at 2× on a night-1 ground. No assets.
+ * shoulders, outlined and rimmed like the in-game sprite) at 2× on a void0 ground. No assets.
  */
 export const PORTRAIT_SIZE = 48;
 
@@ -38,12 +38,14 @@ export function portraitPixels(characterId: CharacterId): PixelCanvas {
   c.blit(parts.torso, centreX, torsoTop + parts.torso.anchor.y);
   c.blit(parts.head, centreX, HEAD_TOP + parts.head.anchor.y);
   c.outline(P.outline);
-  c.rim(P.amber1, false, P.outline);
+  // 12.06 rule 5: the arena's treatment — lamp rim on the lamp side, a night dither on the other
+  c.rim(P.lamp, "right", P.outline);
+  c.edgeDither(2, P.night1, 0.45, "left", P.outline);
   return c;
 }
 
 function draw(ctx: CanvasRenderingContext2D, id: CharacterId): void {
-  ctx.fillStyle = CSS_P.night1;
+  ctx.fillStyle = CSS_P.void0;
   ctx.fillRect(0, 0, PORTRAIT_SIZE, PORTRAIT_SIZE);
   const c = portraitPixels(id);
   const k = PORTRAIT_SIZE / CELL;
