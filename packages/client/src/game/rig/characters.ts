@@ -27,7 +27,7 @@ export interface CharacterRig {
   hipW: number;
   /** Half the distance between the feet, minus the foot pad; feet sit at ±(stanceSpread + 3). */
   stanceSpread: number;
-  /** Resting knee bend in degrees; lowers the hip so the feet stay planted. */
+  /** Resting knee bend in degrees (design/01). The hip is pinned at feet.y - 66 (4.01 rule 2); the leg IK produces this bend from the stance. */
   kneeBend: number;
   /** Resting forward torso lean in degrees. */
   torsoLean: number;
