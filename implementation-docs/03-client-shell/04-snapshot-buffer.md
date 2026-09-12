@@ -30,3 +30,10 @@ Create: `packages/client/src/net/snapshotBuffer.ts`, `packages/client/src/game/s
 
 ## Done when
 - [ ] tests pass
+
+## Polish amendments
+
+- `SnapshotBuffer.reset()` empties the buffer and the monotonic render-time floor. `push` calls it itself when the
+  newest buffered snapshot is `MATCH_END` and the incoming tick is lower: the server restarts a rematch from
+  `createMatch()` at tick 0, and rule 1 alone dropped every snapshot of the new match (both pages stayed frozen on
+  the old MATCH_END frame). Rule 1 still applies inside a match. (polish amendment)
