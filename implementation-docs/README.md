@@ -16,6 +16,10 @@ file says and nothing else.
 | 5 | `05-vision/` | Phases 3 and 4 | owner (harness) |
 | 6 | `06-integration.md` | — | owner (two laptops) |
 | 7 | `07-demo-hardening.md` | — | owner (three rehearsals) |
+| 8 | `08-contracts/` | — (alone, first) | agent (tests) |
+| 9 | `09-arsenal/` | Phases 10, 11 | agent (tests, screenshots) |
+| 10 | `10-arenas/` | Phases 9, 11 | agent (tests) |
+| 11 | `11-look/` | Phases 9, 10 (11.05 last, alone) | agent (headless match), then owner |
 
 Within a phase, features are numbered in dependency order. A feature may start when every feature it lists
 under "Depends on" is committed.
@@ -45,4 +49,4 @@ Four-person parallel plan, ownership and kickoff prompts: `TEAM-SPLIT.md`.
 - Paths in feature files are relative to the repo root.
 - Numbers come from `packages/shared/src/constants.ts`; feature files quote them for clarity but the code imports them.
 - Ticks are integers at 60 Hz. Positions are numbers in world units (960 × 540). Angles in degrees.
-- Commit message prefix per phase: `sim:`, `server:`, `client:`, `design:`, `vision:`, `integ:`, `demo:`.
+- Commit message prefix per phase: `sim:`, `server:`, `client:`, `design:`, `vision:`, `integ:`, `demo:`, `contracts:`.

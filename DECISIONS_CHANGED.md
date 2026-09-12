@@ -67,3 +67,27 @@ Source of truth after review: `docs/superpowers/plans/2026-09-12-midnight-expres
 | A | Punch hitbox reach 70 px and punch damage 12 at 40 HP: keep, or tune after the first keyboard match? | Keep, tune in reserve |
 | B | Timer draw round scores for both players (so 1–1 after a draw). Alternative: replay the round. | Score both |
 | C | Winner keys or rematch flow: rematch returns both to lobby ready state. | Lobby |
+
+## Expansion (owner directive, 2026-09-12 session 2: "go, no intervention")
+
+The owner asked for these features in one message and told the planning agent not to wait for approval. Rows
+34–48 record the choices the agent made inside that directive. "OK?" is still the owner's column; an unticked row
+is a decision taken under the directive, not an unreviewed guess. Spec: `docs/superpowers/specs/2026-09-12-mayhem-expansion-design.md`.
+
+| # | Topic | Was (rows above) | Now | Why | OK? |
+|---|---|---|---|---|---|
+| 34 | Object detection | Removed (13); "prefer MediaPipe Object Detector over YOLO when re-added" | **Re-added** as MediaPipe `ObjectDetector` (EfficientDet-Lite0, COCO) in the existing pose worker, every 3rd frame. Not YOLO | Same wasm runtime already shipped; one model download; verifiable headless. A YOLO/ONNX backend would add a second ML runtime the agent cannot validate unattended. Interface allows a swap later | |
+| 35 | InputFrame | Frozen six booleans (19) | Gains `special: boolean` (laser) and `item: ItemId \| null` (held object). Protocol v2 | Owner asked for both; one frame keeps the seq/heartbeat path and the sim's edge detection | |
+| 36 | Weapon slots | `weaponSlots` reserved as `[null,null,null]` (3) | Replaced by a pre-fight **loadout of 2** items plus one active `item` slot; laser is always available | Owner: "customize the 2 weapons/shield thing you can use in the fight before the fight" | |
+| 37 | Items | none | molotov (bottle, 2 throws), sword (umbrella, 6 swings, parry window 10 ticks), shield (backpack, 3 hits), banana (peel trap, 1), flash (phone, 1, dazzles opponents 2 s). Numbers in `ARSENAL` | Owner named the first three; banana and phone are COCO classes with obvious mechanics | |
+| 38 | Laser | none | Both arms thrust forward together / `Q`; charge 30 ticks, beam 12 ticks full width in a chest band, 10 dmg (chip 4), jumpable, 12 s cooldown | Owner: "laser beam mechanic with a cooldown by putting your arms in a beam motion" | |
+| 39 | Players | Exactly 2 (29) | 2, 3 (FFA) or 4 (FFA or 2v2). Facing = nearest living opponent; KO'd fighters stay down; rounds/timer decided per team | Owner: "3 or 4 players with free for all, with 3s and 4s teams of 2" | |
+| 40 | Match format | Best of 3 × 30 s only (11) | Modes: `rounds` (unchanged default), `timed` (one 90 s round), `deathmatch` (no timer, KO) | Owner: "timed, free fight, etc" | |
+| 41 | Stage geometry | Flat roof only (15) | Maps: `roof`, `gaps` (two pits, 8 dmg + respawn), `platforms` (two one-way racks at y 330), `chaos` (both). Geometry in `MAPS` | Owner: "small holes, elevated/floating surfaces like super smash bros" | |
+| 42 | Roster | Drifter, Conductor (14) | Adds **The Stoker** and **Claude Code** (sunburst head, terminal torso, arms and legs). Duplicates allowed in a room | Owner asked for more characters and Claude Code specifically | |
+| 43 | Art style | Procedural vector rig (30, 31) | **Pixel-art paper-doll**: hand-authored pixel grids (heads, torsos, hands, feet, items) + limbs rasterised from the existing skeleton poses, 3× nearest-neighbour. Still no image files. Vector rig kept behind `?rig=vector` | Owner: "detailed pixel art for the characters". Grids-in-code keeps the no-assets rule and reuses the tested pose system | |
+| 44 | Stage motion | Parallax only (12, 30) | Wheels, sparks, smoke, telegraph poles, train bob, lightning, tunnel whoosh; gaps and racks drawn to match `MAPS` | Owner: "the train isn't moving, neither does the background" | |
+| 45 | Sound | Stretch, blips only (33) | Full procedural Web Audio set with a signature equip motif per item; `M` mutes; no files | Owner: "special sound effects should sound" on equip | |
+| 46 | Lobby / landing | Plain DOM join form (32) | Landing page with the live stage and four idling fighters behind it; lobby with character pick, loadout pick, host controls (players, teams, mode, map, items). `frontend-design` skill required | Owner: "very midnight express themey… very visually engaging… customize characters" | |
+| 47 | Server | 2 slots (21) | 4 slots, `config.players` decides how many must be in and ready; host = lowest slot; `CONFIG` host-only; `CUSTOMIZE` per player | Consequence of 39, 46 | |
+| 48 | Execution | Four worktrees on one machine (STATUS) | Contracts feature alone, then 13 parallel worktree lanes with disjoint file ownership, then integration, then parallel review and fixes — all agent-run, no owner gates until the end | Owner: "launch a dynamic workflow to implement all of these features in parallel… I don't want to intervene" | |

@@ -6,6 +6,8 @@ A two-laptop, webcam-controlled, side-view 2D fighter for HackCMU 2026. Read thi
 
 1. `DECISIONS_CHANGED.md` — every decision, with the owner's approval column.
 2. `implementation-docs/STATUS.md` — where `main` is right now and what to pick up next.
+   The expansion (arsenal, maps, modes, 3–4 players, sprites, landing) is specified in
+   `docs/superpowers/specs/2026-09-12-mayhem-expansion-design.md` and `implementation-docs/08`–`11`.
 3. `implementation-docs/` — one folder per phase, one file per feature; the exact spec an agent builds from.
 4. `docs/superpowers/plans/2026-09-12-midnight-express-mvp.md` — the high-level architecture and schedule behind 2.
 5. `HackCMU 2026/design/` — how it looks: palette, rig, backgrounds, HUD, feel. Code-drawn, no assets.
@@ -20,8 +22,8 @@ Everything else under `HackCMU 2026/` is **historical** and carries a SUPERSEDED
 - `packages/shared` is the only cross-package surface. Server and client import it; it imports nothing from them. The simulation never touches DOM, Phaser, `Date`, `Math.random` or the socket.
 - Balance and geometry numbers live only in `packages/shared/src/constants.ts`.
 - Keyboard control must never stop working. Camera is additive.
-- No image or sprite assets. Every visual is Phaser Graphics or a generated texture per `design/`.
-- No React, no database, no rollback, no object detection, no Ludo.
+- No image or sprite assets. Every visual is Phaser Graphics, a generated texture, or a pixel grid authored in code and rasterised at boot (`11-look/01`).
+- No React, no database, no rollback, no Ludo. Object detection is MediaPipe `ObjectDetector` inside the existing pose worker only (`09-arsenal/04`); no other ML runtime.
 - Ask the owner before changing anything in `DECISIONS_CHANGED.md`. Everything else is yours.
 - Keep `pnpm test` and `pnpm typecheck` green. Commit small. Do not push.
 
