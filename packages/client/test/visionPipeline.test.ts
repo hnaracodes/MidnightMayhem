@@ -621,7 +621,7 @@ describe("vision pipeline: held items (9.04)", () => {
     const drv = new Driver();
     drv.calibrate();
     const pose = body();
-    for (let i = 0; i < HOLD_ON; i++) drv.step(pose, [boxAt(pose, 16, "umbrella")]);
+    for (let i = 0; i < HOLD_ON; i++) drv.step(pose, [boxAt(pose, 16, "tennis racket")]);
     expect(drv.pipeline.frame.item).toBe("sword");
     const gone = drv.hold(RELOST_MS + 3 * FRAME_MS, null);
     expect(gone.every((f) => f.frame.item === null && f.item === null)).toBe(true);

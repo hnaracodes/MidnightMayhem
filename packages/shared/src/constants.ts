@@ -49,7 +49,7 @@ export const ITEM_IDS = ["molotov", "sword", "shield", "banana", "flash"] as con
 export type ItemId = (typeof ITEM_IDS)[number];
 export const ITEMS: Record<ItemId, { uses: number; label: string; cocoLabel: string }> = {
   molotov: { uses: 2, label: "Molotov", cocoLabel: "bottle" },
-  sword: { uses: 6, label: "Umbrella sword", cocoLabel: "umbrella" },
+  sword: { uses: 6, label: "Racket sword", cocoLabel: "tennis racket" },
   shield: { uses: 3, label: "Backpack shield", cocoLabel: "backpack" },
   banana: { uses: 1, label: "Banana peel", cocoLabel: "banana" },
   flash: { uses: 1, label: "Phone flash", cocoLabel: "cell phone" },

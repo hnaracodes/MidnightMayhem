@@ -23,7 +23,7 @@ function box(label: string, cx: number, cy: number, score = 0.8, w = 0.1, h = 0.
 describe("cocoToItem", () => {
   it("maps the five COCO labels to items and anything else to null", () => {
     expect(cocoToItem("bottle")).toBe("molotov");
-    expect(cocoToItem("umbrella")).toBe("sword");
+    expect(cocoToItem("tennis racket")).toBe("sword");
     expect(cocoToItem("backpack")).toBe("shield");
     expect(cocoToItem("banana")).toBe("banana");
     expect(cocoToItem("cell phone")).toBe("flash");
@@ -43,8 +43,8 @@ describe("heldItem", () => {
   });
 
   it("a box just inside HOLD_RADIUS of the right wrist counts, just outside does not", () => {
-    const inside = box("umbrella", RIGHT_WRIST.x, RIGHT_WRIST.y + (HOLD_RADIUS - 0.02) * S);
-    const outside = box("umbrella", RIGHT_WRIST.x, RIGHT_WRIST.y + (HOLD_RADIUS + 0.02) * S);
+    const inside = box("tennis racket", RIGHT_WRIST.x, RIGHT_WRIST.y + (HOLD_RADIUS - 0.02) * S);
+    const outside = box("tennis racket", RIGHT_WRIST.x, RIGHT_WRIST.y + (HOLD_RADIUS + 0.02) * S);
     expect(heldItem([inside], landmarks(), S)).toBe("sword");
     expect(heldItem([outside], landmarks(), S)).toBeNull();
   });
