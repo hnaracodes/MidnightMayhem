@@ -249,12 +249,13 @@ function pose(over: Partial<Record<number, Partial<Landmark>>> = {}): Landmark[]
   const set = (i: number, x: number, y: number) => {
     lms[i] = { x, y, z: 0, visibility: 0.9 };
   };
-  set(11, 0.4, 0.35);
-  set(12, 0.6, 0.35);
-  set(15, 0.38, 0.75);
-  set(16, 0.62, 0.75);
-  set(23, 0.45, 0.6);
-  set(24, 0.55, 0.6);
+  // Raw image x: the person's left side (11/15/23) is on the image's right, so it has the smaller mirrored xm.
+  set(11, 0.6, 0.35);
+  set(12, 0.4, 0.35);
+  set(15, 0.62, 0.75);
+  set(16, 0.38, 0.75);
+  set(23, 0.55, 0.6);
+  set(24, 0.45, 0.6);
   for (const [i, o] of Object.entries(over)) lms[Number(i)] = { ...(lms[Number(i)] as Landmark), ...o };
   return lms;
 }
@@ -281,7 +282,7 @@ describe("computeMetrics", () => {
 
   it("lean is the mirrored shoulder-over-hip offset in units of S", () => {
     // Shoulders shift 0.06 to the raw right, which is mirrored left: lean = -0.06 / 0.2
-    const m = computeMetrics(pose({ 11: { x: 0.46 }, 12: { x: 0.66 } }), world(), baseline, 0, createMetricBuffers());
+    const m = computeMetrics(pose({ 11: { x: 0.66 }, 12: { x: 0.46 } }), world(), baseline, 0, createMetricBuffers());
     expect(m.lean).toBeCloseTo(-0.3);
   });
 
@@ -305,7 +306,7 @@ describe("computeMetrics", () => {
   it("extension, depth, height and thrust per arm", () => {
     const buffers = createMetricBuffers();
     computeMetrics(pose(), world(), baseline, 0, buffers);
-    const punched = pose({ 15: { x: 0.42, y: 0.4 } }); // wrist near the shoulder in the image
+    const punched = pose({ 15: { x: 0.58, y: 0.4 } }); // wrist near the shoulder in the image
     const w = world({ 11: { z: 0 }, 15: { z: -0.45 } });
     const m = computeMetrics(punched, w, baseline, THRUST_WINDOW_MS / 2, buffers);
     expect(m.extL).toBeCloseTo(Math.hypot(0.02, 0.05) / 0.4);
@@ -319,20 +320,20 @@ describe("computeMetrics", () => {
 
   it("side is the outward horizontal offset over arm length, per arm, negative when crossed", () => {
     const b = createMetricBuffers();
-    // Person's left arm (11/15) is on the mirrored right: raw x smaller = further out.
-    const outL = pose({ 15: { x: 0.0, y: 0.35 } }); // 0.4 image units out from shoulder 11 at x 0.4
+    // Person's left arm (11/15) is on the mirrored left: raw x larger = further out.
+    const outL = pose({ 15: { x: 1.0, y: 0.35 } }); // 0.4 image units out from shoulder 11 at x 0.6
     const m = computeMetrics(outL, world(), baseline, 0, b);
     expect(m.sideL).toBeCloseTo(1.0);
     expect(m.atHeightL).toBe(true);
-    expect(m.sideR).toBeCloseTo(0.05); // hanging: wrist 16 at raw x 0.62 is 0.02 outward of shoulder 12 at 0.6
-    const crossed = computeMetrics(pose({ 15: { x: 0.6, y: 0.45 } }), world(), baseline, 33, b);
+    expect(m.sideR).toBeCloseTo(0.05); // hanging: wrist 16 at raw x 0.38 is 0.02 outward of shoulder 12 at 0.4
+    const crossed = computeMetrics(pose({ 15: { x: 0.4, y: 0.45 } }), world(), baseline, 33, b);
     expect(crossed.sideL).toBeCloseTo(-0.5);
   });
 
   it("jabRise is the raw side rise inside JAB_WINDOW_MS; thrust drop reads the raw landmarks too", () => {
     const b = createMetricBuffers();
     computeMetrics(pose(), world(), baseline, 0, b);
-    const outL = pose({ 15: { x: 0.0, y: 0.35 } });
+    const outL = pose({ 15: { x: 1.0, y: 0.35 } });
     const m = computeMetrics(outL, world(), baseline, 100, b);
     expect(m.jabRiseL).toBeCloseTo(1.0 - m.sideL + m.jabRiseL, 5); // rose from ~0 to ~1
     expect(m.jabRiseL).toBeGreaterThan(JAB_RISE);
@@ -340,7 +341,7 @@ describe("computeMetrics", () => {
     // Smoothed says "hanging" but the raw wrist is already at the shoulder: the drop comes from raw.
     const b2 = createMetricBuffers();
     computeMetrics(pose(), world(), baseline, 0, b2);
-    const raw = pose({ 15: { x: 0.42, y: 0.4 } });
+    const raw = pose({ 15: { x: 0.58, y: 0.4 } });
     const m2 = computeMetrics(pose(), world(), baseline, 50, b2, raw);
     expect(m2.extL).toBeCloseTo(1, 1);
     expect(m2.dropL).toBeGreaterThan(THRUST_DROP);

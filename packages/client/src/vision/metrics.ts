@@ -136,9 +136,12 @@ export function computeMetrics(
   const crossed =
     xm(lw) > midX + CROSS_MARGIN * S && xm(rw) < midX - CROSS_MARGIN * S && inBand(lw) && inBand(rw);
 
-  // The person's left arm sits on the mirrored right (larger xm), so "away from the body" is +x for L, -x for R.
-  const L = arm(landmarks, raw, world, 11, 15, 1, baseline, ts, buffers.extL, buffers.sideL);
-  const R = arm(landmarks, raw, world, 12, 16, -1, baseline, ts, buffers.extR, buffers.sideR);
+  // Mirrored space (controls doc, coordinate conventions): the person's left side has the smaller xm, as in a
+  // mirror. So "away from the body" is -x for the left arm (11/15) and +x for the right arm (12/16). The same
+  // convention makes `crossed` above a real crossing (each wrist past the other shoulder's side of the midline);
+  // hands together in front of the chest, the beam pose, stays inside CROSS_MARGIN and is not a block.
+  const L = arm(landmarks, raw, world, 11, 15, -1, baseline, ts, buffers.extL, buffers.sideL);
+  const R = arm(landmarks, raw, world, 12, 16, 1, baseline, ts, buffers.extR, buffers.sideR);
 
   return {
     lean,

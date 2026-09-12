@@ -30,6 +30,7 @@ const FRAME_MS = 33;
 
 /** Wrist placement relative to its own shoulder, in units of S; z is world depth in metres. */
 interface Wrist {
+  /** Horizontal offset from the shoulder in S toward the person's left (smaller mirrored xm). */
   dx: number;
   dy: number;
   z?: number;
@@ -72,20 +73,22 @@ function body(o: BodyOptions = {}): PoseResult {
     world[i] = { x: 0, y: 0, z: worldZ, visibility: 0.95 };
   };
 
-  // Person's anatomical left is on the mirrored right (larger xm).
-  const lsX = midX + 0.5 * S;
-  const rsX = midX - 0.5 * S;
+  // Mirrored space, as in a mirror: the person's anatomical left has the smaller xm (controls doc conventions).
+  // A wrist's `dx` is a horizontal offset from its shoulder in S toward the person's left (smaller xm), so a
+  // positive dx takes the left wrist outward and the right wrist inward, across the chest.
+  const lsX = midX - 0.5 * S;
+  const rsX = midX + 0.5 * S;
   set(0, midX, noseY);
-  set(2, midX + 0.1 * S, eyeY);
-  set(5, midX - 0.1 * S, eyeY);
+  set(2, midX - 0.1 * S, eyeY);
+  set(5, midX + 0.1 * S, eyeY);
   set(11, lsX, shoulderY);
   set(12, rsX, shoulderY);
-  set(13, lsX + 0.1 * S, shoulderY + S);
-  set(14, rsX - 0.1 * S, shoulderY + S);
-  set(15, lsX + wristL.dx * S, shoulderY + wristL.dy * S, wristL.z ?? 0);
-  set(16, rsX + wristR.dx * S, shoulderY + wristR.dy * S, wristR.z ?? 0);
-  set(23, hipMidX + 0.25 * S, hipY);
-  set(24, hipMidX - 0.25 * S, hipY);
+  set(13, lsX - 0.1 * S, shoulderY + S);
+  set(14, rsX + 0.1 * S, shoulderY + S);
+  set(15, lsX - wristL.dx * S, shoulderY + wristL.dy * S, wristL.z ?? 0);
+  set(16, rsX - wristR.dx * S, shoulderY + wristR.dy * S, wristR.z ?? 0);
+  set(23, hipMidX - 0.25 * S, hipY);
+  set(24, hipMidX + 0.25 * S, hipY);
   return { landmarks: image, worldLandmarks: world };
 }
 
@@ -100,9 +103,10 @@ const THRUST_L: Wrist = { dx: 0.1, dy: 0.25, z: -0.5 };
 const SIDE_L: Wrist = { dx: 2.0, dy: 0.0, z: 0 };
 // Left arm raised straight overhead (a swing up to block): a full arm length above the shoulder.
 const OVERHEAD_L: Wrist = { dx: 0.1, dy: -2.0, z: 0 };
-// Arms crossed in front of the chest: each wrist 0.3 S past the midline, at chest height.
-const CROSSED_L: Wrist = { dx: -0.2, dy: 0.5, z: 0 };
-const CROSSED_R: Wrist = { dx: 0.2, dy: 0.5, z: 0 };
+// Arms crossed in front of the chest: each wrist 0.3 S past the midline (0.5 S in from its shoulder, then 0.3 S
+// more onto the other side), at chest height.
+const CROSSED_L: Wrist = { dx: -0.8, dy: 0.5, z: 0 };
+const CROSSED_R: Wrist = { dx: 0.8, dy: 0.5, z: 0 };
 // Hands on the hips: just outside the hip line, slightly below hip height.
 const ON_HIP_L: Wrist = { dx: -0.2, dy: 1.35, z: 0 };
 const ON_HIP_R: Wrist = { dx: 0.2, dy: 1.35, z: 0 };
@@ -530,6 +534,23 @@ describe("vision pipeline: laser (9.04)", () => {
 
     const rest = drv.hold(400, body());
     expect(rest[rest.length - 1]?.frame.special).toBe(false);
+  });
+
+  it("ramping both wrists from hanging into the beam pose never reads as a block on the way (review fix)", () => {
+    // Hands meeting in front of the chest stay on their own sides of the midline (each 0.05 S from it), so the
+    // crossed-arms block must not fire during the 8-frame approach and cancel the laser.
+    for (const n of [6, 8]) {
+      const drv = new Driver();
+      drv.calibrate();
+      const ramp = drv.run(n, (i) => body({
+        wristL: mixWrist(HANGING_L, BEAM_L, (i + 1) / n), wristR: mixWrist(HANGING_R, BEAM_R, (i + 1) / n),
+      }));
+      const held = drv.hold(300, body({ wristL: BEAM_L, wristR: BEAM_R }));
+      expect(anyTrue(ramp, "block")).toBe(false);
+      expect(anyTrue(held, "block")).toBe(false);
+      expect(ramp.every((f) => !f.metrics?.crossed)).toBe(true);
+      expect(risingEdges(held, "special")).toBe(1);
+    }
   });
 
   it("a single-arm thrust is a punch, not a laser", () => {
