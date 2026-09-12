@@ -36,17 +36,32 @@ export const BLOCK_DEBOUNCE_ON = 3; // frames before block turns on
 export const BLOCK_DEBOUNCE_OFF = 3; // frames before block turns off
 
 // ---- 5.03 punch (thrust toward camera, no hand model) ----
-export const EXT_ENTER = 0.55; // wrist-to-shoulder image distance over arm length that starts a punch
+// First tuning pass (owner test 2026-09-12: zero punches tracked). World z is MediaPipe's least accurate
+// axis, so the depth gates were loosened; the thrust window was widened so a real punch at ~20 fps has
+// enough samples; the thrust drop is measured on RAW (unsmoothed) extension so the EMA cannot blunt it.
+export const EXT_ENTER = 0.62; // wrist-to-shoulder image distance over arm length that starts a punch (was 0.55: foreshortening at 1.5 m rarely reads below 0.55)
 export const EXT_EXIT = 0.75; // extension above which the punch ends
-export const DEPTH_ENTER_NO_HAND = 0.4; // wrist ahead of shoulder by this many metres (world z) to start
-export const DEPTH_EXIT = 0.15; // depth below which the punch ends
+export const DEPTH_ENTER_NO_HAND = 0.22; // wrist ahead of shoulder by this many metres (world z) to start (was 0.40: world z under-reports a 1.5 m thrust by half)
+export const DEPTH_EXIT = 0.08; // depth below which the punch ends (was 0.15: keep the exit under the noise floor of the new enter)
 export const AT_HEIGHT = 0.6; // wrist must be within this of shoulder height, in S
-export const THRUST_DROP = 0.25; // extension must have dropped by this much within the thrust window
-export const THRUST_WINDOW_MS = 200; // window for the extension drop
+export const THRUST_DROP = 0.15; // raw extension must have dropped by this much within the thrust window (was 0.25: EMA-lagged samples never showed 0.25 in 200 ms)
+export const THRUST_WINDOW_MS = 320; // window for the extension drop (was 200: only 4 samples at 20 fps; 320 gives 6-7)
 export const THRUST_ENABLED = true; // require the fast drop; false = depth and extension alone
 export const PUNCH_DEBOUNCE_ON = 2; // frames before punch turns on
 export const PUNCH_DEBOUNCE_OFF = 3; // frames before punch turns off
 export const PUNCH_MIN_HOLD_MS = 100; // once entered, punch stays on at least this long
+
+// ---- 5.03 punch, side-jab entry (integrator amendment; owner decision, flag-gated) ----
+// The game is side-view, so players punch sideways, which never changes world depth. `side` is the wrist's
+// horizontal offset AWAY from the body past its own shoulder, over arm length (~1 with the arm straight out).
+export const SIDE_JAB_ENABLED = true; // allow a fast horizontal jab to count as a punch
+export const JAB_RISE = 0.3; // side must have risen by this much within the jab window (measured on raw landmarks)
+export const JAB_WINDOW_MS = 250; // window for the side rise
+export const JAB_EXT = 0.9; // side above which the arm counts as straight out
+export const JAB_EXIT = JAB_EXT - 0.15; // side below which a jab-entered punch ends
+
+// ---- 5.04 recorder (integrator amendment) ----
+export const RECORDER_SECONDS = 15; // seconds of { ts, metrics, gestures, frame, punch } samples kept for dump()
 
 // ---- overlay colours (harness and calibration overlay) ----
 export const COLOR_POSE = "#4FE3F5"; // skeleton lines and joints, cyan

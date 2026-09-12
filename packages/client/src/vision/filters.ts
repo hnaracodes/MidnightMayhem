@@ -105,6 +105,25 @@ export class RingBuffer<T = number> {
     return max;
   }
 
+  /** Largest rise from any sample inside the window to the latest value. 0 when empty or falling. */
+  maxRiseWithin(this: RingBuffer<number>, ms: number): number {
+    const latest = this.entries[this.entries.length - 1];
+    if (!latest) return 0;
+    const cutoff = latest.t - ms;
+    let max = 0;
+    for (const e of this.entries) {
+      if (e.t < cutoff) continue;
+      const rise = latest.v - e.v;
+      if (rise > max) max = rise;
+    }
+    return max;
+  }
+
+  /** Every kept value, oldest first. */
+  values(): T[] {
+    return this.entries.map((e) => e.v);
+  }
+
   clear(): void {
     this.entries = [];
   }
