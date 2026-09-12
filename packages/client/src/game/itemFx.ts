@@ -375,7 +375,8 @@ export class ItemFx {
 
   private drawBubble(i: PlayerIndex, f: FighterState | undefined): void {
     const item = f?.item;
-    if (!f || !item || item.kind !== "shield") {
+    // No bubble while the shield is still materialising (11.01 hides the item sprite until then too).
+    if (!f || !item || item.kind !== "shield" || this.materialiseFrames[i] > 0) {
       const old = this.bubbles[i];
       if (old) {
         old.destroy();
@@ -606,7 +607,7 @@ function drawPeel(g: Graphics, h: Hazard, fade: number): void {
   const centre = { x: h.x, y: h.y - 3 };
   g.clear();
   g.fillStyle(P.amber1, fade);
-  g.fillPoints(crescent(centre, PEEL_R, Math.PI, 0.45), true);
+  g.fillPoints(crescent(centre, PEEL_R, Math.PI / 2, 0.45), true); // convex side down: lying flat on the roof
   g.lineStyle(2, P.outline, fade);
   g.lineBetween(centre.x - 6, centre.y - 1, centre.x - 2, centre.y - 5);
   g.lineBetween(centre.x + 2, centre.y - 5, centre.x + 6, centre.y - 1);

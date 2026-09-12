@@ -267,6 +267,20 @@ describe("ItemFx shield", () => {
     expect(created).toHaveLength(1); // still one: nothing new created for a fighter without a shield
   });
 
+  it("no bubble while the shield is materialising; it appears once the 26 frames end", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    state.fighters[0]!.item = { kind: "shield", uses: 3 };
+    frames(fx, state, 1, [{ type: "ITEM_EQUIP", player: 0, item: "shield" }]);
+    expect(created).toHaveLength(1); // the materialise only
+    frames(fx, state, 25);
+    expect(created).toHaveLength(1);
+    frames(fx, state, 1);
+    expect(created).toHaveLength(2);
+    expect(created[1]!.count("fillEllipse")).toBe(1);
+  });
+
   it("SHIELD_ABSORB flashes the bubble moon for 2 frames", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
@@ -454,7 +468,7 @@ describe("ItemFx lifecycle", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
-    state.fighters[0]!.item = { kind: "shield", uses: 3 };
+    state.fighters[1]!.item = { kind: "shield", uses: 3 }; // player 0 is materialising, which hides a bubble
     state.fighters[1]!.action = { kind: "laser", elapsed: 0, hit: [] };
     state.projectiles = [{ id: 1, kind: "molotov", owner: 0, x: 300, y: 330, vx: 6, vy: -7 }];
     state.hazards = [{ id: 2, kind: "peel", owner: 0, x: 500, y: WORLD.ROOF_Y, w: 40, ticks: 900, age: 0 }];
