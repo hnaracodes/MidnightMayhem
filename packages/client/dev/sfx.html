@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Midnight Mayhem — Sound Preview</title>
+  <style>
+    html, body { margin: 0; background: #070B18; color: #C9CFDD; font: 13px/1.4 system-ui, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; padding: 16px; }
+    h1 { font-size: 16px; margin: 0 0 4px; color: #F2B84B; }
+    p { margin: 0 0 12px; color: #5B6375; }
+    .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+    button { background: #1B2236; color: #E8ECF5; border: 1px solid #2E3A57; border-radius: 4px; padding: 4px 10px; cursor: pointer; font: inherit; }
+    button:hover { background: #26304A; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid #1B2236; white-space: nowrap; }
+    th { color: #5B6375; font-weight: normal; }
+    td.num { font-variant-numeric: tabular-nums; color: #9AA3B8; }
+    td.warn { color: #E0563C; }
+    tr.playing td { background: #121a2c; }
+    pre { background: #0C1224; padding: 8px; overflow: auto; font-size: 11px; color: #9AA3B8; max-height: 240px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Sound preview — 9.06 procedural Web Audio</h1>
+    <p>Every sound is synthesised. Play plays it through the real <code>Sfx</code>; Dump renders it offline and logs the scheduled nodes to the console (<code>window.__sfx</code>).</p>
+    <div class="bar">
+      <button id="play-all">Play all</button>
+      <button id="dump-all">Dump all</button>
+      <label><input type="checkbox" id="mute" /> mute (M)</label>
+      <label>pan <input type="range" id="pan" min="-1" max="1" step="0.1" value="0" /></label>
+      <span id="status"></span>
+    </div>
+    <table id="sounds">
+      <thead><tr><th></th><th>sound</th><th>duration s</th><th>nodes</th><th>sources</th><th>peak</th><th>rms</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <pre id="log"></pre>
+  </main>
+  <script type="module" src="/src/dev/sfxPreview.ts"></script>
+</body>
+</html>
