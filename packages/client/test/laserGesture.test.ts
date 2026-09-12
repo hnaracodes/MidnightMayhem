@@ -13,6 +13,7 @@ function metrics(o: Partial<Metrics> = {}): Metrics {
     extL: 1, extR: 1, depthL: 0, depthR: 0, atHeightL: false, atHeightR: false,
     thrustL: false, thrustR: false, dropL: 0, dropR: 0, sideL: 0, sideR: 0, jabRiseL: 0, jabRiseR: 0,
     wristGap: 2, guard: false,
+    elbowL: 180, elbowR: 180, raiseL: -2, raiseR: -2, noseDropL: 2.75, noseDropR: 2.75, wristXL: -0.5, wristXR: 0.5,
     ...o,
   };
 }

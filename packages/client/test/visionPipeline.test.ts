@@ -16,6 +16,10 @@ import {
   LEAN_EXIT,
   RELOST_MS,
   THRUST_WINDOW_MS,
+  WINDUP_ELBOW_DEG,
+  WINDUP_OFF,
+  WINDUP_ON,
+  WINDUP_RAISE,
 } from "../src/vision/thresholds";
 import type { Landmark, ObjectBox, PoseResult, ResultMessage } from "../src/vision/workerClient";
 
@@ -625,6 +629,66 @@ describe("vision pipeline: held items (9.04)", () => {
     expect(drv.pipeline.frame.item).toBe("sword");
     const gone = drv.hold(RELOST_MS + 3 * FRAME_MS, null);
     expect(gone.every((f) => f.frame.item === null && f.item === null)).toBe(true);
+  });
+});
+
+describe("vision pipeline: molotov wind-up (9.10)", () => {
+  /** A body with the right arm's world landmarks bent to `elbowDeg` and the wrist raised `raise` S above the shoulder. */
+  function windupBody(elbowDeg: number, raise: number): PoseResult {
+    const pose = body({ wristR: { dx: 0.3, dy: -raise, z: 0 } });
+    const rad = (elbowDeg * Math.PI) / 180;
+    // Shoulder at the origin, elbow 0.3 m down, wrist 0.25 m from the elbow at the requested angle.
+    pose.worldLandmarks[12] = { x: 0, y: 0, z: 0, visibility: 0.95 };
+    pose.worldLandmarks[14] = { x: 0, y: 0.3, z: 0, visibility: 0.95 };
+    pose.worldLandmarks[16] = { x: 0.25 * Math.sin(rad), y: 0.3 + 0.25 * Math.cos(rad) * -1, z: 0, visibility: 0.95 };
+    return pose;
+  }
+
+  it("a held wind-up yields N frames of punchR then a falling edge on release; nothing without a throwable", () => {
+    const p = createPipeline();
+    void p.calibration.begin();
+    let t = 0;
+    const n = Math.ceil((CALIBRATION_MS + 4 * FRAME_MS) / FRAME_MS);
+    for (let i = 0; i < n; i++, t += FRAME_MS) processLandmarks(p, body(), t);
+    expect(p.calibration.state().phase).toBe("ready");
+
+    // Nothing held: the bent pose never punches.
+    const bent = windupBody(70, 0.4);
+    const idle: DebugFrame[] = [];
+    for (let i = 0; i < 10; i++, t += FRAME_MS) idle.push(processLandmarks(p, bent, t));
+    expect(idle.some((f) => f.frame.punchR)).toBe(false);
+    expect(idle[idle.length - 1]?.metrics?.elbowR).toBeLessThan(WINDUP_ELBOW_DEG);
+    expect(idle[idle.length - 1]?.metrics?.raiseR).toBeGreaterThan(WINDUP_RAISE);
+
+    // The arena says the fighter holds a molotov: the same pose winds up and holds punchR.
+    p.held = "molotov";
+    const held: DebugFrame[] = [];
+    for (let i = 0; i < 12; i++, t += FRAME_MS) held.push(processLandmarks(p, bent, t));
+    const first = held.findIndex((f) => f.frame.punchR);
+    expect(first).toBe(WINDUP_ON - 1);
+    expect(held.slice(first).every((f) => f.frame.punchR && f.gestures.windupR)).toBe(true);
+    expect(held[held.length - 1]?.windup?.R.active).toBe(true);
+    expect(held.some((f) => f.frame.special)).toBe(false);
+
+    // Straightening the arm overhead releases: a single falling edge and no further punch.
+    const thrown = windupBody(175, 0.9);
+    const rel: DebugFrame[] = [];
+    for (let i = 0; i < 10; i++, t += FRAME_MS) rel.push(processLandmarks(p, thrown, t));
+    // The EMA lags the straightening by about a frame, so the release lands one frame after WINDUP_OFF.
+    const drop = rel.findIndex((f) => !f.frame.punchR);
+    expect(drop).toBeGreaterThanOrEqual(WINDUP_OFF - 1);
+    expect(drop).toBeLessThanOrEqual(WINDUP_OFF);
+    expect(rel.slice(drop).every((f) => !f.frame.punchR)).toBe(true);
+    expect(rel.every((f) => f.frame.chop === false && f.frame.sweep === false)).toBe(true);
+  });
+
+  it("VisionInputSource.setHeldItem threads the held item to the classifier", () => {
+    const src = new VisionInputSource();
+    src.setHeldItem("sword");
+    const pipe = (src as unknown as { pipeline: { held: string | null } }).pipeline;
+    expect(pipe.held).toBe("sword");
+    src.setHeldItem(null);
+    expect(pipe.held).toBeNull();
   });
 });
 

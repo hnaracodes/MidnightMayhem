@@ -1,7 +1,7 @@
 /**
  * In-match camera preview (integrator amendment to Phase 6): a fixed 240 px box in the bottom-left corner
- * showing the mirrored camera with the smoothed skeleton and (9.04) the detector's boxes, a row of seven
- * input dots (L R J PL PR B SP) plus the held item's label, a status line and, when the vision layer reports
+ * showing the mirrored camera with the smoothed skeleton and (9.04) the detector's boxes, a row of nine
+ * input dots (L R J PL PR B SP CH SW) plus the held item's label, a status line and, when the vision layer reports
  * punch diagnostics, one gate row per hand. Pointer events pass through to the arena. The pure `previewModel`
  * decides what the rows show; the class only paints it.
  *
@@ -10,17 +10,46 @@
  */
 import { ITEMS, type InputKey, type ItemId } from "@midnight/shared";
 import type { CalibrationPhase } from "../vision/calibration";
-import { COLOR_LABEL, COLOR_MARKER, COLOR_POSE } from "../vision/thresholds";
+import {
+  CHOP_DROP, COLOR_LABEL, COLOR_MARKER, COLOR_POSE, SWEEP_TRAVEL, WINDUP_ELBOW_DEG, WINDUP_RAISE,
+} from "../vision/thresholds";
 import type { PunchDiag } from "../vision/gestures/punch";
+import type { SlashDiag } from "../vision/gestures/slash";
+import type { WindupDiag } from "../vision/gestures/windup";
 export type { PunchDiag };
 import type { DebugFrame, VisionInputSource } from "../vision/VisionInputSource";
 import type { Landmark, ObjectBox } from "../vision/workerClient";
 
 export type PreviewFrame = DebugFrame & { fps?: number };
 
-export const DOT_KEYS: readonly InputKey[] = ["left", "right", "jump", "punchL", "punchR", "block", "special"];
-export const DOT_LABELS: readonly string[] = ["L", "R", "J", "PL", "PR", "B", "SP"];
+export const DOT_KEYS: readonly InputKey[] = [
+  "left", "right", "jump", "punchL", "punchR", "block", "special", "chop", "sweep",
+];
+export const DOT_LABELS: readonly string[] = ["L", "R", "J", "PL", "PR", "B", "SP", "CH", "SW"];
 export const GATE_NAMES = ["ext", "depth", "thrust", "jab"] as const;
+/** 9.10 rows: the wind-up gates (elbow, raise, active) and the slash gates (chop, sweep). */
+export const WINDUP_NAMES = ["elbow", "raise", "windup"] as const;
+export const SLASH_NAMES = ["chop", "sweep"] as const;
+export type WindupName = (typeof WINDUP_NAMES)[number];
+export type SlashName = (typeof SLASH_NAMES)[number];
+
+export interface WindupRow {
+  /** elbow ≤ WINDUP_ELBOW_DEG */
+  elbow: boolean;
+  /** raise ≥ WINDUP_RAISE */
+  raise: boolean;
+  windup: boolean;
+  /** Elbow angle in degrees, for the label. */
+  elbowDeg: number;
+}
+
+export interface SlashRow {
+  /** The chop gates all pass this frame (or the pulse fired). */
+  chop: boolean;
+  sweep: boolean;
+  /** Punch suppressed by SLASH_EXCLUSIVE_MS. */
+  exclusive: boolean;
+}
 export type GateName = (typeof GATE_NAMES)[number];
 
 export interface GateRow {
@@ -44,18 +73,31 @@ export interface PreviewModel {
   itemLabel: string;
   /** The laser pose (9.04). */
   special: boolean;
+  /** 9.10 wind-up row per arm, null until the frame carries wind-up diagnostics. */
+  windup: { L: WindupRow; R: WindupRow } | null;
+  /** 9.10 slash row per arm, null until the frame carries slash diagnostics. */
+  slash: { L: SlashRow; R: SlashRow } | null;
 }
 
 export function previewModel(frame: PreviewFrame | null, fps?: number): PreviewModel {
   if (!frame) {
-    return { dots: DOT_KEYS.map(() => false), status: "no camera", gates: null, item: null, itemLabel: "", special: false };
+    return {
+      dots: DOT_KEYS.map(() => false), status: "no camera", gates: null, item: null, itemLabel: "", special: false,
+      windup: null, slash: null,
+    };
   }
   const dots = DOT_KEYS.map((key) => frame.frame[key]);
   const status = statusText(frame.calibration.phase, frame.calibration.progress, frame.fps ?? fps);
   const punch = frame.punch;
   const gates = punch ? { L: gateRow(punch.L), R: gateRow(punch.R) } : null;
   const item = frame.frame.item;
-  return { dots, status, gates, item, itemLabel: item ? ITEMS[item].label : "", special: frame.frame.special };
+  const w = frame.windup;
+  const windup = w ? { L: windupRow(w.L), R: windupRow(w.R) } : null;
+  const sl = frame.slash;
+  const slash = sl ? { L: slashRow(sl.L), R: slashRow(sl.R) } : null;
+  return {
+    dots, status, gates, item, itemLabel: item ? ITEMS[item].label : "", special: frame.frame.special, windup, slash,
+  };
 }
 
 /**
@@ -72,6 +114,18 @@ function statusText(phase: CalibrationPhase, progress: number, fps: number | und
   const parts = [phase === "calibrating" ? `calibrating ${Math.round(progress * 100)}%` : phase];
   if (fps !== undefined && fps > 0) parts.push(`${Math.round(fps)} fps`);
   return parts.join(" · ");
+}
+
+function windupRow(d: WindupDiag): WindupRow {
+  return { elbow: d.elbow <= WINDUP_ELBOW_DEG, raise: d.raise >= WINDUP_RAISE, windup: d.active, elbowDeg: d.elbow };
+}
+
+function slashRow(d: SlashDiag): SlashRow {
+  return {
+    chop: d.chop || (d.aboveNose && d.chopExt) || d.chopDrop >= CHOP_DROP,
+    sweep: d.sweep || (d.sweepCross && d.sweepTravel >= SWEEP_TRAVEL),
+    exclusive: d.exclusive,
+  };
 }
 
 function gateRow(d: PunchDiag): GateRow {
@@ -113,6 +167,12 @@ export class CameraPreview {
   private readonly status: HTMLDivElement;
   private readonly gates: HTMLDivElement;
   private readonly gateGlyphs: Record<"L" | "R", { label: HTMLSpanElement; glyphs: Record<GateName, HTMLSpanElement> }>;
+  private readonly windupGlyphs: Record<
+    "L" | "R", { row: HTMLDivElement; label: HTMLSpanElement; glyphs: Record<WindupName, HTMLSpanElement> }
+  >;
+  private readonly slashGlyphs: Record<
+    "L" | "R", { row: HTMLDivElement; label: HTMLSpanElement; glyphs: Record<SlashName, HTMLSpanElement> }
+  >;
 
   private source: VisionInputSource | null = null;
   private frame: PreviewFrame | null = null;
@@ -169,6 +229,27 @@ export class CameraPreview {
       return { label, glyphs };
     };
     this.gateGlyphs = { L: rowFor("L"), R: rowFor("R") };
+    const extraRow = <N extends string>(hand: "L" | "R", names: readonly N[], cls: string) => {
+      const row = document.createElement("div");
+      row.className = cls;
+      const label = document.createElement("span");
+      label.className = "campreview-hand";
+      label.textContent = hand;
+      row.append(label);
+      const glyphs = {} as Record<N, HTMLSpanElement>;
+      for (const name of names) {
+        const cell = document.createElement("span");
+        cell.className = "campreview-gate";
+        const glyph = document.createElement("b");
+        cell.append(name, glyph);
+        row.append(cell);
+        glyphs[name] = glyph;
+      }
+      this.gates.append(row);
+      return { row, label, glyphs };
+    };
+    this.windupGlyphs = { L: extraRow("L", WINDUP_NAMES, "campreview-windup"), R: extraRow("R", WINDUP_NAMES, "campreview-windup") };
+    this.slashGlyphs = { L: extraRow("L", SLASH_NAMES, "campreview-slash"), R: extraRow("R", SLASH_NAMES, "campreview-slash") };
 
     this.root.replaceChildren(view, dots, this.status, this.gates);
   }
@@ -226,6 +307,31 @@ export class CameraPreview {
           const ok = row[name];
           els.glyphs[name].textContent = ok ? "✓" : "✗";
           els.glyphs[name].className = ok ? "ok" : "no";
+        }
+      }
+    }
+    for (const hand of ["L", "R"] as const) {
+      const w = model.windup?.[hand];
+      const we = this.windupGlyphs[hand];
+      we.row.hidden = !w;
+      if (w) {
+        we.label.classList.toggle("on", w.windup);
+        we.glyphs.elbow.textContent = `${w.elbowDeg.toFixed(0)}°${w.elbow ? "✓" : "✗"}`;
+        we.glyphs.elbow.className = w.elbow ? "ok" : "no";
+        we.glyphs.raise.textContent = w.raise ? "✓" : "✗";
+        we.glyphs.raise.className = w.raise ? "ok" : "no";
+        we.glyphs.windup.textContent = w.windup ? "✓" : "✗";
+        we.glyphs.windup.className = w.windup ? "ok" : "no";
+      }
+      const sl = model.slash?.[hand];
+      const se = this.slashGlyphs[hand];
+      se.row.hidden = !sl;
+      if (sl) {
+        se.label.classList.toggle("on", sl.exclusive);
+        for (const name of SLASH_NAMES) {
+          const ok = sl[name];
+          se.glyphs[name].textContent = ok ? "✓" : "✗";
+          se.glyphs[name].className = ok ? "ok" : "no";
         }
       }
     }

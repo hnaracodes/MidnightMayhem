@@ -2,9 +2,12 @@ import type { ItemId } from "@midnight/shared";
 import { describe, expect, it } from "vitest";
 import { classify, type GestureFlags } from "../src/vision/classify";
 
-type Bools = Partial<Record<"left" | "right" | "jump" | "punchL" | "punchR" | "block" | "special", boolean>>;
+type Bools = Partial<
+  Record<"left" | "right" | "jump" | "punchL" | "punchR" | "block" | "special" | "chop" | "sweep", boolean>
+>;
+type Extra = Partial<Pick<GestureFlags, "windupL" | "windupR" | "slashL" | "slashR" | "held">>;
 
-const g = (o: Bools = {}, item: ItemId | null = null): GestureFlags => ({
+const g = (o: Bools & Extra = {}, item: ItemId | null = null): GestureFlags => ({
   left: false,
   right: false,
   jump: false,
@@ -12,11 +15,21 @@ const g = (o: Bools = {}, item: ItemId | null = null): GestureFlags => ({
   punchR: false,
   block: false,
   special: false,
+  chop: false,
+  sweep: false,
+  windupL: false,
+  windupR: false,
+  slashL: false,
+  slashR: false,
+  held: null,
   ...o,
   item,
 });
 /** The expected InputFrame: every flag false and no item unless overridden. */
-const frame = (o: Bools = {}, item: ItemId | null = null) => ({ ...g(o), item });
+const frame = (o: Bools = {}, item: ItemId | null = null) => ({
+  left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false,
+  chop: false, sweep: false, ...o, item,
+});
 
 describe("classify priority", () => {
   it("jump beats block and punches", () => {
@@ -75,5 +88,32 @@ describe("classify priority", () => {
     expect(f).not.toBe(e);
     expect(f.item).toBe("banana");
     expect(classify(g({ right: true, jump: true }, "banana"))).toBe(f);
+  });
+
+  it("9.10: a wind-up holds that arm's punch and silences the beam while a throwable is held", () => {
+    expect(classify(g({ windupR: true, special: true, held: "molotov" }))).toEqual(frame({ punchR: true }));
+    expect(classify(g({ windupL: true, punchR: true, held: "banana" }))).toEqual(frame({ punchL: true, punchR: true }));
+  });
+
+  it("9.10: a wind-up flag without a throwable in hand is ignored", () => {
+    expect(classify(g({ windupR: true, held: "sword" }))).toEqual(frame());
+    expect(classify(g({ windupR: true }))).toEqual(frame());
+  });
+
+  it("9.10: a punch beats the beam while a throwable is held; the beam beats a punch otherwise", () => {
+    expect(classify(g({ punchL: true, special: true, held: "molotov" }))).toEqual(frame({ punchL: true }));
+    expect(classify(g({ punchL: true, special: true, held: "shield" }))).toEqual(frame({ special: true }));
+  });
+
+  it("9.10: a slash pulse passes through and its exclusivity suppresses that arm's punch only", () => {
+    expect(classify(g({ chop: true, slashL: true, punchL: true, punchR: true, held: "sword" }))).toEqual(
+      frame({ chop: true, punchR: true }),
+    );
+    expect(classify(g({ sweep: true, slashR: true, punchR: true, held: "sword" }))).toEqual(frame({ sweep: true }));
+  });
+
+  it("9.10: block and jump cancel wind-ups and slashes", () => {
+    expect(classify(g({ block: true, windupR: true, chop: true, sweep: true, held: "molotov" }))).toEqual(frame({ block: true }));
+    expect(classify(g({ jump: true, windupR: true, chop: true, held: "molotov" }))).toEqual(frame({ jump: true }));
   });
 });

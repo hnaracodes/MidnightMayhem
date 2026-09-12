@@ -151,7 +151,7 @@ function fakeState(cell: Cell, facing: 1 | -1, now: number, frame: number): { f:
   // posed at a safe world x (cells past WORLD.WIDTH would read as offbounds), then translated into the cell
   const base: FighterState = { ...createMatch().fighters[0]!, character: cell.character, x: WORLD.WIDTH / 2, y: cell.groundY, facing };
   const item: ItemId | null = ui.item || cell.item;
-  if (item) base.item = { kind: item, uses: 1 };
+  if (item) base.item = { kind: item, uses: 1, ticksLeft: null };
   const clock: Clock = { renderMs: now, koFrames: 0, landFrames: 0 };
   const pins = ui.pins;
   const cycle = (n: number, ms: number): number => Math.floor((now / ms) % n);
@@ -181,7 +181,7 @@ function fakeState(cell: Cell, facing: 1 | -1, now: number, frame: number): { f:
       const kind = item === "banana" ? "banana" : "molotov";
       const released = elapsed >= ARSENAL.THROW_STARTUP;
       poseF = { ...base, action: { kind: "punch", arm: "R", elapsed: Math.min(elapsed, punchTotal - 1), landed: false, sword: false } };
-      drawF = { ...base, item: released ? null : { kind, uses: 1 }, action: { kind: "throw", item: kind, arm: "R", phase: "release", charge: 0, elapsed, released } };
+      drawF = { ...base, item: released ? null : { kind, uses: 1, ticksLeft: null }, action: { kind: "throw", item: kind, arm: "R", phase: "release", charge: 0, elapsed, released } };
       break;
     }
     case "laser": {
