@@ -34,7 +34,10 @@ describe("harness punch gate rows", () => {
 
 describe("harness objects line (9.04)", () => {
   it("shows off when the detector did not load and on with the latest ms otherwise", () => {
-    expect(objectsText({ objects: false, objectMs: 0 })).toBe("off");
-    expect(objectsText({ objects: true, objectMs: 12.34 })).toBe("on · 12.3 ms");
+    expect(objectsText({ objects: false, objectMs: 0, backend: null, fallback: false })).toBe("off");
+    expect(objectsText({ objects: false, objectMs: 0, backend: null, fallback: true })).toBe("off (yolo failed)");
+    expect(objectsText({ objects: true, objectMs: 12.34, backend: "mediapipe", fallback: false })).toBe("mediapipe · 12.3 ms");
+    expect(objectsText({ objects: true, objectMs: 30, backend: "yolo", fallback: false })).toBe("yolo · 30.0 ms");
+    expect(objectsText({ objects: true, objectMs: 12.34, backend: "mediapipe", fallback: true })).toBe("mediapipe (yolo failed) · 12.3 ms");
   });
 });

@@ -57,7 +57,7 @@ function renderRoom(): void {
   if (!lastLobby || matchRunning) return;
   lobby.renderRoom(
     lastLobby.roomId, lastLobby.players, lastLobby.config, lastLobby.host, session.localIndex,
-    session.visionAvailable, cameraButton(),
+    session.visionAvailable, cameraButton(), session.detectorActive,
   );
 }
 
@@ -67,6 +67,7 @@ function cameraLive(source: VisionInputSource): void {
   vision = source;
   inputSource.add(source);
   session.visionAvailable = true;
+  session.detectorActive = source.stats().backend;
   cameraStarting = false;
   renderRoom();
   // Room screen (rule 6): the player sees themselves before Ready. V toggles it at any time.
@@ -79,7 +80,7 @@ async function enableCamera(): Promise<void> {
   showBanner(null);
   renderRoom();
 
-  const source = new VisionInputSource();
+  const source = new VisionInputSource({ detector: session.detector });
   const debug = debugFanOut(source); // onDebug holds one callback; both consumers share it
   overlay.bind(source, debug);
   preview.bind(source, debug);

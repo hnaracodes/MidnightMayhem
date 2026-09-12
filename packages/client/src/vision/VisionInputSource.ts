@@ -1,4 +1,5 @@
 import { EMPTY_FRAME, type InputFrame, type InputSource, type ItemId } from "@midnight/shared";
+import type { DetectorId } from "./backends/ObjectBackend";
 import { type Baseline, Calibration, type CalibrationPhase } from "./calibration";
 import { frameLoop, openCamera } from "./camera";
 import { classify, type GestureFlags } from "./classify";
@@ -13,7 +14,7 @@ import {
   clearMetricBuffers, computeMetrics, createMetricBuffers, type MetricBuffers, type Metrics,
 } from "./metrics";
 import { HoldTracker, heldItem } from "./objects";
-import { EMA_ALPHA, RECORDER_SECONDS } from "./thresholds";
+import { DETECTOR_DEFAULT, EMA_ALPHA, RECORDER_SECONDS } from "./thresholds";
 import {
   WorkerClient, type Landmark, type ObjectBox, type PoseResult, type ResultMessage, type WorkerStats,
 } from "./workerClient";
@@ -163,9 +164,15 @@ export function processLandmarks(
   };
 }
 
+export interface VisionInputSourceOptions {
+  /** Which object detector the worker loads (9.07); defaults to DETECTOR_DEFAULT. */
+  detector?: DetectorId;
+}
+
 export class VisionInputSource implements InputSource {
   private readonly worker = new WorkerClient();
   private readonly pipeline = createPipeline();
+  private readonly detector: DetectorId;
 
   private videoEl: HTMLVideoElement | null = null;
   private stream: MediaStream | null = null;
@@ -173,6 +180,10 @@ export class VisionInputSource implements InputSource {
   private debugCb: ((f: DebugFrame) => void) | null = null;
   private running = false;
   private readonly recorder = new RingBuffer<RecorderSample>(RECORDER_SECONDS * 1000);
+
+  constructor(opts: VisionInputSourceOptions = {}) {
+    this.detector = opts.detector ?? DETECTOR_DEFAULT;
+  }
 
   /** The hidden, mirrored camera element this source owns. Hosts may attach it for a preview. */
   get video(): HTMLVideoElement | null {
@@ -187,7 +198,7 @@ export class VisionInputSource implements InputSource {
       const { video, stream } = await openCamera();
       this.videoEl = video;
       this.stream = stream;
-      await this.worker.start();
+      await this.worker.start(this.detector);
       this.worker.onResult((r) => this.handleResult(r));
       this.stopLoop = frameLoop(video, (ts) => {
         this.worker.sendFrame(video, ts);

@@ -56,8 +56,8 @@ describe("decodeV8 (Ultralytics [1, 84, N])", () => {
 describe("decodeV10 (NMS-free [1, 300, 6])", () => {
   it("rule 3: decodes xyxy, score, class rows without NMS and filters to the five labels", () => {
     const rows = [
-      [10, 20, 50, 80, 0.9, cls("umbrella")],
-      [12, 20, 52, 80, 0.7, cls("umbrella")], // overlapping duplicate is kept: the model already ran NMS
+      [10, 20, 50, 80, 0.9, cls("tennis racket")],
+      [12, 20, 52, 80, 0.7, cls("tennis racket")], // overlapping duplicate is kept: the model already ran NMS
       [100, 100, 140, 140, 0.95, 0], // person
       [200, 200, 220, 260, 0.1, cls("cell phone")], // under threshold
       [0, 0, 0, 0, 0, 0], // padding row
@@ -65,8 +65,8 @@ describe("decodeV10 (NMS-free [1, 300, 6])", () => {
     const data = new Float32Array(rows.flat());
     const out = decodeV10(data, [1, rows.length, 6], YOLO_SCORE);
     expect(out.map((c) => ({ ...c, score: Number(c.score.toFixed(3)) }))).toEqual([
-      { label: "umbrella", score: 0.9, x: 10, y: 20, w: 40, h: 60 },
-      { label: "umbrella", score: 0.7, x: 12, y: 20, w: 40, h: 60 },
+      { label: "tennis racket", score: 0.9, x: 10, y: 20, w: 40, h: 60 },
+      { label: "tennis racket", score: 0.7, x: 12, y: 20, w: 40, h: 60 },
     ]);
   });
 });
