@@ -1,0 +1,369 @@
+import { describe, expect, it } from "vitest";
+import {
+  ARSENAL, BALANCE, EMPTY_FRAME, ITEMS, WORLD, risingEdges,
+  type Arm, type InputFrame, type ItemId, type MatchState, type SimEvent,
+} from "../src";
+import { createMatch, resetForRound } from "../src/sim/create";
+import { step } from "../src/sim/step";
+import { advanceProjectiles, startThrow } from "../src/sim/projectiles";
+import { advanceHazards, hazardRect, spawnHazard } from "../src/sim/hazards";
+
+const NONE: [InputFrame, InputFrame] = [EMPTY_FRAME, EMPTY_FRAME];
+const P_L: InputFrame = { ...EMPTY_FRAME, punchL: true };
+const THROW_TOTAL = ARSENAL.THROW_STARTUP + ARSENAL.THROW_RECOVERY;
+
+/**
+ * INTEGRATOR: collapse after merge. 09.01's `usePunchWithItem` (sim-items lane) is a stub on this branch, so the
+ * punch edge never reaches `startThrow` through `controlFighter`. This harness starts the throw on the punch edge
+ * exactly where 09.01 will (action null, no hitstun, not blocking), then runs the real `step`. The action is
+ * seeded at elapsed −1 so the leading `advancePunches` of the tick brings it to 0, as a real start would.
+ */
+function stepT(prev: MatchState, inputs: [InputFrame, InputFrame]) {
+  const s: MatchState = structuredClone(prev);
+  if (s.phase === "FIGHTING") {
+    const pre: SimEvent[] = [];
+    for (let i = 0; i < 2; i++) {
+      const f = s.fighters[i]!;
+      const input = inputs[i]!;
+      const edge = risingEdges(f.prev, input);
+      const blocking = input.block && f.grounded;
+      if (f.hp <= 0 || f.pitTicks > 0 || f.hitstun > 0 || f.action !== null || blocking) continue;
+      const arm: Arm | null = edge.punchL ? "L" : edge.punchR ? "R" : null;
+      if (!arm) continue;
+      if (startThrow(s, i as 0 | 1, arm, pre)) f.action!.elapsed = -1;
+    }
+  }
+  return step(s, inputs);
+}
+
+function run(s: MatchState, n: number, inputs: [InputFrame, InputFrame] = NONE) {
+  const events: SimEvent[] = [];
+  for (let i = 0; i < n; i++) { const r = stepT(s, inputs); s = r.state; events.push(...r.events); }
+  return { s, events };
+}
+
+/** Runs until the predicate matches an event, returning the 1-based tick index it happened on (or −1). */
+function runUntil(s: MatchState, max: number, inputs: [InputFrame, InputFrame], pred: (e: SimEvent) => boolean) {
+  const events: SimEvent[] = [];
+  for (let i = 1; i <= max; i++) {
+    const r = stepT(s, inputs); s = r.state; events.push(...r.events);
+    if (r.events.some(pred)) return { s, events, tick: i };
+  }
+  return { s, events, tick: -1 };
+}
+
+function fighting(item: ItemId | null = "molotov", x0 = 280, x1 = 680): MatchState {
+  const s = createMatch({ players: 2, teams: "ffa", mode: "deathmatch", map: "roof", items: true });
+  s.phase = "FIGHTING";
+  s.fighters[0]!.x = x0; s.fighters[1]!.x = x1;
+  s.fighters[0]!.facing = x0 < x1 ? 1 : -1; s.fighters[1]!.facing = x1 < x0 ? 1 : -1;
+  if (item) s.fighters[0]!.item = { kind: item, uses: ITEMS[item].uses };
+  return s;
+}
+
+/** Fights until the first hazard exists, then returns state + the hazard. */
+function landed(item: "molotov" | "banana") {
+  const r = runUntil(fighting(item), 200, [P_L, EMPTY_FRAME], (e) => e.type === "HAZARD_SPAWN");
+  expect(r.tick).toBeGreaterThan(0);
+  return { s: r.s, h: r.s.hazards[0]!, events: r.events };
+}
+
+const hits = (events: SimEvent[], target?: number) =>
+  events.filter((e) => e.type === "HAZARD_HIT" && (target === undefined || e.target === target));
+
+describe("1. throw release", () => {
+  it("punch edge with a molotov held spawns the projectile on the 7th tick (elapsed 6) from the hand", () => {
+    const r = runUntil(fighting(), 30, [P_L, EMPTY_FRAME], (e) => e.type === "PROJECTILE_SPAWN");
+    expect(r.tick).toBe(ARSENAL.THROW_STARTUP + 1);
+    expect(r.events.find((e) => e.type === "PROJECTILE_SPAWN")).toMatchObject({ kind: "molotov", owner: 0 });
+    expect(r.events.some((e) => e.type === "PUNCH")).toBe(false);
+    const p = r.s.projectiles[0]!;
+    // spawned at (x + 20, feet − 100) and already moved one tick in the facing direction (+x)
+    expect(p.owner).toBe(0);
+    expect(p.x).toBeCloseTo(280 + 20 + ARSENAL.MOLOTOV_VX, 5);
+    expect(p.y).toBeCloseTo(WORLD.ROOF_Y - 100 + ARSENAL.MOLOTOV_VY + BALANCE.GRAVITY, 5);
+    expect(p.vx).toBe(ARSENAL.MOLOTOV_VX);
+    expect(r.s.fighters[0]!.action).toMatchObject({ kind: "throw", item: "molotov", arm: "L", released: true });
+    expect(r.events.filter((e) => e.type === "ITEM_USE")).toEqual([{ type: "ITEM_USE", player: 0, item: "molotov" }]);
+    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: 1 });
+  });
+  it("facing left throws left", () => {
+    const s = fighting("molotov", 680, 280);
+    const r = runUntil(s, 30, [P_L, EMPTY_FRAME], (e) => e.type === "PROJECTILE_SPAWN");
+    expect(r.s.projectiles[0]!.vx).toBe(-ARSENAL.MOLOTOV_VX);
+    expect(r.s.projectiles[0]!.x).toBeLessThan(680);
+  });
+  it("startThrow refuses a non-throwable or empty hand", () => {
+    const s = fighting("sword");
+    expect(startThrow(s, 0, "L", [])).toBe(false);
+    expect(s.fighters[0]!.action).toBeNull();
+    s.fighters[0]!.item = null;
+    expect(startThrow(s, 0, "L", [])).toBe(false);
+    s.fighters[0]!.item = { kind: "banana", uses: 1 };
+    expect(startThrow(s, 0, "R", [])).toBe(true);
+    expect(s.fighters[0]!.action).toEqual({ kind: "throw", item: "banana", arm: "R", elapsed: 0, released: false });
+  });
+});
+
+describe("2. molotov flight and landing", () => {
+  it("lands on the roof in front of the thrower and becomes a 240-tick fire", () => {
+    const { s, h, events } = landed("molotov");
+    expect(s.projectiles).toHaveLength(0);
+    expect(h).toMatchObject({ kind: "fire", owner: 0, y: WORLD.ROOF_Y, w: ARSENAL.FIRE_W, ticks: ARSENAL.FIRE_TICKS - 1, age: 1 }); // aged once on the landing tick
+    // The feature file says 70–130 px; with MOLOTOV_VX 6, MOLOTOV_VY −7 and GRAVITY 8/30 from a 100 px release
+    // height the arc is ~64 ticks long, so the real landing is ~400 px out. Constants are not this lane's to
+    // change; the assertion pins the actual arc so a retune of the constants shows up here.
+    const dist = h.x - 280;
+    expect(dist).toBeGreaterThan(350);
+    expect(dist).toBeLessThan(450);
+    expect(events.find((e) => e.type === "HAZARD_SPAWN")).toEqual({ type: "HAZARD_SPAWN", id: h.id, kind: "fire", x: h.x });
+  });
+  it("follows the arc: gravity each tick, x by vx", () => {
+    const s = fighting();
+    s.projectiles.push({ id: s.nextId++, kind: "molotov", owner: 0, x: 300, y: 330, vx: 6, vy: -7 });
+    const ev: SimEvent[] = [];
+    advanceProjectiles(s, ev);
+    expect(s.projectiles[0]).toMatchObject({ x: 306, vy: -7 + BALANCE.GRAVITY, y: 330 - 7 + BALANCE.GRAVITY });
+  });
+});
+
+describe("3. fire damage", () => {
+  it("2 damage at ages 20, 40, … to anyone grounded in it (owner too); 24 hp over the full burn", () => {
+    const { s: s0, h } = landed("molotov");
+    const s = structuredClone(s0);
+    s.fighters[0]!.x = h.x - 20; s.fighters[1]!.x = h.x + 20;
+    s.fighters[0]!.action = null;
+    const { s: end, events } = run(s, ARSENAL.FIRE_TICKS);
+    const h0 = hits(events, 0); const h1 = hits(events, 1);
+    expect(h0).toHaveLength(12); expect(h1).toHaveLength(12);
+    expect(h0[0]).toEqual({ type: "HAZARD_HIT", id: h.id, kind: "fire", target: 0, damage: ARSENAL.FIRE_DAMAGE });
+    expect(end.fighters[0]!.hp).toBe(BALANCE.MAX_HP - 24);
+    expect(end.fighters[1]!.hp).toBe(BALANCE.MAX_HP - 24);
+    expect(end.fighters[0]!.hitstun).toBe(0);
+    expect(end.hazards).toHaveLength(0);
+  });
+  it("damage ticks land exactly at age 20 and 40", () => {
+    const { s: s0, h } = landed("molotov");
+    const s = structuredClone(s0);
+    s.fighters[1]!.x = h.x; s.fighters[0]!.x = 100;
+    let cur = s; const at: number[] = [];
+    for (let t = 1; t <= 45; t++) { const r = stepT(cur, NONE); cur = r.state; if (hits(r.events, 1).length) at.push(t); }
+    expect(at).toEqual([ARSENAL.FIRE_EVERY - 1, 2 * ARSENAL.FIRE_EVERY - 1]); // the hazard is already age 1 after landing
+  });
+  it("a fighter one jump above it takes none", () => {
+    const { s: s0, h } = landed("molotov");
+    const s = structuredClone(s0);
+    s.fighters[1]!.x = h.x; s.fighters[0]!.x = 100;
+    let cur = run(s, 10).s;
+    const events: SimEvent[] = [];
+    for (let t = 0; t < 40; t++) {
+      const r = stepT(cur, [EMPTY_FRAME, { ...EMPTY_FRAME, jump: t === 0 }]); cur = r.state; events.push(...r.events);
+    }
+    expect(events.some((e) => e.type === "JUMP")).toBe(true);
+    expect(cur.fighters[1]!.grounded).toBe(false);
+    expect(hits(events, 1)).toHaveLength(0);
+    expect(cur.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+  });
+  it("burns every grounded fighter in a four-player match, not just the first two", () => {
+    const s = createMatch({ players: 4, teams: "ffa", mode: "deathmatch", map: "roof", items: true });
+    s.phase = "FIGHTING";
+    spawnHazard(s, "fire", 3, 480, WORLD.ROOF_Y, []);
+    for (const f of s.fighters) f.x = 480;
+    const ev: SimEvent[] = [];
+    for (let t = 0; t < ARSENAL.FIRE_EVERY; t++) advanceHazards(s, ev);
+    expect(hits(ev).map((e) => (e as { target: number }).target)).toEqual([0, 1, 2, 3]);
+    expect(s.fighters.map((f) => f.hp)).toEqual([1, 1, 1, 1].map(() => BALANCE.MAX_HP - ARSENAL.FIRE_DAMAGE));
+  });
+  it("a fighter outside the patch takes none", () => {
+    const { s: s0, h } = landed("molotov");
+    const s = structuredClone(s0);
+    s.fighters[1]!.x = h.x + ARSENAL.FIRE_W / 2 + WORLD.HURTBOX_W / 2 + 1; s.fighters[0]!.x = 100;
+    expect(hits(run(s, 60).events, 1)).toHaveLength(0);
+  });
+});
+
+describe("4. uses", () => {
+  it("second molotov breaks the item; a third punch is a normal punch", () => {
+    let s = fighting();
+    const first = runUntil(s, 30, [P_L, EMPTY_FRAME], (e) => e.type === "PROJECTILE_SPAWN");
+    s = run(first.s, THROW_TOTAL).s;
+    expect(s.fighters[0]!.action).toBeNull();
+    const second = runUntil(s, 30, [P_L, EMPTY_FRAME], (e) => e.type === "PROJECTILE_SPAWN");
+    expect(second.tick).toBe(ARSENAL.THROW_STARTUP + 1);
+    expect(second.events.filter((e) => e.type === "ITEM_BREAK")).toEqual([{ type: "ITEM_BREAK", player: 0, item: "molotov" }]);
+    expect(second.s.fighters[0]!.item).toBeNull();
+    s = run(second.s, THROW_TOTAL).s;
+    const third = run(s, 3, [P_L, EMPTY_FRAME]);
+    expect(third.events.some((e) => e.type === "PUNCH")).toBe(true);
+    expect(third.s.fighters[0]!.action).toMatchObject({ kind: "punch" });
+    expect(third.events.some((e) => e.type === "PROJECTILE_SPAWN" || e.type === "ITEM_USE")).toBe(false);
+  });
+});
+
+describe("5. banana peel", () => {
+  it("lands in front, persists 900 ticks, one use", () => {
+    const { s, h, events } = landed("banana");
+    expect(h).toMatchObject({ kind: "peel", owner: 0, y: WORLD.ROOF_Y, w: ARSENAL.PEEL_W, ticks: ARSENAL.PEEL_TICKS - 1, age: 1 });
+    expect(h.x).toBeGreaterThan(280);
+    expect(events.filter((e) => e.type === "ITEM_BREAK")).toHaveLength(1);
+    expect(s.fighters[0]!.item).toBeNull();
+    const far = structuredClone(s); far.fighters[0]!.x = 100; far.fighters[1]!.x = 900;
+    expect(run(far, ARSENAL.PEEL_TICKS - 2).s.hazards).toHaveLength(1);
+    expect(run(far, ARSENAL.PEEL_TICKS - 1).s.hazards).toHaveLength(0); // age 1 after landing, gone at age 900
+  });
+  it("standing on it is safe; walking onto it slips (hitstun 36, damage 0, peel removed)", () => {
+    const { s: s0, h } = landed("banana");
+    const s = structuredClone(s0);
+    s.fighters[0]!.x = 100; s.fighters[1]!.x = h.x;
+    const still = run(s, 40);
+    expect(hits(still.events)).toHaveLength(0);
+    expect(still.s.hazards).toHaveLength(1);
+    const walk = runUntil(still.s, 10, [EMPTY_FRAME, { ...EMPTY_FRAME, left: true }], (e) => e.type === "HAZARD_HIT");
+    expect(walk.tick).toBe(1);
+    expect(walk.events.find((e) => e.type === "HAZARD_HIT")).toEqual({ type: "HAZARD_HIT", id: h.id, kind: "peel", target: 1, damage: 0 });
+    expect(walk.s.fighters[1]!.hitstun).toBe(ARSENAL.SLIP_STUN);
+    expect(walk.s.fighters[1]!.vx).toBe(0);
+    expect(walk.s.fighters[1]!.knockbackVx).toBe(0);
+    expect(walk.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+    expect(walk.s.hazards).toHaveLength(0);
+    // no knockback during the slip
+    const x = walk.s.fighters[1]!.x;
+    const after = run(walk.s, ARSENAL.SLIP_STUN, [EMPTY_FRAME, { ...EMPTY_FRAME, left: true }]);
+    expect(after.s.fighters[1]!.hitstun).toBe(0);
+    expect(after.s.fighters[1]!.x).toBe(x);
+  });
+  it("the owner walking through it within 30 ticks of the spawn is safe, afterwards slips", () => {
+    const { s: s0, h } = landed("banana");
+    const s = structuredClone(s0);
+    s.fighters[0]!.x = h.x; s.fighters[0]!.action = null; s.fighters[1]!.x = 900;
+    // ages 2..30: owner walks on the spot (tiny oscillation keeps him over the peel)
+    let cur = s; const early: SimEvent[] = [];
+    for (let t = 0; t < ARSENAL.PEEL_OWNER_IMMUNE - 1; t++) {
+      const r = stepT(cur, [{ ...EMPTY_FRAME, left: t % 2 === 0, right: t % 2 === 1 }, EMPTY_FRAME]);
+      cur = r.state; early.push(...r.events);
+    }
+    expect(cur.hazards[0]!.age).toBe(ARSENAL.PEEL_OWNER_IMMUNE);
+    expect(hits(early)).toHaveLength(0);
+    const late = runUntil(cur, 3, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME], (e) => e.type === "HAZARD_HIT");
+    expect(late.tick).toBe(1);
+    expect(late.s.fighters[0]!.hitstun).toBe(ARSENAL.SLIP_STUN);
+    expect(late.s.hazards).toHaveLength(0);
+  });
+  it("a fighter in hitstun does not slip", () => {
+    const { s: s0, h } = landed("banana");
+    const s = structuredClone(s0);
+    s.fighters[0]!.x = 100; s.fighters[1]!.x = h.x - 30;
+    s.fighters[1]!.hitstun = 10; s.fighters[1]!.knockbackVx = 3;
+    const r = run(s, 5);
+    expect(hits(r.events)).toHaveLength(0);
+    expect(r.s.hazards).toHaveLength(1);
+  });
+});
+
+describe("6. off-world and pits", () => {
+  it("a projectile leaving the world spawns no hazard", () => {
+    const s = fighting("molotov", 940, 100);
+    s.fighters[0]!.facing = 1;
+    s.projectiles.push({ id: s.nextId++, kind: "molotov", owner: 0, x: 958, y: 330, vx: 6, vy: -7 });
+    const r = run(s, 5);
+    expect(r.s.projectiles).toHaveLength(0);
+    expect(r.s.hazards).toHaveLength(0);
+    expect(r.events.some((e) => e.type === "HAZARD_SPAWN")).toBe(false);
+  });
+  it("a hazard landing near the edge is clamped inside the world", () => {
+    const s = fighting("molotov", 100, 900);
+    s.projectiles.push({ id: s.nextId++, kind: "molotov", owner: 0, x: 930, y: WORLD.ROOF_Y - 1, vx: 3, vy: 5 });
+    const ev: SimEvent[] = [];
+    advanceProjectiles(s, ev);
+    expect(s.hazards[0]!.x).toBe(WORLD.WIDTH - ARSENAL.FIRE_W / 2);
+    const left = fighting("molotov", 100, 900);
+    left.projectiles.push({ id: left.nextId++, kind: "banana", owner: 0, x: 5, y: WORLD.ROOF_Y - 1, vx: -3, vy: 5 });
+    advanceProjectiles(left, ev);
+    expect(left.hazards[0]!.x).toBe(ARSENAL.PEEL_W / 2);
+  });
+  it.todo("with map gaps, a landing x inside a gap spawns no hazard (after 10.01 merges)");
+});
+
+describe("7. throw locks", () => {
+  it("no movement for 18 ticks, no punch, no block; then free", () => {
+    // The edge tick must not hold block: a block held on the punch edge suppresses the punch entirely (the
+    // fighter just blocks), which would make every lock assertion below pass without any throw existing.
+    const start = run(fighting(), 1, [P_L, EMPTY_FRAME]);
+    expect(start.s.fighters[0]!.action).toMatchObject({ kind: "throw", elapsed: 0 });
+    // ticks 2..18: walk, block and a fresh punch edge are all refused while the throw runs
+    const held: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchR: true, right: true, block: true }, EMPTY_FRAME];
+    const r = run(start.s, THROW_TOTAL - 1, held);
+    expect(r.events.some((e) => e.type === "PUNCH")).toBe(false);
+    expect(r.s.fighters[0]!.x).toBe(280);
+    expect(r.s.fighters[0]!.blocking).toBe(false);
+    expect(r.s.fighters[0]!.action).toMatchObject({ kind: "throw", elapsed: THROW_TOTAL - 1, released: true });
+    // tick 19: the action clears before input is read, so the fighter walks that same tick
+    const free = run(r.s, 5, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]);
+    expect(free.s.fighters[0]!.action).toBeNull();
+    expect(free.s.fighters[0]!.x).toBe(280 + 5 * BALANCE.WALK_SPEED);
+    // punchL still held (no edge) plus a new R edge mid-throw starts nothing either
+    const mid = run(fighting(), 5, [{ ...EMPTY_FRAME, punchL: true }, EMPTY_FRAME]);
+    const mid2 = run(mid.s, 3, [{ ...EMPTY_FRAME, punchL: true, punchR: true, block: true }, EMPTY_FRAME]);
+    expect(mid2.events.some((e) => e.type === "PUNCH")).toBe(false);
+    expect(mid2.s.fighters[0]!.action).toMatchObject({ kind: "throw" });
+    expect(mid2.s.fighters[0]!.blocking).toBe(false);
+  });
+  it("a punch during the throw is not blocked even with block held", () => {
+    const s = fighting("molotov", 460, 400);
+    s.fighters[0]!.action = { kind: "throw", item: "molotov", arm: "L", elapsed: 2, released: false };
+    const r = run(s, BALANCE.PUNCH_STARTUP + 1, [{ ...EMPTY_FRAME, block: true }, P_L]);
+    expect(r.events.find((e) => e.type === "HIT")).toMatchObject({ attacker: 1, target: 0, blocked: false });
+  });
+});
+
+describe("8. hit during startup", () => {
+  it("loses the throw and does not spend the use", () => {
+    const s = fighting("molotov", 460, 400);
+    s.fighters[1]!.action = { kind: "punch", arm: "L", elapsed: 2, landed: false, sword: false };
+    const r = run(s, 30, [P_L, EMPTY_FRAME]);
+    expect(r.events.find((e) => e.type === "HIT")).toMatchObject({ attacker: 1, target: 0, blocked: false });
+    expect(r.events.some((e) => e.type === "PROJECTILE_SPAWN")).toBe(false);
+    expect(r.events.some((e) => e.type === "ITEM_USE")).toBe(false);
+    expect(r.s.projectiles).toHaveLength(0);
+    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: ITEMS.molotov.uses });
+    expect(r.s.fighters[0]!.action).toBeNull();
+  });
+});
+
+describe("invariants", () => {
+  it("ids only grow and never collide", () => {
+    let s = fighting();
+    const a = runUntil(s, 200, [P_L, EMPTY_FRAME], (e) => e.type === "HAZARD_SPAWN");
+    s = run(a.s, THROW_TOTAL).s;
+    s.fighters[0]!.x = 100; s.fighters[1]!.x = 900;
+    const b = runUntil(s, 200, [P_L, EMPTY_FRAME], (e) => e.type === "HAZARD_SPAWN");
+    const ids = b.events.flatMap((e) => (e.type === "PROJECTILE_SPAWN" || e.type === "HAZARD_SPAWN" ? [e.id] : []));
+    const all = [...a.events.flatMap((e) => (e.type === "PROJECTILE_SPAWN" || e.type === "HAZARD_SPAWN" ? [e.id] : [])), ...ids];
+    expect(all).toHaveLength(4);
+    expect(new Set(all).size).toBe(4);
+    for (let i = 1; i < all.length; i++) expect(all[i]!).toBeGreaterThan(all[i - 1]!);
+    expect(b.s.nextId).toBeGreaterThan(Math.max(...all));
+    expect(b.s.hazards.map((h) => h.id)).toEqual(all.filter((_, i) => i % 2 === 1));
+  });
+  it("resetForRound clears projectiles and hazards", () => {
+    const s = fighting();
+    s.projectiles.push({ id: s.nextId++, kind: "molotov", owner: 0, x: 300, y: 330, vx: 6, vy: -7 });
+    spawnHazard(s, "peel", 1, 500, WORLD.ROOF_Y, []);
+    resetForRound(s, 2);
+    expect(s.projectiles).toEqual([]);
+    expect(s.hazards).toEqual([]);
+  });
+  it("hazardRect is 20 px tall on the surface, centred on x", () => {
+    const s = fighting();
+    spawnHazard(s, "fire", 0, 500, WORLD.ROOF_Y, []);
+    expect(hazardRect(s.hazards[0]!)).toEqual({ x: 500 - ARSENAL.FIRE_W / 2, y: WORLD.ROOF_Y - 20, w: ARSENAL.FIRE_W, h: 20 });
+  });
+  it("advanceHazards ages and expires", () => {
+    const s = fighting(); const ev: SimEvent[] = [];
+    spawnHazard(s, "peel", 0, 500, WORLD.ROOF_Y, ev);
+    expect(ev).toEqual([{ type: "HAZARD_SPAWN", id: s.hazards[0]!.id, kind: "peel", x: 500 }]);
+    s.hazards[0]!.ticks = 2;
+    advanceHazards(s, ev); expect(s.hazards[0]).toMatchObject({ age: 1, ticks: 1 });
+    advanceHazards(s, ev); expect(s.hazards).toHaveLength(0);
+  });
+});
