@@ -12,6 +12,7 @@ import type { CalibrationPhase } from "../vision/calibration";
 import type { DebugFrame, VisionInputSource } from "../vision/VisionInputSource";
 import { COLOR_MARKER, COLOR_POSE } from "../vision/thresholds";
 import type { Landmark } from "../vision/workerClient";
+import type { DebugFeed } from "./cameraPreview";
 
 export const STAND_STILL_PROMPT = "Stand still, arms at your sides";
 export const LOST_PROMPT = "Tracking lost — step back into view";
@@ -114,10 +115,11 @@ export class CalibrationOverlay {
     this.root.replaceChildren(this.prompt, this.progress, this.actions, this.preview);
   }
 
-  bind(source: VisionInputSource): void {
+  /** `feed` defaults to the source; pass a `debugFanOut` when the camera preview also listens to onDebug. */
+  bind(source: VisionInputSource, feed: DebugFeed = source): void {
     this.source = source;
     this.collapsed = false;
-    source.onDebug((frame: DebugFrame) => {
+    feed.onDebug((frame: DebugFrame) => {
       this.landmarks = frame.landmarks;
     });
   }
