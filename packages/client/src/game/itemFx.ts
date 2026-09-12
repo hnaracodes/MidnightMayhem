@@ -207,8 +207,9 @@ export class ItemFx {
         break;
       }
       case "LASER_CHARGE":
+        // The ring grows over its own frame index so it reaches r 22 on its last frame (frame 29 of 30).
         this.spawnAnchored(event.player, hands, newest, FRAMES.CHARGE, DEPTH.FX, "ring",
-          (g, t, _frame, a) => drawChargeRing(g, a.at, t));
+          (g, _t, frame, a) => drawChargeRing(g, a.at, frame / (FRAMES.CHARGE - 1)));
         break;
       case "LASER_FIRE": {
         this.cut("ring", event.player);

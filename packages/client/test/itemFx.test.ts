@@ -66,6 +66,14 @@ function stubScene() {
   return { scene: scene as unknown as Phaser.Scene, created, shakes };
 }
 
+/** Runs a recorded shake's per-update callback at `progress` and returns the amplitude it set, in world px. */
+function shakeAmplitudePx(shake: unknown[], progress: number): { x: number; y: number } {
+  const set = { x: 0, y: 0 };
+  const camera = { shakeEffect: { intensity: { set: (x: number, y: number) => { set.x = x; set.y = y; } } } };
+  (shake[3] as (c: unknown, p: number) => void)(camera, progress);
+  return { x: set.x * WORLD.WIDTH, y: set.y * WORLD.HEIGHT };
+}
+
 function fighting(): MatchState {
   const s = createMatch();
   s.phase = "FIGHTING";
@@ -151,7 +159,7 @@ describe("ItemFx laser", () => {
     expect(mid).toBeGreaterThan(6);
     expect(mid).toBeLessThan(22);
     frames(fx, state, 14);
-    expect(radiusAt()).toBeGreaterThan(21); // frame 29 of 30
+    expect(radiusAt()).toBeCloseTo(22, 5); // frame 29 of 30: the ring reaches r 22 on its last frame
     expect(ring.destroyed).toBe(false);
     frames(fx, state, 1);
     expect(ring.destroyed).toBe(true);
@@ -168,6 +176,10 @@ describe("ItemFx laser", () => {
     expect(beam.depth).toBe(4.5);
     expect(shakes).toHaveLength(1);
     expect(shakes[0]![0]).toBeCloseTo(8 * (1000 / 60), 5);
+    expect(shakes[0]![2]).toBe(true); // forced: a beam shake replaces any running punch shake
+    expect(shakeAmplitudePx(shakes[0]!, 0).x).toBeCloseTo(4, 5);
+    expect(shakeAmplitudePx(shakes[0]!, 0).y).toBeCloseTo(4, 5);
+    expect(shakeAmplitudePx(shakes[0]!, 1).x).toBeCloseTo(0, 5);
     const styles = beam.styles();
     const edge = styles.find((s) => s.color === P.amber1)!;
     const core = styles.find((s) => s.color === P.moon)!;
@@ -237,6 +249,8 @@ describe("ItemFx sword", () => {
     expect(created).toHaveLength(1);
     expect(created[0]!.colors().has(P.white)).toBe(true);
     expect(shakes).toHaveLength(1);
+    expect(shakeAmplitudePx(shakes[0]!, 0).x).toBeCloseTo(2, 5);
+    expect(shakeAmplitudePx(shakes[0]!, 0.5).x).toBeCloseTo(1, 5);
     frames(fx, state, 5);
     expect(created[0]!.destroyed).toBe(false);
     frames(fx, state, 1);
