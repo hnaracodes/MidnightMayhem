@@ -1,14 +1,16 @@
-import { BALANCE, MATCH, WORLD } from "../constants";
-import { resetForRound } from "./create";
+import { BALANCE, MATCH, MODES, WORLD } from "../constants";
+import { applyDamage } from "./combat";
+import { playerIndices, resetForRound } from "./create";
 import type { MatchState, SimEvent, Winner } from "./types";
 
 export function applyOutOfBounds(s: MatchState, events: SimEvent[]): void {
-  for (const i of [0, 1] as const) {
-    const f = s.fighters[i];
+  for (const i of playerIndices(s)) {
+    const f = s.fighters[i]!;
+    if (f.hp <= 0) continue;
     if (f.x <= 0 || f.x >= WORLD.WIDTH) {
       f.oobTicks++;
       if (f.oobTicks % BALANCE.OOB_EVERY_TICKS === 0) {
-        f.hp = Math.max(0, f.hp - BALANCE.OOB_DAMAGE);
+        applyDamage(s, i, BALANCE.OOB_DAMAGE, "oob", null, events);
         events.push({ type: "OOB_DAMAGE", player: i, damage: BALANCE.OOB_DAMAGE });
       }
     } else {
@@ -17,37 +19,63 @@ export function applyOutOfBounds(s: MatchState, events: SimEvent[]): void {
   }
 }
 
+/** Teams with at least one living fighter, ascending. */
+export function livingTeams(s: MatchState): number[] {
+  const teams = new Set<number>();
+  for (const f of s.fighters) if (f.hp > 0) teams.add(f.team);
+  return [...teams].sort((a, b) => a - b);
+}
+
+export function teamHp(s: MatchState, team: number): number {
+  let hp = 0;
+  for (const f of s.fighters) if (f.team === team) hp += f.hp;
+  return hp;
+}
+
+/** Every team index of the match (the indices of `roundsWon`). */
+function teams(s: MatchState): number[] {
+  return s.roundsWon.map((_, t) => t);
+}
+
+/** The team(s) with the highest value; "draw" on a tie, the team otherwise. */
+function best(candidates: number[], value: (team: number) => number): Winner {
+  let top = -Infinity;
+  let winners: number[] = [];
+  for (const t of candidates) {
+    const v = value(t);
+    if (v > top) { top = v; winners = [t]; } else if (v === top) winners.push(t);
+  }
+  return winners.length === 1 ? winners[0]! : "draw";
+}
+
 export function roundWinner(s: MatchState): Winner | null {
-  const [a, b] = s.fighters;
-  if (a.hp <= 0 && b.hp <= 0) return "draw";
-  if (a.hp <= 0) return 1;
-  if (b.hp <= 0) return 0;
+  const living = livingTeams(s);
+  if (living.length === 0) return "draw";
+  if (living.length === 1) return living[0]!;
+  if (MODES[s.config.mode].roundTicks === null) return null;
   if (s.roundTicks > 0) return null;
-  if (a.hp > b.hp) return 0;
-  if (b.hp > a.hp) return 1;
-  return "draw";
+  return best(teams(s), (t) => teamHp(s, t));
 }
 
 export function matchWinner(s: MatchState): Winner | null {
-  const [a, b] = s.roundsWon;
-  const aWins = a >= MATCH.ROUNDS_TO_WIN, bWins = b >= MATCH.ROUNDS_TO_WIN;
-  if (aWins && bWins) return "draw";
-  if (aWins) return 0;
-  if (bWins) return 1;
-  if (s.round >= MATCH.MAX_ROUNDS) return a > b ? 0 : b > a ? 1 : "draw";
+  const { roundsToWin, maxRounds } = MODES[s.config.mode];
+  const reached = teams(s).filter((t) => (s.roundsWon[t] ?? 0) >= roundsToWin);
+  if (reached.length > 1) return "draw";
+  if (reached.length === 1) return reached[0]!;
+  if (s.round >= maxRounds) return best(teams(s), (t) => s.roundsWon[t] ?? 0);
   return null;
 }
 
-/** Decrement the timer, then end the round if health or time says so. Last step of a fighting tick. */
+/** Decrement the timer (timed modes only), then end the round if health or time says so. Last step of a fighting tick. */
 export function tickRound(s: MatchState, events: SimEvent[]): void {
-  s.roundTicks = Math.max(0, s.roundTicks - 1);
+  if (MODES[s.config.mode].roundTicks !== null) s.roundTicks = Math.max(0, s.roundTicks - 1);
   const w = roundWinner(s);
   if (w !== null) endRound(s, w, events);
 }
 
 export function endRound(s: MatchState, winner: Winner, events: SimEvent[]): void {
-  if (winner === "draw") { s.roundsWon[0]++; s.roundsWon[1]++; }
-  else s.roundsWon[winner]++;
+  if (winner === "draw") for (const t of teams(s)) s.roundsWon[t]!++;
+  else s.roundsWon[winner] = (s.roundsWon[winner] ?? 0) + 1;
   s.phase = "ROUND_END";
   s.phaseTicks = MATCH.ROUND_END_TICKS;
   for (const f of s.fighters) { f.vx = 0; f.action = null; f.blocking = false; }

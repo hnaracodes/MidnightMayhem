@@ -5,7 +5,7 @@
  */
 import Phaser from "phaser";
 import {
-  WORLD, EMPTY_FRAME, hurtbox, isActivePunch, punchHitbox, risingEdges,
+  MAX_PLAYERS, WORLD, EMPTY_FRAME, hurtbox, isActivePunch, punchHitbox, risingEdges,
   type FighterState, type InputFrame, type MatchState, type PlayerIndex, type TrainCar,
 } from "@midnight/shared";
 import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./backgrounds";
@@ -17,7 +17,8 @@ import { drawFighter, drawShadow } from "./rig/draw";
 import { computePose, type Clock } from "./rig/pose";
 import { session } from "./session";
 
-const DEPTH = { SHADOW: 1, RIG0: 2, RIG1: 3, DEBUG: 9 } as const;
+/** Rig depths run RIG0 + i for slot i (08-contracts: up to four fighters); debug stays above the last one. */
+const DEPTH = { SHADOW: 1, RIG0: 2, DEBUG: 9 } as const;
 const DEBUG_TEXT = { X: 20, Y: 84, SIZE: 11 } as const;
 /** Exponential moving average weight for the update() cost readout. */
 const BUDGET_EMA = 0.05;
@@ -30,7 +31,7 @@ declare global {
 export class ArenaScene extends Phaser.Scene {
   private layers!: Layers;
   private shadow!: Phaser.GameObjects.Graphics;
-  private rigs!: [Phaser.GameObjects.Graphics, Phaser.GameObjects.Graphics];
+  private rigs!: Phaser.GameObjects.Graphics[];
   private debug!: Phaser.GameObjects.Graphics;
   private debugText: Phaser.GameObjects.Text | null = null;
   private hud!: Hud;
@@ -38,7 +39,7 @@ export class ArenaScene extends Phaser.Scene {
 
   private readonly clock = new RenderClock();
   private car: TrainCar = "STANDARD";
-  private names: [string, string] | null = null;
+  private names: string[] | null = null;
   private prevSample: Readonly<InputFrame> = EMPTY_FRAME;
   private hint: PunchHint | null = null;
   private newestTick = -1;
@@ -52,7 +53,7 @@ export class ArenaScene extends Phaser.Scene {
   create(): void {
     this.layers = createBackgrounds(this);
     this.shadow = this.add.graphics().setDepth(DEPTH.SHADOW);
-    this.rigs = [this.add.graphics().setDepth(DEPTH.RIG0), this.add.graphics().setDepth(DEPTH.RIG1)];
+    this.rigs = Array.from({ length: MAX_PLAYERS }, (_, i) => this.add.graphics().setDepth(DEPTH.RIG0 + i));
     this.debug = this.add.graphics().setDepth(DEPTH.DEBUG);
     this.hud = new Hud(this);
     this.effects = new Effects(this);
@@ -92,7 +93,7 @@ export class ArenaScene extends Phaser.Scene {
     }
     if (this.names !== session.playerNames) {
       this.names = session.playerNames;
-      this.hud.setNames([this.names[0].toUpperCase(), this.names[1].toUpperCase()]);
+      this.hud.setNames(this.names.map((name) => name.toUpperCase()));
     }
 
     this.effects.consume(session.events.splice(0), state, newest);
@@ -100,8 +101,10 @@ export class ArenaScene extends Phaser.Scene {
 
     this.shadow.clear();
     this.debug.clear();
-    for (const i of [0, 1] as const) {
+    for (const i of state.fighters.map((_, k) => k as PlayerIndex)) {
       const fighter = this.displayed(state, i);
+      const g = this.rigs[i];
+      if (!fighter || !g) continue;
       const clock: Clock = {
         renderMs,
         koFrames: this.effects.koFrames(i),
@@ -109,7 +112,6 @@ export class ArenaScene extends Phaser.Scene {
         win: isWinner(state, i),
       };
       const joints = computePose(fighter, clock);
-      const g = this.rigs[i];
       g.clear();
       drawShadow(this.shadow, fighter.x, WORLD.ROOF_Y, WORLD.ROOF_Y - fighter.y);
       drawFighter(g, joints, fighter.character, {
@@ -133,8 +135,9 @@ export class ArenaScene extends Phaser.Scene {
   }
 
   /** The fighter to draw: hit-stop freeze first, then the local punch hint over the sampled state. */
-  private displayed(state: MatchState, i: PlayerIndex): FighterState {
+  private displayed(state: MatchState, i: PlayerIndex): FighterState | null {
     const fighter = this.effects.frozen(i) ?? state.fighters[i];
+    if (!fighter) return null;
     return i === session.localIndex ? hintedFighter(fighter, this.hint) : fighter;
   }
 
@@ -144,7 +147,7 @@ export class ArenaScene extends Phaser.Scene {
     session.localEdge = risingEdges(this.prevSample, sample);
     this.prevSample = { ...sample };
     const local = newest.fighters[session.localIndex];
-    this.hint = advanceHint(this.hint, session.localEdge, local, newest.phase === "FIGHTING");
+    this.hint = local ? advanceHint(this.hint, session.localEdge, local, newest.phase === "FIGHTING") : null;
   }
 
   private drawBoxes(fighter: FighterState): void {
@@ -164,7 +167,7 @@ export class ArenaScene extends Phaser.Scene {
   }
 }
 
-/** True during MATCH_END for the match winner (design/02: both fists raised); round winners stay in idle. */
+/** True during MATCH_END for every fighter on the winning team (design/02: both fists raised); round winners stay in idle. */
 function isWinner(state: MatchState, i: PlayerIndex): boolean {
-  return state.phase === "MATCH_END" && state.winner === i;
+  return state.phase === "MATCH_END" && state.winner !== "draw" && state.winner === state.fighters[i]?.team;
 }

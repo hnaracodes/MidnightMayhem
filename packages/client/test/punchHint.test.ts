@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BALANCE, EMPTY_FRAME, createFighter, isActivePunch, type FighterState, type InputFrame } from "@midnight/shared";
+import { BALANCE, EMPTY_FRAME, createMatch, isActivePunch, type FighterState, type InputFrame } from "@midnight/shared";
 import { HINT_MAX_FRAMES, RenderClock, advanceHint, canHint, hintedFighter } from "../src/game/punchHint";
 
 const edge = (key: keyof InputFrame): InputFrame => ({ ...EMPTY_FRAME, [key]: true });
-const idle = (): FighterState => createFighter(0);
+const idle = (): FighterState => createMatch().fighters[0]!;
 
 describe("punch hint", () => {
   it("starts on a punchL edge when the snapshot fighter is idle and the round is fighting", () => {
@@ -17,7 +17,7 @@ describe("punch hint", () => {
   });
 
   it("does not start while punching, in hitstun, blocking or outside FIGHTING", () => {
-    const punching = { ...idle(), action: { kind: "punch" as const, arm: "L" as const, elapsed: 5, landed: false } };
+    const punching = { ...idle(), action: { kind: "punch" as const, arm: "L" as const, elapsed: 5, landed: false, sword: false } };
     expect(canHint(punching, true)).toBe(false);
     expect(canHint({ ...idle(), hitstun: 3 }, true)).toBe(false);
     expect(canHint({ ...idle(), blocking: true }, true)).toBe(false);
@@ -43,7 +43,7 @@ describe("punch hint", () => {
 
   it("falls back as soon as a snapshot shows an action", () => {
     const hint = advanceHint(null, edge("punchL"), idle(), true);
-    const confirmed = { ...idle(), action: { kind: "punch" as const, arm: "L" as const, elapsed: 0, landed: false } };
+    const confirmed = { ...idle(), action: { kind: "punch" as const, arm: "L" as const, elapsed: 0, landed: false, sword: false } };
     expect(advanceHint(hint, EMPTY_FRAME, confirmed, true)).toBeNull();
     expect(hintedFighter(confirmed, null)).toBe(confirmed);
   });

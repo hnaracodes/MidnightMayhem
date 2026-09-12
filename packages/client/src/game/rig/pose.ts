@@ -266,7 +266,7 @@ function jumpPose(rig: CharacterRig, f: FighterState): LocalPose {
 
 function punchPose(rig: CharacterRig, f: FighterState): LocalPose {
   const action = f.action;
-  if (!action) return standing(rig);
+  if (!action || action.kind === "laser") return standing(rig); // laser pose is 09.05/11.05
   const { PUNCH_STARTUP: s, PUNCH_ACTIVE: a, PUNCH_RECOVERY: r } = BALANCE;
   const e = action.elapsed;
   // the player's left arm is the back arm when facing right and the front arm when facing left

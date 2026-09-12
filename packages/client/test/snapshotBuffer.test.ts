@@ -5,7 +5,7 @@ import { SnapshotBuffer } from "../src/net/snapshotBuffer";
 function state(tick: number, x: number): MatchState {
   const match = createMatch();
   match.tick = tick;
-  match.fighters[0].x = x;
+  match.fighters[0]!.x = x;
   return match;
 }
 
@@ -17,7 +17,7 @@ describe("SnapshotBuffer", () => {
 
     const sampled = buffer.sample(200);
 
-    expect(sampled?.fighters[0].x).toBe(150);
+    expect(sampled?.fighters[0]!.x).toBe(150);
     expect(sampled?.tick).toBe(2);
   });
 

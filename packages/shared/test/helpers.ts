@@ -8,7 +8,7 @@ export const P_L: InputFrame = { ...EMPTY_FRAME, punchL: true };
 export function fighting(gap?: number): MatchState {
   const s = createMatch();
   s.phase = "FIGHTING"; s.roundTicks = MATCH.ROUND_TICKS;
-  if (gap !== undefined) { s.fighters[0].x = 400; s.fighters[1].x = 400 + gap; }
+  if (gap !== undefined) { s.fighters[0]!.x = 400; s.fighters[1]!.x = 400 + gap; }
   return s;
 }
 

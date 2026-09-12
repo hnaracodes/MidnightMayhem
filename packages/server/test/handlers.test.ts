@@ -16,7 +16,7 @@ describe("message handlers", () => {
     handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "Alice", roomId: "ABCDE" }));
     expect(conn.index).toBe(0);
     expect(sent).toEqual(expect.arrayContaining([
-      { type: "WELCOME", roomId: "ABCDE", playerIndex: 0, protocolVersion: 1 },
+      { type: "WELCOME", roomId: "ABCDE", playerIndex: 0, protocolVersion: 2 },
       expect.objectContaining({ type: "LOBBY", roomId: "ABCDE" }),
     ]));
   });
@@ -46,11 +46,11 @@ describe("message handlers", () => {
 
   it("requires HELLO before READY or INPUT and stores input after joining", () => {
     const { ctx, conn, sent } = setup();
-    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false } }));
+    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null } }));
     expect(sent.at(-1)).toEqual(expect.objectContaining({ type: "ERROR", code: "NOT_IN_ROOM" }));
     handleMessage(ctx, conn, JSON.stringify({ type: "HELLO", name: "A", roomId: "ABCDE" }));
-    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false } }));
-    expect(conn.room?.inputs()[0].left).toBe(true);
+    handleMessage(ctx, conn, JSON.stringify({ type: "INPUT", seq: 1, frame: { left: true, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null } }));
+    expect(conn.room?.inputs()[0]!.left).toBe(true);
   });
 
   it("closes after three malformed frames", () => {

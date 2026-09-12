@@ -40,7 +40,7 @@ export function advanceHint(prev: PunchHint | null, edges: Readonly<InputFrame>,
 export function hintedFighter(f: FighterState, hint: PunchHint | null): FighterState {
   if (!hint) return f;
   const elapsed = Math.min(hint.frames, BALANCE.PUNCH_STARTUP - 1);
-  return { ...f, action: { kind: "punch", arm: hint.arm, elapsed, landed: false } };
+  return { ...f, action: { kind: "punch", arm: hint.arm, elapsed, landed: false, sword: false } };
 }
 
 // ---------------------------------------------------------------------------------------------

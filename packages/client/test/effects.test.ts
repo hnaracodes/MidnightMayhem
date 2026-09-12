@@ -69,14 +69,14 @@ describe("Effects hit-stop and flashes", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
-    state.fighters[1].x = 500;
+    state.fighters[1]!.x = 500;
 
     fx.consume([hit(1, false)], state);
     const seen: Array<number | null> = [];
     for (let k = 0; k < 6; k += 1) {
       seen.push(fx.frozen(1)?.x ?? null);
       expect(fx.frozen(0) === null).toBe(fx.frozen(1) === null);
-      state.fighters[1].x += 10; // the live state keeps moving; the frozen copy must not
+      state.fighters[1]!.x += 10; // the live state keeps moving; the frozen copy must not
       fx.update(DT);
       fx.consume([], state);
     }
@@ -87,18 +87,18 @@ describe("Effects hit-stop and flashes", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
     const sampled = fighting();
-    sampled.fighters[0].action = { kind: "punch", arm: "L", elapsed: 1, landed: false }; // still in startup
+    sampled.fighters[0]!.action = { kind: "punch", arm: "L", elapsed: 1, landed: false, sword: false }; // still in startup
     const newest = fighting();
     newest.tick = sampled.tick + 3;
-    newest.fighters[0].action = { kind: "punch", arm: "L", elapsed: BALANCE.PUNCH_STARTUP, landed: true };
-    newest.fighters[1].hitstun = BALANCE.HITSTUN_TICKS;
-    newest.fighters[1].x = 520;
+    newest.fighters[0]!.action = { kind: "punch", arm: "L", elapsed: BALANCE.PUNCH_STARTUP, landed: true, sword: false };
+    newest.fighters[1]!.hitstun = BALANCE.HITSTUN_TICKS;
+    newest.fighters[1]!.x = 520;
 
     fx.consume([hit(1, false)], sampled, newest);
     expect(fx.frozen(0)?.action?.elapsed).toBe(BALANCE.PUNCH_STARTUP);
     expect(fx.frozen(1)?.hitstun).toBe(BALANCE.HITSTUN_TICKS);
     expect(fx.frozen(1)?.x).toBe(520);
-    newest.fighters[1].x = 999; // a copy, not a reference
+    newest.fighters[1]!.x = 999; // a copy, not a reference
     expect(fx.frozen(1)?.x).toBe(520);
   });
 
@@ -170,11 +170,11 @@ describe("Effects impact position", () => {
     const { scene, created } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
-    state.fighters[0].x = 300;
-    state.fighters[1].x = 400;
+    state.fighters[0]!.x = 300;
+    state.fighters[1]!.x = 400;
     // the snapshot that carried the event: the target has already taken a knockback step
     const newest = structuredClone(state);
-    newest.fighters[1].x = 460;
+    newest.fighters[1]!.x = 460;
     fx.consume([hit(1, false)], state, newest);
     const spark = created.at(-1)!;
     const core = spark.circles.at(-1)!;
@@ -192,13 +192,13 @@ describe("Effects landing and squash", () => {
     expect(fx.landFrames(0)).toBeGreaterThanOrEqual(1_000_000);
     expect(fx.squashFor(0)).toBe(1);
 
-    state.fighters[0].grounded = false;
-    state.fighters[0].y = WORLD.ROOF_Y - 40;
+    state.fighters[0]!.grounded = false;
+    state.fighters[0]!.y = WORLD.ROOF_Y - 40;
     frames(fx, state, 3);
     expect(created.length).toBe(0);
 
-    state.fighters[0].grounded = true;
-    state.fighters[0].y = WORLD.ROOF_Y;
+    state.fighters[0]!.grounded = true;
+    state.fighters[0]!.y = WORLD.ROOF_Y;
     fx.consume([], state);
     expect(created.length).toBe(1); // landing dust
     const squash: number[] = [];
@@ -220,12 +220,12 @@ describe("Effects landing and squash", () => {
     const state = fighting();
     for (let tick = 1; tick <= 30; tick += 1) {
       state.tick = tick;
-      state.fighters[0].vx = BALANCE.WALK_SPEED;
+      state.fighters[0]!.vx = BALANCE.WALK_SPEED;
       fx.consume([], state);
       fx.update(DT);
     }
     expect(created.length).toBe(3);
-    state.fighters[0].vx = 0;
+    state.fighters[0]!.vx = 0;
     for (let tick = 31; tick <= 60; tick += 1) {
       state.tick = tick;
       fx.consume([], state);
@@ -240,7 +240,7 @@ describe("Effects KO slowdown", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
-    state.fighters[1].hp = 0;
+    state.fighters[1]!.hp = 0;
     state.phase = "ROUND_END";
     fx.consume([{ type: "ROUND_END", round: 1, winner: 0 }], state);
     const scales: number[] = [];
@@ -260,7 +260,7 @@ describe("Effects KO slowdown", () => {
     expect(ko.slice(120)).toEqual([30, 31, 32, 33]);
 
     state.phase = "COUNTDOWN";
-    state.fighters[1].hp = BALANCE.MAX_HP;
+    state.fighters[1]!.hp = BALANCE.MAX_HP;
     fx.consume([], state);
     expect(fx.koFrames(1)).toBe(0);
     expect(fx.timeScale()).toBe(1);
@@ -270,8 +270,8 @@ describe("Effects KO slowdown", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
-    state.fighters[0].hp = 0;
-    state.fighters[1].hp = 0;
+    state.fighters[0]!.hp = 0;
+    state.fighters[1]!.hp = 0;
     state.phase = "ROUND_END";
     frames(fx, state, 60, [{ type: "ROUND_END", round: 1, winner: "draw" }]);
     expect(fx.koFrames(0)).toBe(15);
@@ -290,7 +290,7 @@ describe("Effects KO slowdown", () => {
     expect(fx.timeScale()).toBe(1);
     frames(fx, state, 2);
     state.phase = "ROUND_END";
-    state.fighters[0].hp = 0;
+    state.fighters[0]!.hp = 0;
     fx.consume([], state);
     expect(fx.timeScale()).toBe(0.25);
     expect(fx.koFrames(0)).toBe(0);
@@ -301,8 +301,8 @@ describe("Effects KO slowdown", () => {
     const fx = new Effects(scene);
     const state = fighting();
     state.phase = "ROUND_END";
-    state.fighters[0].hp = 20;
-    state.fighters[1].hp = 10;
+    state.fighters[0]!.hp = 20;
+    state.fighters[1]!.hp = 10;
     frames(fx, state, 5, [{ type: "ROUND_END", round: 1, winner: 0 }]);
     expect(fx.timeScale()).toBe(1);
     expect(fx.koFrames(0)).toBe(0);
@@ -315,7 +315,7 @@ describe("Effects danger vignette", () => {
     const { scene, created } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
-    state.fighters[0].x = WORLD.SOFT_EDGE_L / 2; // depth 36
+    state.fighters[0]!.x = WORLD.SOFT_EDGE_L / 2; // depth 36
     fx.consume([], state);
     fx.update(DT);
     expect(created.length).toBe(1);
@@ -323,7 +323,7 @@ describe("Effects danger vignette", () => {
     expect(peak).toBeCloseTo(0.25, 5);
     expect(created[0]!.fills.every((f) => f.color === P.danger)).toBe(true);
 
-    state.fighters[0].x = WORLD.PLAYER_START_X[0];
+    state.fighters[0]!.x = WORLD.PLAYER_START_X[0];
     fx.consume([], state);
     fx.update(DT);
     expect(created[0]!.destroyed).toBe(true);
@@ -333,7 +333,7 @@ describe("Effects danger vignette", () => {
     const { scene, created } = stubScene();
     const fx = new Effects(scene);
     const state = fighting();
-    state.fighters[1].x = WORLD.WIDTH;
+    state.fighters[1]!.x = WORLD.WIDTH;
     fx.consume([{ type: "OOB_DAMAGE", player: 1, damage: BALANCE.OOB_DAMAGE }], state);
     fx.update(DT);
     const peaks: number[] = [];

@@ -26,6 +26,8 @@ export function classify(g: GestureFlags): Readonly<InputFrame> {
     punchL: punch && g.punchL,
     punchR: punch && g.punchR,
     block,
+    special: false, // laser gesture lands in 09.04
+    item: null,     // object detection lands in 09.04
   };
   if (last && framesEqual(last, next)) return last;
   last = Object.freeze(next);

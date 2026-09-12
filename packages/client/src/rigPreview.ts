@@ -5,7 +5,7 @@
  */
 import Phaser from "phaser";
 import {
-  WORLD, createFighter, hurtbox, punchHitbox,
+  WORLD, createMatch, hurtbox, punchHitbox,
   type CharacterId, type FighterState, type TrainCar,
 } from "@midnight/shared";
 import { applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "./game/backgrounds";
@@ -153,7 +153,7 @@ function columnCentres(facing: 1 | -1): number[] {
 
 /** A fake FighterState plus clock for one column; `dx` translates the Graphics when the pose needs a different x. */
 function fakeState(id: ColumnId, row: (typeof ROWS)[number], facing: 1 | -1, cx: number, now: number, frame: number): { f: FighterState; clock: Clock; dx: number } {
-  const f: FighterState = { ...createFighter(row.index), x: cx, y: row.groundY, facing };
+  const f: FighterState = { ...createMatch().fighters[row.index]!, x: cx, y: row.groundY, facing };
   const pins = ui.pins;
   const clock: Clock = { renderMs: now, koFrames: 0, landFrames: 0 };
   let dx = 0;
@@ -170,7 +170,7 @@ function fakeState(id: ColumnId, row: (typeof ROWS)[number], facing: 1 | -1, cx:
       f.y = row.groundY - JUMP_HEIGHT[id];
       break;
     }
-    case "punch": f.action = { kind: "punch", arm: "R", elapsed: pins.punch ?? ui.punchTick, landed: false }; break;
+    case "punch": f.action = { kind: "punch", arm: "R", elapsed: pins.punch ?? ui.punchTick, landed: false, sword: false }; break;
     case "block": f.blocking = true; if (pins.block !== undefined) clock.renderMs = pins.block; break;
     case "hit": f.hitstun = pins.hit ?? 8; break;
     case "ko": f.hp = 0; clock.koFrames = pins.ko ?? frame % 120; break;

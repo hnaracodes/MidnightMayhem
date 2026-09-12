@@ -1,4 +1,4 @@
-import type { PlayerIndex, Winner } from "@midnight/shared";
+import { CHARACTER_LABEL, type MatchState, type PlayerIndex, type Winner } from "@midnight/shared";
 
 export class ResultOverlay {
   private readonly root: HTMLElement;
@@ -9,21 +9,24 @@ export class ResultOverlay {
     this.root = root;
   }
 
-  show(winner: Winner, localIndex: PlayerIndex): void {
+  /** `winner` is a team index; `state` (the final snapshot) maps it to a name and the local fighter's team. */
+  show(winner: Winner, localIndex: PlayerIndex, state: MatchState | null = null): void {
     this.root.replaceChildren();
     this.root.hidden = false;
-    this.root.dataset["verdict"] = winner === "draw" ? "draw" : winner === localIndex ? "win" : "lose";
+    const localTeam = state?.fighters[localIndex]?.team ?? localIndex;
+    const won = winner !== "draw" && winner === localTeam;
+    this.root.dataset["verdict"] = winner === "draw" ? "draw" : won ? "win" : "lose";
 
     const heading = document.createElement("h1");
     heading.textContent = winner === "draw"
       ? "MUTUAL DERAILMENT"
-      : winner === localIndex ? "YOU WIN" : "YOU LOSE";
+      : won ? "YOU WIN" : "YOU LOSE";
     const detail = winner === "draw"
       ? document.createElement("p")
       : document.createElement("h2");
     detail.textContent = winner === "draw"
       ? "Neither fighter leaves the train standing."
-      : `${winner === 0 ? "THE DRIFTER" : "THE CONDUCTOR"} WINS`;
+      : `${winnerName(winner, state)} WINS`;
     const rematch = document.createElement("button");
     rematch.type = "button";
     rematch.className = "btn btn-primary";
@@ -38,4 +41,12 @@ export class ResultOverlay {
   hide(): void {
     this.root.hidden = true;
   }
+}
+
+/** The winning team's name: "TEAM A/B" in 2v2, else the character label of the team's first fighter. */
+export function winnerName(team: number, state: MatchState | null): string {
+  if (state?.config.teams === "2v2") return team === 0 ? "TEAM A" : "TEAM B";
+  const first = state?.fighters.find((f) => f.team === team);
+  const character = first?.character ?? (team === 0 ? "drifter" : "conductor");
+  return CHARACTER_LABEL[character];
 }

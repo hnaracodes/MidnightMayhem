@@ -90,7 +90,7 @@ export function createChecklist(root: HTMLElement): Checklist {
     },
     reset() {
       counter.reset();
-      render({ left: false, right: false, jump: false, punchL: false, punchR: false, block: false });
+      render({ left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null });
     },
   };
   reset.addEventListener("click", () => api.reset());

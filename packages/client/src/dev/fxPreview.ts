@@ -1,5 +1,8 @@
 import Phaser from "phaser";
-import { BALANCE, MATCH, WORLD, createMatch, type MatchState, type PlayerIndex, type SimEvent } from "@midnight/shared";
+import { BALANCE, MATCH, WORLD, createMatch, type MatchState, type SimEvent } from "@midnight/shared";
+
+/** The preview fabricates a two-fighter match; the four-fighter arena is 11.05. */
+type PlayerIndex = 0 | 1;
 import { Effects } from "../game/effects";
 import { P } from "../game/palette";
 
@@ -81,7 +84,7 @@ class FxPreviewScene extends Phaser.Scene {
     this.effects.consume(this.pending.splice(0), this.state);
 
     for (const i of [0, 1] as const) {
-      const f = this.effects.frozen(i) ?? this.state.fighters[i];
+      const f = this.effects.frozen(i) ?? this.state.fighters[i]!;
       const squash = this.effects.squashFor(i);
       const fill = this.effects.fillFor(i);
       const w = WORLD.HURTBOX_W / squash;
@@ -111,7 +114,7 @@ class FxPreviewScene extends Phaser.Scene {
 
     const s = this.state;
     this.label.setText(
-      `tick ${s.tick}  ${s.phase}  hp ${s.fighters[0].hp}/${s.fighters[1].hp}  timeScale ${this.effects.timeScale()}` +
+      `tick ${s.tick}  ${s.phase}  hp ${s.fighters[0]!.hp}/${s.fighters[1]!.hp}  timeScale ${this.effects.timeScale()}` +
       `  ko ${this.effects.koFrames(0)}/${this.effects.koFrames(1)}` +
       `  land ${fmtLand(this.effects.landFrames(0))}/${fmtLand(this.effects.landFrames(1))}`,
     );
@@ -123,8 +126,8 @@ class FxPreviewScene extends Phaser.Scene {
     const s = this.state;
     s.tick += 1;
     for (const i of [0, 1] as const) {
-      const f = s.fighters[i];
-      const other = s.fighters[i === 0 ? 1 : 0];
+      const f = s.fighters[i]!;
+      const other = s.fighters[i === 0 ? 1 : 0]!;
       if (other.x !== f.x) f.facing = other.x > f.x ? 1 : -1;
 
       if (this.walkTicks[i] > 0 && s.phase === "FIGHTING") {
@@ -173,7 +176,7 @@ class FxPreviewScene extends Phaser.Scene {
     this.ensureFighting();
     const attacker: PlayerIndex = target === 0 ? 1 : 0;
     const dmg = damage ?? (blocked ? BALANCE.CHIP_DAMAGE : BALANCE.PUNCH_DAMAGE);
-    const f = this.state.fighters[target];
+    const f = this.state.fighters[target]!;
     f.hp = Math.max(0, f.hp - dmg);
     f.blocking = blocked;
     this.trailFrames[attacker] = TRAIL_FRAMES;
@@ -182,7 +185,7 @@ class FxPreviewScene extends Phaser.Scene {
 
   private jump(player: PlayerIndex): void {
     this.ensureFighting();
-    const f = this.state.fighters[player];
+    const f = this.state.fighters[player]!;
     if (!f.grounded) return;
     f.grounded = false;
     f.vy = BALANCE.JUMP_VELOCITY;
@@ -192,7 +195,7 @@ class FxPreviewScene extends Phaser.Scene {
 
   private land(player: PlayerIndex): void {
     this.ensureFighting();
-    const f = this.state.fighters[player];
+    const f = this.state.fighters[player]!;
     f.grounded = false;
     f.y = WORLD.ROOF_Y - 0.01;
     f.vy = 0; // airborne for one sampled frame, then gravity crosses ROOF_Y and lands
@@ -200,7 +203,7 @@ class FxPreviewScene extends Phaser.Scene {
 
   private oob(player: PlayerIndex): void {
     this.ensureFighting();
-    const f = this.state.fighters[player];
+    const f = this.state.fighters[player]!;
     this.walkTicks[player] = 0;
     f.x = player === 0 ? 0 : WORLD.WIDTH;
     f.oobTicks = BALANCE.OOB_EVERY_TICKS - 1; // first OOB_DAMAGE on the next tick
@@ -209,7 +212,7 @@ class FxPreviewScene extends Phaser.Scene {
   private ko(loser: PlayerIndex): void {
     const s = this.state;
     const winner: PlayerIndex = loser === 0 ? 1 : 0;
-    s.fighters[loser].hp = 0;
+    s.fighters[loser]!.hp = 0;
     s.phase = "ROUND_END";
     s.phaseTicks = MATCH.ROUND_END_TICKS;
     s.winner = winner;

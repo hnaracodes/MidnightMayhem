@@ -1,4 +1,4 @@
-import { EMPTY_FRAME, framesEqual, type InputFrame } from "@midnight/shared";
+import { EMPTY_FRAME, framesEqual, type InputFrame, type InputKey } from "@midnight/shared";
 import { describe, expect, it } from "vitest";
 import { createPipeline, processLandmarks, type DebugFrame, type Pipeline } from "../src/vision/VisionInputSource";
 import {
@@ -143,7 +143,7 @@ class Driver {
 const frames = (d: DebugFrame[]): InputFrame[] => d.map((f) => f.frame);
 
 /** Number of false -> true transitions of `key` across the frames, starting from `prev`. */
-function risingEdges(d: DebugFrame[], key: keyof InputFrame, prev = false): number {
+function risingEdges(d: DebugFrame[], key: InputKey, prev = false): number {
   let n = 0;
   for (const f of d) {
     if (f.frame[key] && !prev) n++;
@@ -152,7 +152,7 @@ function risingEdges(d: DebugFrame[], key: keyof InputFrame, prev = false): numb
   return n;
 }
 
-const anyTrue = (d: DebugFrame[], key: keyof InputFrame) => d.some((f) => f.frame[key]);
+const anyTrue = (d: DebugFrame[], key: InputKey) => d.some((f) => f.frame[key]);
 /** Every classified frame is all-false (by value; while ready, classify hands out its own frozen object). */
 const allFalseFrames = (d: DebugFrame[]) => d.every((f) => framesEqual(f.frame, EMPTY_FRAME));
 /** Every frame is the EMPTY_FRAME singleton itself, which is what the layer emits when not ready. */

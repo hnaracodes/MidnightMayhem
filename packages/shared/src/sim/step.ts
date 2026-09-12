@@ -1,11 +1,17 @@
-import type { InputFrame } from "../input";
+import { EMPTY_FRAME, type InputFrame } from "../input";
 import { advancePunches, resolvePunches } from "./combat";
+import { playerIndices } from "./create";
 import { applyPhysics, controlFighter, updateFacing } from "./fighter";
+import { advanceHazards } from "./hazards";
+import { applyEquip, tickCooldowns } from "./items";
+import { resolveLaser } from "./laser";
+import { applyPits } from "./maps";
+import { advanceProjectiles } from "./projectiles";
 import { advancePhase, applyOutOfBounds, tickRound } from "./rounds";
 import type { MatchState, SimEvent, StepResult } from "./types";
 
-/** Pure: never mutates prev. Same (prev, inputs) always gives the same result. */
-export function step(prev: MatchState, inputs: [InputFrame, InputFrame]): StepResult {
+/** Pure: never mutates prev. Same (prev, inputs) always gives the same result. Missing inputs read as EMPTY_FRAME. */
+export function step(prev: MatchState, inputs: readonly InputFrame[]): StepResult {
   const s: MatchState = structuredClone(prev);
   const events: SimEvent[] = [];
   s.tick++;
@@ -18,19 +24,24 @@ export function step(prev: MatchState, inputs: [InputFrame, InputFrame]): StepRe
     advancePhase(s, events);
   }
 
-  s.fighters[0].prev = { ...inputs[0] };
-  s.fighters[1].prev = { ...inputs[1] };
+  for (const i of playerIndices(s)) s.fighters[i]!.prev = { ...(inputs[i] ?? EMPTY_FRAME) };
   return { state: s, events };
 }
 
-export function fightTick(s: MatchState, inputs: [InputFrame, InputFrame], events: SimEvent[]): void {
-  // Advance existing punches first so a punch started this tick sits at elapsed 0 (startup)
+/** One fighting tick, in the order the lanes fill in (08-contracts/01 § step.ts). */
+export function fightTick(s: MatchState, inputs: readonly InputFrame[], events: SimEvent[]): void {
+  // Advance existing actions first so a punch started this tick sits at elapsed 0 (startup)
   // and its first active tick is the 5th tick after the key edge (4 startup ticks, no hitbox).
   advancePunches(s);
-  controlFighter(s.fighters[0], 0, inputs[0], events);
-  controlFighter(s.fighters[1], 1, inputs[1], events);
-  applyPhysics(s.fighters[0]);
-  applyPhysics(s.fighters[1]);
-  updateFacing(s.fighters[0], s.fighters[1]);
+  tickCooldowns(s);
+  const players = playerIndices(s);
+  for (const i of players) controlFighter(s, i, inputs[i] ?? EMPTY_FRAME, events);
+  for (const i of players) applyEquip(s, i, inputs[i] ?? EMPTY_FRAME, events);
+  for (const i of players) applyPhysics(s.fighters[i]!, i, s.config.map, events);
+  updateFacing(s);
   resolvePunches(s, events);
+  resolveLaser(s, events);
+  advanceProjectiles(s, events);
+  advanceHazards(s, events);
+  applyPits(s, events);
 }

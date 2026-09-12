@@ -9,7 +9,7 @@ describe("full match", () => {
     let s = createMatch();
     const events: SimEvent[] = [];
     for (let t = 0; t < 60 * 60 * 5 && s.phase !== "MATCH_END"; t++) {
-      const p0: InputFrame = { ...EMPTY_FRAME, right: s.fighters[1].x - s.fighters[0].x > 90, punchL: t % 20 < 2 };
+      const p0: InputFrame = { ...EMPTY_FRAME, right: s.fighters[1]!.x - s.fighters[0]!.x > 90, punchL: t % 20 < 2 };
       const p1: InputFrame = { ...EMPTY_FRAME, block: t % 90 < 30 };
       const r = step(s, [p0, p1]); s = r.state; events.push(...r.events);
     }

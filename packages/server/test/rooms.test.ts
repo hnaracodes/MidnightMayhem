@@ -37,7 +37,7 @@ describe("Room", () => {
     frame.right = false;
     expect(room.setInput(0, 1, frame)).toBe(false);
     expect(room.setInput(0, 0, frame)).toBe(false);
-    expect(room.inputs()[0].right).toBe(true);
+    expect(room.inputs()[0]!.right).toBe(true);
     expect(room.slots[0]?.seq).toBe(1);
   });
 

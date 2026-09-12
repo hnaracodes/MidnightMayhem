@@ -50,18 +50,10 @@ export class SnapshotBuffer {
       const amount = span === 0 ? 1 : (renderTime - a.at) / span;
       return {
         ...b.state,
-        fighters: [
-          {
-            ...b.state.fighters[0],
-            x: lerp(a.state.fighters[0].x, b.state.fighters[0].x, amount),
-            y: lerp(a.state.fighters[0].y, b.state.fighters[0].y, amount),
-          },
-          {
-            ...b.state.fighters[1],
-            x: lerp(a.state.fighters[1].x, b.state.fighters[1].x, amount),
-            y: lerp(a.state.fighters[1].y, b.state.fighters[1].y, amount),
-          },
-        ],
+        fighters: b.state.fighters.map((f, i) => {
+          const from = a.state.fighters[i] ?? f;
+          return { ...f, x: lerp(from.x, f.x, amount), y: lerp(from.y, f.y, amount) };
+        }),
       };
     }
 

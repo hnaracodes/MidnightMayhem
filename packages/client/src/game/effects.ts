@@ -69,25 +69,30 @@ interface Trail { g: Graphics; life: number; fresh: boolean }
 
 type Fill = { fillOverride?: number; fillAlpha?: number };
 
+/** One entry per player slot (08-contracts: up to four fighters); `state.fighters` says how many are live. */
+type Per<T> = [T, T, T, T];
+const per = <T>(v: T): Per<T> => [v, v, v, v];
+const PLAYERS: readonly PlayerIndex[] = [0, 1, 2, 3];
+
 export class Effects {
   private readonly timed: Timed[] = [];
-  private readonly trails: [Trail | null, Trail | null] = [null, null];
+  private readonly trails: Per<Trail | null> = per(null);
   private vignette: Graphics | null = null;
   private readonly vignetteAlpha: [number, number] = [0, 0]; // left edge, right edge
 
   private freezeFrames = 0;
-  private frozenSnap: [FighterState, FighterState] | null = null;
-  private readonly flashFrames: [number, number] = [0, 0];
-  private readonly flashBlocked: [boolean, boolean] = [false, false];
-  private readonly squashFrames: [number, number] = [0, 0];
-  private readonly landCount: [number, number] = [NO_LANDING, NO_LANDING];
-  private readonly prevGrounded: [boolean, boolean] = [true, true];
-  private readonly walkDustTick: [number | null, number | null] = [null, null];
-  private readonly koActive: [boolean, boolean] = [false, false];
-  private readonly koCount: [number, number] = [0, 0];
+  private frozenSnap: FighterState[] | null = null;
+  private readonly flashFrames: Per<number> = per(0);
+  private readonly flashBlocked: Per<boolean> = per(false);
+  private readonly squashFrames: Per<number> = per(0);
+  private readonly landCount: Per<number> = per(NO_LANDING);
+  private readonly prevGrounded: Per<boolean> = per(true);
+  private readonly walkDustTick: Per<number | null> = per(null);
+  private readonly koActive: Per<boolean> = per(false);
+  private readonly koCount: Per<number> = per(0);
   private koPending = false;
   private koPendingFrames = 0;
-  private readonly oobPulseFrames: [number, number] = [0, 0];
+  private readonly oobPulseFrames: Per<number> = per(0);
   private clockSec = 0;
 
   constructor(private readonly scene: Phaser.Scene) {}
@@ -107,7 +112,7 @@ export class Effects {
 
   /** The fighter snapshot captured at a clean HIT while hit-stop holds, else null. */
   frozen(i: PlayerIndex): FighterState | null {
-    return this.frozenSnap ? this.frozenSnap[i] : null;
+    return this.frozenSnap?.[i] ?? null;
   }
 
   /** Damage flash (white 70 % then danger 30 %) or chip flash (moon 40 %); `{}` when none. */
@@ -143,7 +148,7 @@ export class Effects {
    * scene's render clock only; the collapse counter advances by the same factor so both end together.
    */
   timeScale(): number {
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYERS) {
       if (this.koActive[i] && this.koCount[i] < FRAMES.KO_SLOW) return KO_TIME_SCALE;
     }
     return 1;
@@ -167,7 +172,7 @@ export class Effects {
 
     if (this.freezeFrames > 0 && --this.freezeFrames === 0) this.frozenSnap = null;
     const koStep = this.timeScale(); // read before advancing so the last slow frame lands exactly on KO_SLOW
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYERS) {
       if (this.flashFrames[i] > 0) this.flashFrames[i] -= 1;
       if (this.squashFrames[i] > 0) this.squashFrames[i] -= 1;
       if (this.landCount[i] < NO_LANDING) this.landCount[i] += 1;
@@ -188,7 +193,7 @@ export class Effects {
       }
     }
 
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYERS) {
       const trail = this.trails[i];
       if (!trail) continue;
       if (trail.fresh) { trail.fresh = false; continue; }
@@ -211,6 +216,7 @@ export class Effects {
         // so the spark must sit on the frozen target's chest, not on the 50 ms-delayed sample.
         const target = newest.fighters[event.target];
         const attacker = newest.fighters[event.attacker];
+        if (!target || !attacker) break;
         const toward = attacker.x !== target.x ? Math.sign(attacker.x - target.x) : target.facing;
         const at = { x: target.x + toward * IMPACT_OFFSET, y: target.y - CHEST_ABOVE_FEET };
         if (event.blocked) {
@@ -229,7 +235,7 @@ export class Effects {
       }
       case "JUMP": {
         const f = state.fighters[event.player];
-        this.dust(f.x, f.y);
+        if (f) this.dust(f.x, f.y);
         break;
       }
       case "ROUND_END":
@@ -262,8 +268,9 @@ export class Effects {
   // ---- state reads ----
 
   private readLandings(state: MatchState): void {
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYERS) {
       const f = state.fighters[i];
+      if (!f) continue;
       if (!this.prevGrounded[i] && f.grounded) {
         this.dust(f.x, f.y);
         this.squashFrames[i] = FRAMES.SQUASH;
@@ -274,8 +281,9 @@ export class Effects {
   }
 
   private readWalking(state: MatchState): void {
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYERS) {
       const f = state.fighters[i];
+      if (!f) continue;
       const walking = state.phase === "FIGHTING" && f.grounded && f.hitstun === 0 && f.vx !== 0;
       if (!walking) {
         this.walkDustTick[i] = null;
@@ -293,16 +301,16 @@ export class Effects {
 
   private readKo(state: MatchState): void {
     if (state.phase === "COUNTDOWN") {
-      this.koActive[0] = this.koActive[1] = false;
-      this.koCount[0] = this.koCount[1] = 0;
+      for (const i of PLAYERS) { this.koActive[i] = false; this.koCount[i] = 0; }
       this.koPending = false;
       return;
     }
     if (!this.koPending) return;
     if (state.phase !== "ROUND_END" && state.phase !== "MATCH_END") return; // displayed state still catching up
     this.koPending = false;
-    for (const i of [0, 1] as const) {
-      if (state.fighters[i].hp > 0 || this.koActive[i]) continue;
+    for (const i of PLAYERS) {
+      const f = state.fighters[i];
+      if (!f || f.hp > 0 || this.koActive[i]) continue;
       this.koActive[i] = true;
       this.koCount[i] = 0; // timeScale() drops to 0.25 until this reaches KO_SLOW
     }
@@ -313,8 +321,9 @@ export class Effects {
     const marginR = WORLD.WIDTH - WORLD.SOFT_EDGE_R;
     let left = 0;
     let right = 0;
-    for (const i of [0, 1] as const) {
+    for (const i of PLAYERS) {
       const f = state.fighters[i];
+      if (!f) continue;
       const pulse = this.oobPulseFrames[i] > 0
         ? 0.75 + 0.25 * Math.sin(2 * Math.PI * OOB_PULSE_HZ * this.clockSec)
         : 1;

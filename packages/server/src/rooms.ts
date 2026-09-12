@@ -1,9 +1,17 @@
 import {
-  createMatch,
+  CHARACTERS,
+  DEFAULT_CONFIG,
+  DEFAULT_LOADOUT,
   EMPTY_FRAME,
+  createMatch,
+  type CharacterId,
   type InputFrame,
+  type Loadout,
+  type LobbyPlayer,
+  type MatchConfig,
   type MatchState,
   type PlayerIndex,
+  type RosterEntry,
   type ServerMessage,
 } from "@midnight/shared";
 
@@ -16,20 +24,35 @@ export interface PlayerSlot {
   seq: number;
   latest: InputFrame;
   send: Send;
+  character: CharacterId;
+  loadout: Loadout;
 }
+
+const PLAYER_INDICES: readonly PlayerIndex[] = [0, 1, 2, 3];
 
 export class Room {
   readonly id: string;
-  slots: [PlayerSlot | null, PlayerSlot | null] = [null, null];
+  slots: [PlayerSlot | null, PlayerSlot | null, PlayerSlot | null, PlayerSlot | null] = [null, null, null, null];
   match: MatchState | null = null;
+  config: MatchConfig = DEFAULT_CONFIG;
 
   constructor(id: string) {
     this.id = id;
   }
 
+  /** The lowest occupied slot; 0 when the room is empty. */
+  get host(): PlayerIndex {
+    return PLAYER_INDICES.find((i) => this.slots[i] !== null) ?? 0;
+  }
+
+  /** Player indices below the configured player count. */
+  private get active(): PlayerIndex[] {
+    return PLAYER_INDICES.filter((i) => i < this.config.players);
+  }
+
   join(name: string, send: Send): PlayerIndex | null {
-    const index = this.slots[0] === null ? 0 : this.slots[1] === null ? 1 : null;
-    if (index === null) return null;
+    const index = this.active.find((i) => this.slots[i] === null);
+    if (index === undefined) return null;
     this.slots[index] = {
       name,
       ready: false,
@@ -37,6 +60,8 @@ export class Room {
       seq: 0,
       latest: { ...EMPTY_FRAME },
       send,
+      character: CHARACTERS[index] ?? CHARACTERS[0],
+      loadout: [DEFAULT_LOADOUT[0], DEFAULT_LOADOUT[1]],
     };
     return index;
   }
@@ -44,11 +69,11 @@ export class Room {
   leave(i: PlayerIndex): void {
     this.slots[i] = null;
     this.match = null;
-    const opponent = (i === 0 ? this.slots[1] : this.slots[0]);
-    if (opponent) {
-      opponent.ready = false;
-      opponent.seq = 0;
-      opponent.latest = { ...EMPTY_FRAME };
+    for (const slot of this.slots) {
+      if (!slot) continue;
+      slot.ready = false;
+      slot.seq = 0;
+      slot.latest = { ...EMPTY_FRAME };
     }
   }
 
@@ -65,19 +90,34 @@ export class Room {
     return true;
   }
 
-  inputs(): [InputFrame, InputFrame] {
-    return [this.slots[0] ? { ...this.slots[0].latest } : { ...EMPTY_FRAME }, this.slots[1] ? { ...this.slots[1].latest } : { ...EMPTY_FRAME }];
+  /** Stores a player's character and loadout for the next match (behaviour rules: 10.03). */
+  setCustomize(i: PlayerIndex, character: CharacterId, loadout: Loadout): void {
+    const slot = this.slots[i];
+    if (!slot) return;
+    slot.character = character;
+    slot.loadout = [loadout[0], loadout[1]];
+  }
+
+  /** Applies a host-chosen config; false when it would unseat a joined player (behaviour rules: 10.03). */
+  setConfig(config: MatchConfig): boolean {
+    const highest = PLAYER_INDICES.filter((i) => this.slots[i] !== null).at(-1) ?? -1;
+    if (highest >= config.players) return false;
+    this.config = config;
+    return true;
+  }
+
+  inputs(): InputFrame[] {
+    return this.active.map((i) => {
+      const slot = this.slots[i];
+      return slot ? { ...slot.latest } : { ...EMPTY_FRAME };
+    });
   }
 
   lobbyMessage(): ServerMessage {
-    return {
-      type: "LOBBY",
-      roomId: this.id,
-      players: this.slots.map((slot) => slot ? ({ name: slot.name, ready: slot.ready, connected: slot.connected }) : null) as [
-        { name: string; ready: boolean; connected: boolean } | null,
-        { name: string; ready: boolean; connected: boolean } | null,
-      ],
-    };
+    const players: (LobbyPlayer | null)[] = this.slots.map((slot) =>
+      slot ? { name: slot.name, ready: slot.ready, connected: slot.connected, character: slot.character, loadout: slot.loadout } : null,
+    );
+    return { type: "LOBBY", roomId: this.id, players, config: this.config, host: this.host };
   }
 
   broadcast(m: ServerMessage): void {
@@ -85,14 +125,20 @@ export class Room {
   }
 
   startMatch(): void {
-    this.match = createMatch();
+    const roster: RosterEntry[] = this.active.map((i) => {
+      const slot = this.slots[i];
+      return slot
+        ? { character: slot.character, loadout: slot.loadout }
+        : { character: CHARACTERS[i] ?? CHARACTERS[0], loadout: DEFAULT_LOADOUT };
+    });
+    this.match = createMatch(this.config, roster);
     for (const slot of this.slots) if (slot) slot.ready = false;
   }
 
-  get full(): boolean { return this.slots[0] !== null && this.slots[1] !== null; }
-  get empty(): boolean { return this.slots[0] === null && this.slots[1] === null; }
+  get full(): boolean { return this.active.every((i) => this.slots[i] !== null); }
+  get empty(): boolean { return this.slots.every((slot) => slot === null); }
   get allReady(): boolean {
-    return this.full && this.slots[0]!.ready && this.slots[1]!.ready;
+    return this.full && this.active.every((i) => this.slots[i]!.ready);
   }
 }
 

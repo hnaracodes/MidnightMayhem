@@ -1,4 +1,4 @@
-import type { LobbyPlayer } from "@midnight/shared";
+import { CHARACTER_LABEL, type LobbyPlayer, type PlayerIndex } from "@midnight/shared";
 
 interface LobbyHandlers {
   onJoin(name: string, roomId?: string): void;
@@ -14,10 +14,6 @@ export type CameraButton = "button" | "starting" | "hidden";
 
 const NAME_STORAGE_KEY = "midnight-mayhem:name";
 const SUBTITLE = "on the roof of the Midnight Express";
-const CHARACTERS = [
-  { slug: "drifter", label: "THE DRIFTER" },
-  { slug: "conductor", label: "THE CONDUCTOR" },
-] as const;
 
 export class Lobby {
   private readonly root: HTMLElement;
@@ -63,7 +59,7 @@ export class Lobby {
 
   renderRoom(
     roomId: string,
-    players: [LobbyPlayer | null, LobbyPlayer | null],
+    players: (LobbyPlayer | null)[],
     visionAvailable: boolean,
     cameraButton: CameraButton = "button",
   ): void {
@@ -77,7 +73,8 @@ export class Lobby {
 
     const roster = document.createElement("div");
     roster.className = "roster";
-    roster.append(playerRow(0, players[0]), playerRow(1, players[1]));
+    // Every slot the server sent (four after 08-contracts); the real lobby with picks and host controls is 11.03.
+    roster.append(...players.map((player, index) => playerRow(index as PlayerIndex, player)));
 
     const camera = button(
       visionAvailable ? "Camera on" : cameraButton === "starting" ? "Starting camera…" : "Enable camera",
@@ -117,8 +114,9 @@ function title(): HTMLElement {
   return heading;
 }
 
-function playerRow(index: 0 | 1, player: LobbyPlayer | null): HTMLElement {
-  const character = CHARACTERS[index];
+function playerRow(index: PlayerIndex, player: LobbyPlayer | null): HTMLElement {
+  const slug = player?.character ?? (index === 0 ? "drifter" : "conductor");
+  const character = { slug, label: CHARACTER_LABEL[slug] };
   const row = document.createElement("section");
   row.className = "player-row";
   row.dataset["character"] = character.slug;

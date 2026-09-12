@@ -1,5 +1,8 @@
 import {
+  PROTOCOL_VERSION,
+  normalizeConfig,
   parseClientMessage,
+  type ErrorCode,
   type PlayerIndex,
   type ServerMessage,
 } from "@midnight/shared";
@@ -20,7 +23,7 @@ export interface ServerContext {
   now(): number;
 }
 
-function error(conn: Conn, code: "BAD_MESSAGE" | "ROOM_FULL" | "NOT_IN_ROOM" | "ALREADY_JOINED", message: string): void {
+function error(conn: Conn, code: ErrorCode, message: string): void {
   conn.send({ type: "ERROR", code, message });
 }
 
@@ -52,7 +55,7 @@ export function handleMessage(ctx: ServerContext, conn: Conn, raw: string): void
     }
     conn.room = room;
     conn.index = index;
-    conn.send({ type: "WELCOME", roomId: room.id, playerIndex: index, protocolVersion: 1 });
+    conn.send({ type: "WELCOME", roomId: room.id, playerIndex: index, protocolVersion: PROTOCOL_VERSION });
     room.broadcast(room.lobbyMessage());
     return;
   }
@@ -68,6 +71,24 @@ export function handleMessage(ctx: ServerContext, conn: Conn, raw: string): void
     maybeStart(ctx, conn.room);
   } else if (message.type === "INPUT") {
     conn.room.setInput(conn.index, message.seq, message.frame);
+  } else if (message.type === "CONFIG") {
+    // Accept-and-store only; the full rules (and their tests) are 10.03.
+    if (conn.index !== conn.room.host) {
+      error(conn, "NOT_HOST", "only the host can change the match config");
+      return;
+    }
+    if (conn.room.match !== null && conn.room.match.phase !== "MATCH_END") {
+      error(conn, "BAD_CONFIG", "config can only change in the lobby");
+      return;
+    }
+    if (!conn.room.setConfig(normalizeConfig(message.config))) {
+      error(conn, "BAD_CONFIG", "player count is below the players already seated");
+      return;
+    }
+    conn.room.broadcast(conn.room.lobbyMessage());
+  } else if (message.type === "CUSTOMIZE") {
+    conn.room.setCustomize(conn.index, message.character, message.loadout);
+    conn.room.broadcast(conn.room.lobbyMessage());
   }
 }
 

@@ -1,5 +1,5 @@
 import type Phaser from "phaser";
-import { BALANCE, MATCH, TICK, WORLD, roundWinner, type MatchState, type PlayerIndex, type Winner } from "@midnight/shared";
+import { BALANCE, CHARACTER_LABEL, MATCH, TICK, WORLD, roundWinner, type MatchState, type PlayerIndex, type Winner } from "@midnight/shared";
 import { CSS_P, P } from "./palette";
 
 /** HUD layout from design/04 § HUD. Presentation only; nothing here is a sim number. */
@@ -19,6 +19,8 @@ const DEPTH = { HUD: 10, BANNER: 11 } as const;
 const FONT = "system-ui, -apple-system, 'Segoe UI', sans-serif";
 
 const DEFAULT_NAMES: [string, string] = ["THE DRIFTER", "THE CONDUCTOR"];
+/** Bars drawn today: the two-bar layout. Up to four bars (two per side) is 11.04. */
+const BAR_SLOTS = [0, 1] as const;
 const CAR_LABEL: Record<MatchState["trainCar"], string> = {
   STANDARD: "STANDARD CAR",
   TUNNEL: "TUNNEL",
@@ -77,7 +79,7 @@ export class Hud {
   }
 
   /** Player names shown under the bars (integrator amendment; names are not part of MatchState). */
-  setNames(names: [string, string]): void {
+  setNames(names: readonly string[]): void {
     this.names[0].setText(names[0] || DEFAULT_NAMES[0]);
     this.names[1].setText(names[1] || DEFAULT_NAMES[1]);
   }
@@ -89,11 +91,13 @@ export class Hud {
       for (const text of [this.timer, this.names[0], this.names[1], this.car]) text.setVisible(true);
     }
     this.bars.clear();
-    for (const index of [0, 1] as const) {
+    for (const index of BAR_SLOTS) {
+      const fighter = state.fighters[index];
+      if (!fighter) continue;
       const anim = this.anim[index];
-      this.advanceDrain(anim, state.fighters[index].hp, dt);
+      this.advanceDrain(anim, fighter.hp, dt);
       this.drawBar(index, anim);
-      this.drawPips(index, state.roundsWon[index]);
+      this.drawPips(index, state.roundsWon[fighter.team] ?? 0);
     }
 
     this.timer.setText(String(Math.ceil(state.roundTicks / TICK.HZ)));
@@ -190,21 +194,28 @@ function bannerFor(state: MatchState): Banner | null {
         ? { text: "FIGHT", size: BANNER_SIZE.COUNTDOWN }
         : null;
     case "ROUND_END":
-      return { text: roundEndText(state.round, roundWinner(state)), size: BANNER_SIZE.ROUND_END };
+      return { text: roundEndText(state, roundWinner(state)), size: BANNER_SIZE.ROUND_END };
     case "MATCH_END":
-      return state.winner === null ? null : { text: matchEndText(state.winner), size: BANNER_SIZE.MATCH_END };
+      return state.winner === null ? null : { text: matchEndText(state, state.winner), size: BANNER_SIZE.MATCH_END };
   }
 }
 
-function roundEndText(round: number, winner: Winner | null): string {
-  if (winner === "draw") return "DRAW ROUND";
-  if (winner === null) return `ROUND ${round}`;
-  return `ROUND ${round}: ${winner === 0 ? "DRIFTER" : "CONDUCTOR"}`;
+/** A team's banner name: "TEAM A/B" in 2v2, else the character label of the team's first fighter. */
+function teamLabel(state: MatchState, team: number): string {
+  if (state.config.teams === "2v2") return team === 0 ? "TEAM A" : "TEAM B";
+  const first = state.fighters.find((f) => f.team === team);
+  return first ? CHARACTER_LABEL[first.character] : `PLAYER ${team + 1}`;
 }
 
-function matchEndText(winner: Winner): string {
+function roundEndText(state: MatchState, winner: Winner | null): string {
+  if (winner === "draw") return "DRAW ROUND";
+  if (winner === null) return `ROUND ${state.round}`;
+  return `ROUND ${state.round}: ${teamLabel(state, winner).replace(/^THE /, "")}`;
+}
+
+function matchEndText(state: MatchState, winner: Winner): string {
   if (winner === "draw") return "MUTUAL DERAILMENT";
-  return winner === 0 ? "THE DRIFTER WINS" : "THE CONDUCTOR WINS";
+  return `${teamLabel(state, winner)} WINS`;
 }
 
 function barColor(hp: number): number {

@@ -3,6 +3,7 @@ import {
   INPUT_KEYS,
   framesEqual,
   type InputFrame,
+  type InputKey,
   type InputSource,
 } from "@midnight/shared";
 
@@ -26,9 +27,10 @@ export class MergedInputSource implements InputSource {
 
   sample(): Readonly<InputFrame> {
     const frames = this.sources.map((source) => source.sample());
-    const next = Object.fromEntries(
-      INPUT_KEYS.map((key) => [key, frames.some((frame) => frame[key])]),
-    ) as unknown as InputFrame;
+    const next = {
+      ...(Object.fromEntries(INPUT_KEYS.map((key) => [key, frames.some((frame) => frame[key])])) as Record<InputKey, boolean>),
+      item: frames.find((frame) => frame.item !== null)?.item ?? null, // first source holding something wins
+    } satisfies InputFrame;
     if (!framesEqual(this.frame, next)) this.frame = Object.freeze(next);
     return this.frame;
   }

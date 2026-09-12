@@ -28,7 +28,8 @@ function diag(overrides: Partial<PunchDiag> = {}): PunchDiag {
 describe("previewModel", () => {
   it("lists one dot per input key in display order L R J PL PR B", () => {
     expect(DOT_LABELS).toEqual(["L", "R", "J", "PL", "PR", "B"]);
-    expect([...DOT_KEYS].sort()).toEqual([...INPUT_KEYS].sort());
+    // The `special` dot (and the item label) join the preview in 09.04.
+    expect([...DOT_KEYS].sort()).toEqual([...INPUT_KEYS].filter((k) => k !== "special").sort());
     expect(DOT_KEYS).toEqual(["left", "right", "jump", "punchL", "punchR", "block"]);
   });
 

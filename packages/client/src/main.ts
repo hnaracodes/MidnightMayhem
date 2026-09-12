@@ -5,7 +5,7 @@ import { CameraPreview, debugFanOut } from "./app/cameraPreview";
 import { type CameraButton, Lobby } from "./app/lobby";
 import { ResultOverlay } from "./app/result";
 import { startGame } from "./game/config";
-import { session } from "./game/session";
+import { DEFAULT_PLAYER_NAMES, session } from "./game/session";
 import { KeyboardInputSource } from "./input/KeyboardInputSource";
 import { MergedInputSource } from "./input/MergedInputSource";
 import { selectSource } from "./input/selectSource";
@@ -37,7 +37,7 @@ let connected = false;
 let hasSnapshot = false;
 let resultTimer: ReturnType<typeof setTimeout> | null = null;
 let matchRunning = false;
-let lastLobby: { roomId: string; players: [LobbyPlayer | null, LobbyPlayer | null] } | null = null;
+let lastLobby: { roomId: string; players: (LobbyPlayer | null)[] } | null = null;
 
 // ---- Camera (Phase 6 rules 1–3) ----
 const overlay = new CalibrationOverlay();
@@ -177,11 +177,9 @@ client.on("WELCOME", (message) => {
 });
 
 client.on("LOBBY", (message) => {
-  session.playerNames = [
-    message.players[0]?.name || session.playerNames[0],
-    message.players[1]?.name || session.playerNames[1],
-  ];
-  lastLobby = { roomId: message.roomId, players: message.players };
+  session.playerNames = message.players.map((p, i) => p?.name || session.playerNames[i] || DEFAULT_PLAYER_NAMES[i] || "");
+  // Only the slots the host's config seats; the four-slot lobby with picks and host controls is 11.03.
+  lastLobby = { roomId: message.roomId, players: message.players.slice(0, message.config.players) };
   renderRoom();
   if (sourceChoice === "vision" && !autoCameraDone) {
     autoCameraDone = true;
@@ -223,7 +221,7 @@ client.on("SNAPSHOT", (message) => {
     if (resultTimer !== null) clearTimeout(resultTimer);
     resultTimer = setTimeout(() => {
       resultTimer = null;
-      result.show(matchEnd.winner, session.localIndex);
+      result.show(matchEnd.winner, session.localIndex, session.buffer.latest());
     }, RESULT_DELAY_MS);
   }
 });

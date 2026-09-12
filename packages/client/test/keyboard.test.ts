@@ -54,6 +54,8 @@ describe("KeyboardInputSource", () => {
       punchL: false,
       punchR: false,
       block: false,
+      special: false,
+      item: null,
     });
   });
 

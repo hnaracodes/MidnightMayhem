@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { BALANCE, WORLD, createFighter, punchHitbox, type FighterState } from "@midnight/shared";
+import { BALANCE, WORLD, createMatch, punchHitbox, type FighterState } from "@midnight/shared";
 import { computePose, rigState, type Clock, type Joints } from "../src/game/rig/pose";
 import { RIG } from "../src/game/rig/characters";
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
 
 function fighter(over: Partial<FighterState> = {}, index: 0 | 1 = 0): FighterState {
-  return { ...createFighter(index), ...over };
+  return { ...createMatch().fighters[index]!, ...over };
 }
 
 function feetOf(j: Joints): number[] {
@@ -15,7 +15,7 @@ function feetOf(j: Joints): number[] {
 
 describe("rigState priority ladder", () => {
   const all: Partial<FighterState> = {
-    hitstun: 5, action: { kind: "punch", arm: "L", elapsed: 2, landed: false },
+    hitstun: 5, action: { kind: "punch", arm: "L", elapsed: 2, landed: false, sword: false },
     grounded: false, jumpTicks: 4, blocking: true, x: 0, vx: 3,
   };
   it("ko beats everything", () => expect(rigState(fighter(all), true)).toBe("ko"));
@@ -40,7 +40,7 @@ describe("punch fist inside the sim hitbox", () => {
     for (const arm of ["L", "R"] as const) {
       for (let elapsed = start; elapsed < end; elapsed++) {
         it(`facing ${facing} arm ${arm} tick ${elapsed}`, () => {
-          const f = fighter({ facing, action: { kind: "punch", arm, elapsed, landed: false } });
+          const f = fighter({ facing, action: { kind: "punch", arm, elapsed, landed: false, sword: false } });
           const box = punchHitbox(f);
           expect(box).not.toBeNull();
           const j = computePose(f, clock);
@@ -58,12 +58,12 @@ describe("punch fist inside the sim hitbox", () => {
     }
   }
   it("punchL uses the back arm facing right and the front arm facing left", () => {
-    const l = { kind: "punch", arm: "L", elapsed: 5, landed: false } as const;
+    const l = { kind: "punch", arm: "L", elapsed: 5, landed: false, sword: false } as const;
     expect(computePose(fighter({ facing: 1, action: l }), clock).punchingArm).toBe("B");
     expect(computePose(fighter({ facing: -1, action: l }), clock).punchingArm).toBe("F");
   });
   it("active arm is straight: elbow lies on the shoulder-fist line", () => {
-    const f = fighter({ action: { kind: "punch", arm: "R", elapsed: 5, landed: false } });
+    const f = fighter({ action: { kind: "punch", arm: "R", elapsed: 5, landed: false, sword: false } });
     const a = computePose(f, clock).arms.F;
     const cross = (a.elbow.x - a.shoulder.x) * (a.fist.y - a.shoulder.y) - (a.elbow.y - a.shoulder.y) * (a.fist.x - a.shoulder.x);
     expect(Math.abs(cross)).toBeLessThan(1e-6);
@@ -75,9 +75,9 @@ describe("feet planted while grounded", () => {
     ["idle", {}, { ...clock, renderMs: 350 }],
     ["walk", { vx: 3, x: 123 }, clock],
     ["block", { blocking: true }, { ...clock, renderMs: 41 }],
-    ["punch startup", { action: { kind: "punch", arm: "L", elapsed: 1, landed: false } }, clock],
-    ["punch active", { action: { kind: "punch", arm: "L", elapsed: 5, landed: false } }, clock],
-    ["punch recovery", { action: { kind: "punch", arm: "R", elapsed: 10, landed: false } }, clock],
+    ["punch startup", { action: { kind: "punch", arm: "L", elapsed: 1, landed: false, sword: false } }, clock],
+    ["punch active", { action: { kind: "punch", arm: "L", elapsed: 5, landed: false, sword: false } }, clock],
+    ["punch recovery", { action: { kind: "punch", arm: "R", elapsed: 10, landed: false, sword: false } }, clock],
     ["hit", { hitstun: 8 }, clock],
     ["offbounds", { x: 0 }, clock],
     ["win", {}, { ...clock, win: true }],
@@ -123,7 +123,7 @@ describe("skeleton sanity", () => {
   it("head is above the neck in every non-ko state", () => {
     const states: Partial<FighterState>[] = [
       {}, { vx: 3 }, { grounded: false, vy: -6 }, { grounded: false, vy: 0 }, { grounded: false, vy: 6 },
-      { action: { kind: "punch", arm: "L", elapsed: 5, landed: false } }, { blocking: true }, { hitstun: 12 }, { x: 960 },
+      { action: { kind: "punch", arm: "L", elapsed: 5, landed: false, sword: false } }, { blocking: true }, { hitstun: 12 }, { x: 960 },
     ];
     for (const over of states) for (const facing of [1, -1] as const) {
       const j = computePose(fighter({ ...over, facing }), clock);

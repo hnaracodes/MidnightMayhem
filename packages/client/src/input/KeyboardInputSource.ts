@@ -61,6 +61,6 @@ export class KeyboardInputSource implements InputSource {
   }
 
   private clear(): void {
-    if (INPUT_KEYS.some((input) => this.frame[input])) this.frame = EMPTY_FRAME;
+    if (this.frame.item !== null || INPUT_KEYS.some((input) => this.frame[input])) this.frame = EMPTY_FRAME;
   }
 }
