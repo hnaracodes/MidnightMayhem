@@ -81,6 +81,10 @@ describe("feet planted while grounded", () => {
     ["hit", { hitstun: 8 }, clock],
     ["offbounds", { x: 0 }, clock],
     ["win", {}, { ...clock, win: true }],
+    // 9.10: a laser or a throw can be charged on the move, and the borrowed walk legs stay on the ground
+    ["laser charge walking", { vx: 3, x: 123, action: { kind: "laser", elapsed: 90, hit: [] } }, clock],
+    ["laser beam walking", { vx: -3, x: 200, action: { kind: "laser", elapsed: ARSENAL.LASER_CHARGE + 2, hit: [] } }, clock],
+    ["throw windup walking", { vx: 3, x: 77, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 20, elapsed: 0, released: false } }, clock],
   ];
   for (const [name, over, c] of cases) {
     for (const facing of [1, -1] as const) {
@@ -347,5 +351,53 @@ describe("12.04 rules 3–6: punch overshoot, jump weight, brace, flash beat", (
     expect(beat.arms.F.fist.y).toBeLessThan(beat.head.y);
     const noBeat = computePose(fighter(), { ...clock, beat: { kind: "flash", frames: 0 } });
     expect(noBeat.arms.F.fist.y).toBe(guard.arms.F.fist.y);
+  });
+});
+
+describe("9.10: laser and throw stances on the move", () => {
+  const LASER_MID = Math.floor(ARSENAL.LASER_CHARGE / 2);
+  // `computePose` returns world coordinates, so every comparison holds `x` still and varies only the motion.
+  const laserAt = (over: Partial<FighterState>): Joints =>
+    computePose(fighter({ action: { kind: "laser", elapsed: LASER_MID, hit: [] }, x: 123, ...over }), clock);
+
+  it("keeps the cupped arms and the coiled torso while the legs walk", () => {
+    const still = laserAt({});
+    const walking = laserAt({ vx: 3 });
+    expect(walking.state).toBe("laser");
+    // arms, torso and head are the action's, untouched
+    expect(walking.arms.F.fist).toEqual(still.arms.F.fist);
+    expect(walking.arms.B.fist).toEqual(still.arms.B.fist);
+    expect(laserHands(walking)).toEqual(laserHands(still));
+    expect(walking.lean).toBe(still.lean);
+    expect(walking.head).toEqual(still.head);
+    // the legs are not: both feet are exactly where the walk cycle puts them, and still on the ground
+    const walkOnly = computePose(fighter({ x: 123, vx: 3, action: null }), clock);
+    expect(walkOnly.state).toBe("walk");
+    expect(walking.legs.F.foot).toEqual(walkOnly.legs.F.foot);
+    expect(walking.legs.B.foot).toEqual(walkOnly.legs.B.foot);
+    expect(walking.legs.F.foot.x).not.toBe(still.legs.F.foot.x);
+    for (const leg of [walking.legs.F, walking.legs.B]) expect(leg.foot.y).toBeCloseTo(WORLD.ROOF_Y, 6);
+    // and they still hang off the action's hip
+    for (const leg of [walking.legs.F, walking.legs.B]) expect(leg.hip).toEqual(walking.hip);
+  });
+
+  it("lifts the feet off the ground when the laser is charged in the air", () => {
+    const air = laserAt({ grounded: false, vy: -6, y: WORLD.ROOF_Y - 80 });
+    expect(air.state).toBe("laser");
+    expect(laserHands(air).y).toBeLessThan(laserHands(laserAt({})).y); // the whole body is 80 px up
+    for (const leg of [air.legs.F, air.legs.B]) expect(leg.foot.y).toBeLessThan(air.hip.y + RIG.thigh + RIG.shin);
+    expect(air.legs.F.foot.y).toBeLessThan(WORLD.ROOF_Y - 80); // tucked, not planted on the roof line
+  });
+
+  it("a walked throw keeps its wind-up arm and swaps only the legs", () => {
+    const t = fighter({ x: 91, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 20, elapsed: 0, released: false } });
+    const stillThrow = computePose(t, clock);
+    const walkingThrow = computePose({ ...t, vx: 3 }, clock);
+    expect(walkingThrow.state).toBe("throw");
+    expect(walkingThrow.arms.F.fist).toEqual(stillThrow.arms.F.fist);
+    expect(walkingThrow.arms.B.fist).toEqual(stillThrow.arms.B.fist);
+    expect(walkingThrow.lean).toBe(stillThrow.lean);
+    expect(walkingThrow.legs.F.foot.x).not.toBe(stillThrow.legs.F.foot.x);
+    for (const leg of [walkingThrow.legs.F, walkingThrow.legs.B]) expect(leg.foot.y).toBeCloseTo(WORLD.ROOF_Y, 6);
   });
 });

@@ -513,6 +513,18 @@ function winPose(rig: CharacterRig, ms: number): LocalPose {
   return p;
 }
 
+/**
+ * 9.10: a laser or a throw can be charged and fired on the move, so the stance keeps its own arms, torso and head
+ * and borrows the legs of whatever the body is doing — the walk cycle while walking, the air pose while airborne.
+ * The feet land exactly where locomotion puts them and the legs are re-solved from the action's hip, so a planted
+ * fighter comes back untouched and every stationary stance is what 12.04 authored.
+ */
+function withLocomotion(p: LocalPose, rig: CharacterRig, f: FighterState): LocalPose {
+  const loco = !f.grounded ? jumpPose(rig, f) : f.vx !== 0 ? walkPose(rig, f) : null;
+  if (!loco) return p;
+  return { ...p, legs: { F: legTo(p.t.hip, loco.legs.F.foot), B: legTo(p.t.hip, loco.legs.B.foot) } };
+}
+
 export function computePose(f: FighterState, clock: Clock): Joints {
   const rig = CHARACTER_RIG[f.character];
   const state: RigState = clock.win ? "win" : rigState(f, f.hp <= 0);
@@ -521,8 +533,8 @@ export function computePose(f: FighterState, clock: Clock): Joints {
     case "ko": p = koPose(rig, clock.koFrames); break;
     case "hit": p = hitPose(rig, f.hitstun); break;
     case "punch": p = punchPose(rig, f); break;
-    case "laser": p = laserPose(rig, f, clock.renderMs); break;
-    case "throw": p = throwPose(rig, f); break;
+    case "laser": p = withLocomotion(laserPose(rig, f, clock.renderMs), rig, f); break;
+    case "throw": p = withLocomotion(throwPose(rig, f), rig, f); break;
     case "jump": p = jumpPose(rig, f); break;
     case "block": p = blockPose(rig, clock.renderMs, f.item?.kind === "shield"); break;
     case "offbounds": p = offboundsPose(rig); break;
