@@ -74,7 +74,8 @@ identical content merges cleanly.
 pnpm dev:server            # terminal 1, http://localhost:8080
 pnpm dev:client            # terminal 2, https://localhost:5173 (accept the certificate warning)
 ```
-Game: `/`. Vision harness: `/harness.html` after `pnpm --filter @midnight/client vision:setup` once per laptop.
+Game: `/`. Vision harness: `/harness.html` after `pnpm --filter @midnight/client vision:setup` once per laptop (downloads
+the pose model into `public/models/`; the MediaPipe wasm runtime is imported from the npm package, nothing to copy).
 Keys: A/D walk, W jump, S block, F/G punch. `?debug=1` shows boxes, tick and RTT.
 
 ## Open items for the owner
