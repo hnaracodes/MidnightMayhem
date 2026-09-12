@@ -88,7 +88,9 @@ while walking or jumping, the laser starts in mid-air, and `updateFacing` tracks
 the beam or the release (`aimLocked`). `actionLocksMovement` in `sim/fighter.ts` is the single gate, so any action
 added later is mobile unless it opts in. On the client, `withLocomotion` in `rig/pose.ts` gives the laser and throw
 stances the walk cycle's or the air pose's legs while keeping the action's arms and torso. Spec:
-`09-arsenal/10-mobile-actions.md`; decision row 49. Health is 50 (`BALANCE.MAX_HP`, owner retune), which is a
+`09-arsenal/10-mobile-actions.md`; decision row 49. Verified in the real app by `tools/e2e/mobile-actions.json`:
+the fighter charges from x 280 to 450 on the ground, jumps to y 322 still charging, the beam lands for 20, then a
+molotov is charged and thrown while walking the other way. Zero page errors. Health is 50 (`BALANCE.MAX_HP`, owner retune), which is a
 fraction change everywhere on the client — the HUD bars already scaled off `MAX_HP`.
 
 ## Running the game today
