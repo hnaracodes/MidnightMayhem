@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import {
-  ARSENAL, ITEM_IDS, ITEMS, WORLD, createMatch,
+  ARSENAL, BALANCE, ITEM_IDS, ITEMS, WORLD, createMatch,
   type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile, type SimEvent,
 } from "@midnight/shared";
 import { ItemFx, type HandPoint } from "../src/game/itemFx";
@@ -456,6 +456,29 @@ describe("throw preview (rule 5)", () => {
       expect(vy).toBeLessThan(0);
       const { landing } = predictFlight({ x: 0, y: -100 }, vx, vy, 0, 12);
       expect(Math.abs(landing.x - range), `range ${range}`).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it("predictFlight steps exactly like the sim's projectile (gravity, then move) so the dots sit on the real arc", () => {
+    const { vx, vy } = throwVelocity(500);
+    // packages/shared/src/sim/projectiles.ts: `vy += GRAVITY; x += vx; y += vy;` then land when `vy > 0 && y >= surface`.
+    const sim: { x: number; y: number }[] = [];
+    let x = 0;
+    let y = -100;
+    let dy = vy;
+    while (!(dy > 0 && y >= 0)) {
+      dy += BALANCE.GRAVITY;
+      x += vx;
+      y += dy;
+      sim.push({ x, y });
+    }
+    const { landing, dots } = predictFlight({ x: 0, y: -100 }, vx, vy, 0, 12);
+    expect(dots).toHaveLength(12);
+    expect(landing.y).toBe(0);
+    expect(Math.abs(landing.x - x)).toBeLessThanOrEqual(Math.abs(vx)); // the marker backs off along the last step
+    for (const d of dots.slice(0, 11)) {
+      const on = sim.some((p) => Math.abs(p.x - d.x) < 1e-6 && Math.abs(p.y - d.y) < 1e-6);
+      expect(on, `dot (${d.x.toFixed(1)}, ${d.y.toFixed(1)}) lies on the sim path`).toBe(true);
     }
   });
 

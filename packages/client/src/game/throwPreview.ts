@@ -48,8 +48,9 @@ export function chargingThrow(action: Action | null | undefined): number | null 
 export interface Pt { x: number; y: number }
 
 /**
- * The predicted flight from `from`, tick by tick with the sim's Euler step (`x += vx; y += vy; vy += g`), until it
- * reaches `groundY`. Returns `dots` evenly spaced samples along the flight and the landing point.
+ * The predicted flight from `from`, tick by tick with the sim's Euler step (`projectiles.ts`: `vy += g; x += vx;
+ * y += vy`, landing once falling and at or below the surface), until it reaches `groundY`. Returns `dots` evenly
+ * spaced samples along the flight and the landing point.
  */
 export function predictFlight(
   from: Pt, vx: number, vy: number, groundY: number, dots: number, maxTicks = 600,
@@ -59,10 +60,10 @@ export function predictFlight(
   let y = from.y;
   let dy = vy;
   for (let t = 0; t < maxTicks; t += 1) {
+    dy += BALANCE.GRAVITY;
     x += vx;
     y += dy;
-    dy += BALANCE.GRAVITY;
-    if (y >= groundY) {
+    if (dy > 0 && y >= groundY) {
       // Back off to the ground line along the last step so the marker sits on the roof, not under it.
       const over = (y - groundY) / Math.max(1e-6, dy);
       x -= vx * over;
