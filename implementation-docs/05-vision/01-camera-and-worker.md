@@ -4,13 +4,15 @@
 Get pose landmarks off the main thread at camera rate with at most one inference in flight, with timing and delegate reported.
 
 ## Files
-Create: `packages/client/src/vision/thresholds.ts`, `camera.ts`, `landmarkers.ts`, `worker.ts`, `workerClient.ts`. Run `pnpm --filter @midnight/client vision:setup` once and commit the model file.
+Create: `packages/client/src/vision/thresholds.ts`, `camera.ts`, `landmarkers.ts`, `worker.ts`, `workerClient.ts`. Run `pnpm --filter @midnight/client vision:setup` once per checkout: it downloads only the model into `public/models/` (gitignored). The wasm runtime is not copied anywhere; `landmarkers.ts` imports it from the npm package.
 
 ## Depends on
 3.01.
 
 ## Exposes
-`thresholds.ts`: `CAMERA = { width: 640, height: 480, fps: 30 }`, `EMA_ALPHA = 0.6`, `MODEL_URL = "/models/pose_landmarker_lite.task"`, `WASM_URL = "/wasm"`, plus every number named in 5.02–5.03 and the overlay colours (pose cyan `#4FE3F5`, marker red `#E8434F`, label white).
+`thresholds.ts`: `CAMERA = { width: 640, height: 480, fps: 30 }`, `EMA_ALPHA = 0.6`, `MODEL_URL = "/models/pose_landmarker_lite.task"`, plus every number named in 5.02–5.03 and the overlay colours (pose cyan `#4FE3F5`, marker red `#E8434F`, label white).
+
+(integrator amendment) `WASM_URL` is removed. `landmarkers.ts` imports `@mediapipe/tasks-vision/vision_wasm_module_internal.js?url` and `...wasm?url` and passes `{ wasmLoaderPath, wasmBinaryPath }` to `PoseLandmarker.createFromOptions` instead of calling `FilesetResolver.forVisionTasks`. Reason: Vite refuses `import()` of files under `public/`, and MediaPipe loads its loader script with `import()` inside a module worker; the `?url` imports work under `vite dev` and are emitted as hashed assets in `dist/` for `packages/server`. The `_module_` variant is required because module workers have no working `importScripts`.
 
 `camera.ts`: `openCamera(): Promise<{ video: HTMLVideoElement; stream: MediaStream }>` rejecting `VisionInputError("camera-denied" | "no-camera")`; `frameLoop(video, cb: (ts: number) => void): () => void` using `requestVideoFrameCallback` with `requestAnimationFrame` fallback.
 
@@ -29,7 +31,7 @@ Create: `packages/client/src/vision/thresholds.ts`, `camera.ts`, `landmarkers.ts
 4. `sendFrame` returns false without doing anything when a result is outstanding; the client counts drops.
 5. The bitmap is transferred, closed in the worker after inference.
 6. `start` rejects with `worker-failed` if the worker errors before `ready`, `model-load` if the model fails.
-7. Check `@mediapipe/tasks-vision` docs for current API names before writing `landmarkers.ts` (`FilesetResolver.forVisionTasks`, `PoseLandmarker.createFromOptions`, `baseOptions.delegate`).
+7. Check `@mediapipe/tasks-vision` docs for current API names before writing `landmarkers.ts` (`PoseLandmarker.createFromOptions`, `baseOptions.delegate`; the `WasmFileset` shape `{ wasmLoaderPath, wasmBinaryPath }`).
 
 ## Invariants
 - The main thread never imports `@mediapipe/tasks-vision`.

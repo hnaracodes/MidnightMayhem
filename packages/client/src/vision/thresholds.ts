@@ -7,8 +7,7 @@
 // ---- 5.01 camera and model ----
 export const CAMERA = { width: 640, height: 480, fps: 30 } as const; // requested capture; actual settings are logged
 export const EMA_ALPHA = 0.6; // per-coordinate landmark smoothing; higher = less lag, more jitter
-export const MODEL_URL = "/models/pose_landmarker_lite.task"; // served from public/, fetched by vision:setup
-export const WASM_URL = "/wasm"; // MediaPipe wasm directory, copied by vision:setup
+export const MODEL_URL = "/models/pose_landmarker_lite.task"; // served from public/, downloaded by vision:setup (the wasm runtime is imported from the npm package in landmarkers.ts)
 
 // ---- 5.02 calibration ----
 export const CALIBRATION_MS = 1500; // consecutive stable frames needed to capture the baseline
