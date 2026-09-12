@@ -9,14 +9,15 @@ const BEAM_END = LASER_CHARGE + LASER_ACTIVE;            // exclusive
 const LASER_TOTAL = BEAM_END + LASER_RECOVERY;           // exclusive; advancePunches clears the action here
 
 /**
- * Starts a laser action on the `special` edge; true when it consumed the edge. Conditions: FIGHTING, grounded,
- * no action, not blocking, no hitstun, cooldown 0, alive, not down a pit. The cooldown starts now and is never
- * refunded, even if the charge is cancelled by a hit.
+ * Starts a laser action on the `special` edge; true when it consumed the edge. Conditions: FIGHTING, no action,
+ * not blocking, no hitstun, cooldown 0, alive, not down a pit. Being airborne is *not* a bar (9.10): the laser
+ * charges, fires and sweeps from wherever the fighter is, and a beam fired off the ground rides the body band
+ * upward. The cooldown starts now and is never refunded, even if the charge is cancelled by a hit or a pit fall.
  */
 export function startLaser(s: MatchState, i: PlayerIndex, events: SimEvent[]): boolean {
   const f = s.fighters[i];
   if (!f || s.phase !== "FIGHTING") return false;
-  if (!f.grounded || f.action !== null || f.blocking || f.hitstun !== 0) return false;
+  if (f.action !== null || f.blocking || f.hitstun !== 0) return false;
   if (f.laserCooldown !== 0 || f.hp <= 0 || f.pitTicks !== 0) return false;
   f.action = { kind: "laser", elapsed: 0, hit: [] };
   f.laserCooldown = LASER_COOLDOWN;
@@ -46,7 +47,8 @@ export function laserReach(k: number): number {
 
 /**
  * Beam rectangle: from the fighter's centre toward the world edge in the facing direction, in the body band, its front
- * advancing `LASER_SPEED` px per beam tick until it reaches the edge; null unless in the beam phase.
+ * advancing `LASER_SPEED` px per beam tick until it reaches the edge; null unless in the beam phase. Read from the
+ * live `x`, `y` and `facing`, so the muzzle follows a walking or jumping attacker for the whole sweep (9.10).
  */
 export function laserHitbox(f: FighterState): Rect | null {
   if (laserPhase(f) !== "beam") return null;
