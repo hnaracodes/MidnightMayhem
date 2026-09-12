@@ -283,6 +283,21 @@ describe("rule 8: a fighter in a pit is out of play", () => {
     expect(ofType(events, "PUNCH").filter((e) => e.type === "PUNCH" && e.player === 0)).toHaveLength(0);
     expect(ofType(events, "OOB_DAMAGE")).toHaveLength(0);
   });
+  it("can never sit at an OOB x: every map's ground reaches both world edges, so a pit fighter is always inside", () => {
+    // OOB (rounds.ts) only counts x <= 0 or x >= WIDTH; a fighter reaches PIT.Y only over a gap, and no gap touches
+    // an edge. This is what makes the `oobTicks` assertion above hold for a real fall, not just for x 340.
+    for (const map of MAP_IDS) {
+      expect(onGround(map, 0)).toBe(true);
+      expect(onGround(map, WORLD.WIDTH)).toBe(true);
+    }
+    const s0 = fightingOn("gaps");
+    const p0 = s0.fighters[0]!;
+    p0.x = 0; p0.oobTicks = BALANCE.OOB_EVERY_TICKS - 1; // on ground at the edge: OOB counts, no pit fall
+    const { s, events } = run(s0, 1);
+    expect(ofType(events, "OOB_DAMAGE")).toHaveLength(1);
+    expect(ofType(events, "PIT_FALL")).toHaveLength(0);
+    expect(f0(s).grounded).toBe(true);
+  });
   it("is not hittable even with the hurtbox in reach", () => {
     const s0 = fightingOn("gaps");
     const p0 = s0.fighters[0]!;
