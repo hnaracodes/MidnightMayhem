@@ -8,9 +8,13 @@ import { Block } from "./gestures/block";
 import { Jump } from "./gestures/jump";
 import { Punch } from "./gestures/punch";
 import { Walk } from "./gestures/walk";
-import { clearMetricBuffers, computeMetrics, createMetricBuffers, type Metrics } from "./metrics";
+import {
+  clearMetricBuffers, computeMetrics, createMetricBuffers, type MetricBuffers, type Metrics,
+} from "./metrics";
 import { EMA_ALPHA } from "./thresholds";
-import { WorkerClient, type Landmark, type ResultMessage, type WorkerStats } from "./workerClient";
+import {
+  WorkerClient, type Landmark, type PoseResult, type ResultMessage, type WorkerStats,
+} from "./workerClient";
 
 /** Everything the harness and the calibration preview may look at. Landmarks leave the layer only here. */
 export interface DebugFrame {
@@ -24,22 +28,101 @@ export interface DebugFrame {
   ts: number;
 }
 
+/**
+ * Everything the per-result pipeline reads and mutates: smoothing state, calibration, ring buffers,
+ * gesture debounces and the latest frame. One per VisionInputSource; tests build their own so the
+ * exact code path the camera feeds can run on synthetic landmarks (integrator amendment to 5.04).
+ */
+export interface Pipeline {
+  readonly calibration: Calibration;
+  readonly buffers: MetricBuffers;
+  readonly walk: Walk;
+  readonly jump: Jump;
+  readonly block: Block;
+  readonly punchL: Punch;
+  readonly punchR: Punch;
+  readonly gestures: GestureFlags;
+  smoothed: Landmark[] | null;
+  smoothedWorld: Landmark[] | null;
+  frame: Readonly<InputFrame>;
+}
+
+export function createPipeline(): Pipeline {
+  return {
+    calibration: new Calibration(),
+    buffers: createMetricBuffers(),
+    walk: new Walk(),
+    jump: new Jump(),
+    block: new Block(),
+    punchL: new Punch("L"),
+    punchR: new Punch("R"),
+    gestures: { left: false, right: false, jump: false, punchL: false, punchR: false, block: false },
+    smoothed: null,
+    smoothedWorld: null,
+    frame: EMPTY_FRAME,
+  };
+}
+
+/** 5.03 rule 5: gestures and their buffers restart whenever a frame cannot be classified. */
+function resetGestures(p: Pipeline): void {
+  p.walk.reset();
+  p.jump.reset();
+  p.block.reset();
+  p.punchL.reset();
+  p.punchR.reset();
+  clearMetricBuffers(p.buffers);
+  const g = p.gestures;
+  g.left = g.right = g.jump = g.punchL = g.punchR = g.block = false;
+}
+
+/**
+ * One worker result through the whole layer (5.04 rule 6): EMA → calibration.update → if ready:
+ * metrics → gestures → classify → store frame. Touches no camera, worker or DOM.
+ */
+export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: number): DebugFrame {
+  if (pose) {
+    p.smoothed = emaLandmarks(p.smoothed, pose.landmarks, EMA_ALPHA);
+    p.smoothedWorld = emaLandmarks(p.smoothedWorld, pose.worldLandmarks, EMA_ALPHA);
+  } else {
+    p.smoothed = null;
+    p.smoothedWorld = null;
+  }
+
+  p.calibration.update(p.smoothed, ts);
+  const baseline = p.calibration.baseline;
+  const { phase, progress } = p.calibration.state();
+  let metrics: Metrics | null = null;
+
+  if (phase === "ready" && baseline && p.smoothed && p.smoothedWorld) {
+    metrics = computeMetrics(p.smoothed, p.smoothedWorld, baseline, ts, p.buffers);
+    const g = p.gestures;
+    const walk = p.walk.update(metrics, ts);
+    g.left = walk.left;
+    g.right = walk.right;
+    g.jump = p.jump.update(metrics, ts);
+    g.block = p.block.update(metrics, ts);
+    g.punchL = p.punchL.update(metrics, ts);
+    g.punchR = p.punchR.update(metrics, ts);
+    p.frame = classify(g);
+  } else {
+    resetGestures(p);
+    p.frame = EMPTY_FRAME;
+  }
+
+  return {
+    landmarks: p.smoothed,
+    metrics,
+    gestures: p.gestures,
+    frame: p.frame,
+    calibration: { phase, progress, baseline },
+    ts,
+  };
+}
+
 export class VisionInputSource implements InputSource {
   private readonly worker = new WorkerClient();
-  private readonly calibration = new Calibration();
-  private readonly buffers = createMetricBuffers();
-  private readonly walk = new Walk();
-  private readonly jump = new Jump();
-  private readonly block = new Block();
-  private readonly punchL = new Punch("L");
-  private readonly punchR = new Punch("R");
-  private readonly gestures: GestureFlags = {
-    left: false, right: false, jump: false, punchL: false, punchR: false, block: false,
-  };
+  private readonly pipeline = createPipeline();
 
-  private frame: Readonly<InputFrame> = EMPTY_FRAME;
-  private smoothed: Landmark[] | null = null;
-  private smoothedWorld: Landmark[] | null = null;
   private videoEl: HTMLVideoElement | null = null;
   private stream: MediaStream | null = null;
   private stopLoop: (() => void) | null = null;
@@ -82,24 +165,24 @@ export class VisionInputSource implements InputSource {
       this.videoEl = null;
     }
     this.worker.stop();
-    this.resetGestures();
-    this.smoothed = null;
-    this.smoothedWorld = null;
-    this.frame = EMPTY_FRAME;
+    resetGestures(this.pipeline);
+    this.pipeline.smoothed = null;
+    this.pipeline.smoothedWorld = null;
+    this.pipeline.frame = EMPTY_FRAME;
     this.running = false;
   }
 
   /** A property read: the latest classified frame, or EMPTY_FRAME when calibration is not ready. */
   sample(): Readonly<InputFrame> {
-    return this.frame;
+    return this.pipeline.frame;
   }
 
   calibrate(): Promise<void> {
-    return this.calibration.begin();
+    return this.pipeline.calibration.begin();
   }
 
   calibrationState(): { phase: CalibrationPhase; progress: number } {
-    return this.calibration.state();
+    return this.pipeline.calibration.state();
   }
 
   stats(): WorkerStats {
@@ -111,55 +194,7 @@ export class VisionInputSource implements InputSource {
   }
 
   private handleResult(r: ResultMessage): void {
-    if (r.pose) {
-      this.smoothed = emaLandmarks(this.smoothed, r.pose.landmarks, EMA_ALPHA);
-      this.smoothedWorld = emaLandmarks(this.smoothedWorld, r.pose.worldLandmarks, EMA_ALPHA);
-    } else {
-      this.smoothed = null;
-      this.smoothedWorld = null;
-    }
-
-    this.calibration.update(this.smoothed, r.ts);
-    const baseline = this.calibration.baseline;
-    let metrics: Metrics | null = null;
-
-    if (this.calibration.state().phase === "ready" && baseline && this.smoothed && this.smoothedWorld) {
-      metrics = computeMetrics(this.smoothed, this.smoothedWorld, baseline, r.ts, this.buffers);
-      const g = this.gestures;
-      const walk = this.walk.update(metrics, r.ts);
-      g.left = walk.left;
-      g.right = walk.right;
-      g.jump = this.jump.update(metrics, r.ts);
-      g.block = this.block.update(metrics, r.ts);
-      g.punchL = this.punchL.update(metrics, r.ts);
-      g.punchR = this.punchR.update(metrics, r.ts);
-      this.frame = classify(g);
-    } else {
-      this.resetGestures();
-      this.frame = EMPTY_FRAME;
-    }
-
-    if (this.debugCb) {
-      const { phase, progress } = this.calibration.state();
-      this.debugCb({
-        landmarks: this.smoothed,
-        metrics,
-        gestures: this.gestures,
-        frame: this.frame,
-        calibration: { phase, progress, baseline: this.calibration.baseline },
-        ts: r.ts,
-      });
-    }
-  }
-
-  private resetGestures(): void {
-    this.walk.reset();
-    this.jump.reset();
-    this.block.reset();
-    this.punchL.reset();
-    this.punchR.reset();
-    clearMetricBuffers(this.buffers);
-    const g = this.gestures;
-    g.left = g.right = g.jump = g.punchL = g.punchR = g.block = false;
+    const debug = processLandmarks(this.pipeline, r.pose, r.ts);
+    this.debugCb?.(debug);
   }
 }
