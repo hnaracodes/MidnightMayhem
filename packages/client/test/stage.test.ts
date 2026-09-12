@@ -178,18 +178,19 @@ describe("map drawing", () => {
     expect(masks.map((r) => [r.x, r.x + r.w])).toEqual([[300, 380], [580, 660]]);
   });
 
-  it("platforms: two rack images at MAPS.platforms.platforms whose plank row sits on platform.y (13.05)", () => {
+  it("platforms: three rack images at MAPS.platforms.platforms whose plank row sits on platform.y (13.05)", () => {
     const { scene, canvases } = stubScene();
     const layers = createBackgrounds(scene, "platforms");
     expect(layers.map.spans.gaps).toEqual([]);
     expect(layers.map.spans.platforms).toEqual(MAPS.platforms.platforms);
-    expect(layers.map.images).toHaveLength(2);
-    // the image starts one outline row (PIXEL px) above the surface and PIXEL px outside the span
-    expect(layers.map.images.map((i) => [(i as unknown as FakeObject).x, (i as unknown as FakeObject).y])).toEqual([[148, 328], [628, 328]]);
-    expect(canvases.filter((c) => c.key.startsWith("map_rack_")).map((c) => [c.w, c.h])).toEqual([[184, 102], [184, 102]]);
+    expect(layers.map.images).toHaveLength(3);
+    // the image starts one outline row (PIXEL px) above the surface and PIXEL px outside the span; the centre rack
+    // (owner, 2026-09-12) is 100 px higher, so its frame is 100 px taller
+    expect(layers.map.images.map((i) => [(i as unknown as FakeObject).x, (i as unknown as FakeObject).y])).toEqual([[148, 328], [628, 328], [388, 228]]);
+    expect(canvases.filter((c) => c.key.startsWith("map_rack_")).map((c) => [c.w, c.h])).toEqual([[184, 102], [184, 102], [184, 202]]);
     // the glow stays a Graphics under the rack
     const glow = (layers.map.platforms as unknown as FakeGraphics).rects.filter((r) => r.y === WORLD.ROOF_Y && r.w === 180);
-    expect(glow).toHaveLength(2);
+    expect(glow).toHaveLength(3);
   });
 
   it("13.05 rackArt: the plank row is opaque across the span, row 0 is outline only, nothing outside the span ±1 outline column", () => {

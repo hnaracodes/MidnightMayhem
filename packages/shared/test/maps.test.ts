@@ -57,7 +57,9 @@ describe("maps geometry helpers", () => {
     expect(groundYAt("platforms", 240, 100)).toBe(330);
     expect(groundYAt("platforms", 240, 330)).toBe(330);
     expect(groundYAt("platforms", 240, 331)).toBe(WORLD.ROOF_Y);
-    expect(groundYAt("platforms", 500, 100)).toBe(WORLD.ROOF_Y);
+    expect(groundYAt("platforms", 500, 100)).toBe(230); // the centre rack (owner, 2026-09-12)
+    expect(groundYAt("platforms", 500, 231)).toBe(WORLD.ROOF_Y); // below it: straight to the roof
+    expect(groundYAt("platforms", 360, 100)).toBe(WORLD.ROOF_Y); // open air between the racks
     expect(groundYAt("gaps", 340, 100)).toBe(PIT.Y);
     expect(groundYAt("chaos", 340, 100)).toBe(PIT.Y);
     expect(groundYAt("chaos", 240, 100)).toBe(330);
