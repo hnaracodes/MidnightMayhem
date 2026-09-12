@@ -9,7 +9,7 @@
     "preview": "vite preview --host",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc -p tsconfig.json",
-    "vision:setup": "mkdir -p public/models && curl -L -o public/models/pose_landmarker_lite.task https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task && curl -L -o public/models/efficientdet_lite0.tflite https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite && curl -L -o public/models/yolo.onnx https://huggingface.co/onnx-community/yolov10n/resolve/main/onnx/model.onnx"
+    "vision:setup": "mkdir -p public/models && curl -fL --retry 3 -o public/models/pose_landmarker_lite.task https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task && curl -fL --retry 3 -o public/models/efficientdet_lite0.tflite https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite && test -s public/models/yolo.onnx || curl -fL --retry 3 -o public/models/yolo.onnx https://huggingface.co/onnx-community/yolov10n/resolve/main/onnx/model.onnx"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^0.10.22",

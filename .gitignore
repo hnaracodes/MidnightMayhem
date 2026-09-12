@@ -7,3 +7,8 @@ packages/client/public/models/
 .worktrees/
 .shots/
 packages/client/public/bench/
+
+# The YOLO model ships in the repo (HF CDN rate-limits downloads); the MediaPipe models still come from vision:setup.
+!packages/client/public/models/
+packages/client/public/models/*
+!packages/client/public/models/yolo.onnx
