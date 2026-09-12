@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { BALANCE, EMPTY_FRAME, MATCH, MODES, WORLD, type InputFrame, type MatchConfig, type MatchState, type SimEvent } from "../src";
 import { canBeHit } from "../src/sim/combat";
 import { createMatch, resetForRound } from "../src/sim/create";
+import { matchWinner } from "../src/sim/rounds";
 import { hasTimer, teamCount, teamsOf, timerSeconds } from "../src/sim/modes";
 import { step } from "../src/sim/step";
 
@@ -214,6 +215,14 @@ describe("rule 7: 2v2 teammates", () => {
     const { s: e, events } = run(s, 20, [{ ...EMPTY_FRAME, punchL: true }, EMPTY_FRAME, EMPTY_FRAME, EMPTY_FRAME]);
     expect(events.filter((ev) => ev.type === "HIT")).toHaveLength(0);
     expect(e.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+    // Control: the same geometry in free-for-all lands, so the 2v2 miss is the team rule, not the reach.
+    const ffa = fighting({ players: 4, teams: "ffa" });
+    ffa.fighters[0]!.x = 300; ffa.fighters[0]!.facing = 1;
+    ffa.fighters[1]!.x = 350;
+    ffa.fighters[2]!.x = 900; ffa.fighters[3]!.x = 940;
+    const ctl = run(ffa, 20, [{ ...EMPTY_FRAME, punchL: true }, EMPTY_FRAME, EMPTY_FRAME, EMPTY_FRAME]);
+    expect(ctl.events.filter((ev) => ev.type === "HIT" && ev.target === 1)).toHaveLength(1);
+    expect(ctl.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP - BALANCE.PUNCH_DAMAGE);
   });
   it("faces the nearest living opponent, not a teammate", () => {
     const s = fighting({ players: 4, teams: "2v2" });
@@ -317,7 +326,7 @@ describe("invariants", () => {
     expect(cur.roundsWon).toEqual([2, 2]);
     expect(all.filter((e) => e.type === "MATCH_END")).toHaveLength(1);
   });
-  it("a draw then a win: 2-1 after round 2 is not over; round 3 timer draw ends 3-2 to team 0", () => {
+  it("a draw then a KO: [1, 1] after round 1, then team 0 reaches roundsToWin alone at [2, 1] and wins", () => {
     let cur = fighting({ mode: "rounds" });
     cur = run(cur, MATCH.ROUND_TICKS, [], "ROUND_END").s;                 // draw → [1, 1]
     cur = run(cur, MATCH.ROUND_END_TICKS + MATCH.COUNTDOWN_TICKS).s;      // round 2 FIGHTING
@@ -327,6 +336,38 @@ describe("invariants", () => {
     expect(cur.roundsWon).toEqual([2, 1]);
     cur = run(cur, MATCH.ROUND_END_TICKS).s;
     expect(cur.phase).toBe("MATCH_END"); expect(cur.winner).toBe(0);      // team 0 reached roundsToWin alone
+  });
+  it("matchWinner after maxRounds: most rounds won, ties draw (3-player FFA, one round each)", () => {
+    // Three rotating KO rounds: [1,0,0] → [1,1,0] → [1,1,1] at round 3 = maxRounds → "draw" (never null).
+    let cur = fighting({ players: 3 });
+    const all: SimEvent[] = [];
+    for (const [a, b] of [[1, 2], [0, 2], [0, 1]] as const) {
+      expect(cur.phase).toBe("FIGHTING");
+      cur.fighters[a]!.hp = 0; cur.fighters[b]!.hp = 0;
+      const { s: next, events } = run(cur, 1 + MATCH.ROUND_END_TICKS + MATCH.COUNTDOWN_TICKS, [], "MATCH_END");
+      cur = next; all.push(...events);
+    }
+    expect(cur.round).toBe(MODES.rounds.maxRounds);
+    expect(cur.roundsWon).toEqual([1, 1, 1]);
+    expect(cur.phase).toBe("MATCH_END");
+    expect(cur.winner).toBe("draw");
+    expect(all.filter((e) => e.type === "MATCH_END")).toEqual([{ type: "MATCH_END", winner: "draw" }]);
+    // The same branch with a single leader picks it (unit-level: the sim cannot reach [1,0,0] at round 3).
+    const lead = fighting({ players: 3 });
+    lead.round = MODES.rounds.maxRounds; lead.roundsWon = [1, 0, 0];
+    expect(matchWinner(lead)).toBe(0);
+    lead.round = MODES.rounds.maxRounds - 1;
+    expect(matchWinner(lead)).toBeNull();
+  });
+  it("endRound clears projectiles and hazards", () => {
+    const s = fighting({ players: 2 });
+    s.projectiles.push({ id: 1, kind: "banana", owner: 0, x: 100, y: 300, vx: 6, vy: -7 });
+    s.hazards.push({ id: 2, kind: "peel", owner: 0, x: 200, y: WORLD.ROOF_Y, w: 60, ticks: 600, age: 0 });
+    s.fighters[1]!.hp = 0;
+    const e = run(s, 1).s;
+    expect(e.phase).toBe("ROUND_END");
+    expect(e.projectiles).toEqual([]);
+    expect(e.hazards).toEqual([]);
   });
   it("endRound zeroes velocity and clears actions and blocks for every fighter", () => {
     const s = fighting({ players: 3 });
