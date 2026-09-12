@@ -3,15 +3,15 @@ import { type Baseline, Calibration, type CalibrationPhase } from "./calibration
 import { frameLoop, openCamera } from "./camera";
 import { classify, type GestureFlags } from "./classify";
 import { VisionInputError } from "./errors";
-import { emaLandmarks } from "./filters";
+import { emaLandmarks, RingBuffer } from "./filters";
 import { Block } from "./gestures/block";
 import { Jump } from "./gestures/jump";
-import { Punch } from "./gestures/punch";
+import { Punch, type PunchDiag } from "./gestures/punch";
 import { Walk } from "./gestures/walk";
 import {
   clearMetricBuffers, computeMetrics, createMetricBuffers, type MetricBuffers, type Metrics,
 } from "./metrics";
-import { EMA_ALPHA } from "./thresholds";
+import { EMA_ALPHA, RECORDER_SECONDS } from "./thresholds";
 import {
   WorkerClient, type Landmark, type PoseResult, type ResultMessage, type WorkerStats,
 } from "./workerClient";
@@ -26,6 +26,19 @@ export interface DebugFrame {
   frame: Readonly<InputFrame>;
   calibration: { phase: CalibrationPhase; progress: number; baseline: Baseline | null };
   ts: number;
+  /** Per-arm punch gates (integrator amendment); absent unless calibration is ready. */
+  punch?: { L: PunchDiag; R: PunchDiag };
+}
+
+export type { PunchDiag } from "./gestures/punch";
+
+/** One recorder sample (integrator amendment): what the harness saw at `ts`, safe to serialise. */
+export interface RecorderSample {
+  ts: number;
+  metrics: Metrics | null;
+  gestures: GestureFlags;
+  frame: Readonly<InputFrame>;
+  punch?: { L: PunchDiag; R: PunchDiag };
 }
 
 /**
@@ -92,9 +105,10 @@ export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: numbe
   const baseline = p.calibration.baseline;
   const { phase, progress } = p.calibration.state();
   let metrics: Metrics | null = null;
+  let punch: DebugFrame["punch"];
 
   if (phase === "ready" && baseline && p.smoothed && p.smoothedWorld) {
-    metrics = computeMetrics(p.smoothed, p.smoothedWorld, baseline, ts, p.buffers);
+    metrics = computeMetrics(p.smoothed, p.smoothedWorld, baseline, ts, p.buffers, pose?.landmarks);
     const g = p.gestures;
     const walk = p.walk.update(metrics, ts);
     g.left = walk.left;
@@ -104,6 +118,7 @@ export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: numbe
     g.punchL = p.punchL.update(metrics, ts);
     g.punchR = p.punchR.update(metrics, ts);
     p.frame = classify(g);
+    punch = { L: p.punchL.diag(), R: p.punchR.diag() };
   } else {
     resetGestures(p);
     p.frame = EMPTY_FRAME;
@@ -116,6 +131,7 @@ export function processLandmarks(p: Pipeline, pose: PoseResult | null, ts: numbe
     frame: p.frame,
     calibration: { phase, progress, baseline },
     ts,
+    ...(punch ? { punch } : {}),
   };
 }
 
@@ -128,6 +144,7 @@ export class VisionInputSource implements InputSource {
   private stopLoop: (() => void) | null = null;
   private debugCb: ((f: DebugFrame) => void) | null = null;
   private running = false;
+  private readonly recorder = new RingBuffer<RecorderSample>(RECORDER_SECONDS * 1000);
 
   /** The hidden, mirrored camera element this source owns. Hosts may attach it for a preview. */
   get video(): HTMLVideoElement | null {
@@ -193,8 +210,21 @@ export class VisionInputSource implements InputSource {
     this.debugCb = cb;
   }
 
+  /** The last RECORDER_SECONDS of samples, oldest first (integrator amendment). Landmarks are not included. */
+  dump(): RecorderSample[] {
+    return this.recorder.values();
+  }
+
   private handleResult(r: ResultMessage): void {
     const debug = processLandmarks(this.pipeline, r.pose, r.ts);
+    // The pipeline reuses its gesture object, so the sample takes a copy; metrics, frame and punch are fresh.
+    this.recorder.push(r.ts, {
+      ts: debug.ts,
+      metrics: debug.metrics,
+      gestures: { ...debug.gestures },
+      frame: debug.frame,
+      ...(debug.punch ? { punch: debug.punch } : {}),
+    });
     this.debugCb?.(debug);
   }
 }

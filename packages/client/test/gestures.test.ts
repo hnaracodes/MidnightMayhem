@@ -6,7 +6,10 @@ import { Block } from "../src/vision/gestures/block";
 import { Jump } from "../src/vision/gestures/jump";
 import { Punch } from "../src/vision/gestures/punch";
 import { Walk } from "../src/vision/gestures/walk";
-import { THRUST_WINDOW_MS } from "../src/vision/thresholds";
+import {
+  DEPTH_ENTER_NO_HAND, EXT_ENTER, JAB_EXIT, JAB_EXT, JAB_RISE, JAB_WINDOW_MS, SIDE_JAB_ENABLED, THRUST_DROP,
+  THRUST_WINDOW_MS,
+} from "../src/vision/thresholds";
 import type { Landmark } from "../src/vision/workerClient";
 
 const FRAME = 33;
@@ -28,6 +31,10 @@ function metrics(o: Partial<Metrics> = {}): Metrics {
     thrustR: false,
     dropL: 0,
     dropR: 0,
+    sideL: 0,
+    sideR: 0,
+    jabRiseL: 0,
+    jabRiseR: 0,
     guard: false,
     ...o,
   };
@@ -156,6 +163,80 @@ describe("Punch", () => {
     const p = new Punch("R");
     expect(run(p, thrown, 10)).toBe(false);
   });
+
+  it("diag() names every gate with its live value", () => {
+    const p = new Punch("L");
+    expect(p.diag().out).toBe(false);
+    p.update(metrics({ extL: 0.9, depthL: 0.05, atHeightL: true, thrustL: false, dropL: 0.04 }), 0);
+    const d = p.diag();
+    expect(d).toMatchObject({
+      ext: 0.9, depth: 0.05, drop: 0.04, atHeight: true,
+      extOk: false, depthOk: false, thrustOk: false, jabOk: false, active: false, out: false, path: null,
+    });
+    p.update(thrown, 33);
+    expect(p.diag()).toMatchObject({ extOk: true, depthOk: true, thrustOk: true, active: true, out: false, path: "thrust" });
+    p.update(thrown, 66);
+    expect(p.diag()).toMatchObject({ active: true, out: true, path: "thrust" });
+    p.reset();
+    expect(p.diag().active).toBe(false);
+  });
+});
+
+describe("Punch: side-jab entry", () => {
+  // Arm straight out sideways at shoulder height after a fast rise: no depth, full extension.
+  const jab = metrics({ extL: 1.0, depthL: 0.0, atHeightL: true, sideL: JAB_EXT + 0.08, jabRiseL: JAB_RISE + 0.3 });
+
+  it("is enabled for the owner's first pass", () => {
+    expect(SIDE_JAB_ENABLED).toBe(true);
+  });
+
+  it("a fast horizontal jab punches after 2 frames with zero depth and no thrust", () => {
+    const p = new Punch("L");
+    expect(p.update(jab, 0)).toBe(false);
+    expect(p.update(jab, 33)).toBe(true);
+    expect(p.diag()).toMatchObject({ jabOk: true, extOk: false, depthOk: false, thrustOk: false, path: "jab" });
+  });
+
+  it("releases when the arm comes back below JAB_EXIT, not on the thrust exits", () => {
+    const p = new Punch("R");
+    const jabR = metrics({ extR: 1.0, atHeightR: true, sideR: JAB_EXT + 0.08, jabRiseR: JAB_RISE + 0.3 });
+    run(p, jabR, 2);
+    // Still out past the jab window: the rise has aged out but the level holds, and ext > EXT_EXIT is not an exit here.
+    const held = metrics({ extR: 1.0, atHeightR: true, sideR: JAB_EXT + 0.05, jabRiseR: 0 });
+    expect(run(p, held, 10, 66)).toBe(true);
+    const back = metrics({ extR: 0.8, atHeightR: true, sideR: JAB_EXIT - 0.05, jabRiseR: 0 });
+    expect(run(p, back, 3, 500)).toBe(false);
+    expect(p.diag().path).toBeNull();
+  });
+
+  it("crossed arms (side negative) never jab-punch even with a fast move", () => {
+    const p = new Punch("L");
+    const crossed = metrics({ extL: 0.3, depthL: 0.0, atHeightL: true, sideL: -0.5, jabRiseL: 0.6 });
+    expect(run(p, crossed, 10)).toBe(false);
+    expect(p.diag().jabOk).toBe(false);
+  });
+
+  it("an arm swinging up to block (off height, not out sideways) never jab-punches", () => {
+    const p = new Punch("L");
+    const up = metrics({ extL: 1.0, depthL: 0.0, atHeightL: false, sideL: 0.2, jabRiseL: 0.1 });
+    expect(run(p, up, 10)).toBe(false);
+    const overhead = metrics({ extL: 1.0, depthL: 0.0, atHeightL: false, sideL: JAB_EXT + 0.05, jabRiseL: 0.6 });
+    expect(run(p, overhead, 10)).toBe(false);
+  });
+
+  it("a slow sideways raise (rise below JAB_RISE) never jab-punches", () => {
+    const p = new Punch("L");
+    const slow = metrics({ extL: 1.0, atHeightL: true, sideL: JAB_EXT + 0.08, jabRiseL: JAB_RISE - 0.1 });
+    expect(run(p, slow, 20)).toBe(false);
+  });
+
+  it("thrust thresholds after the first tuning pass", () => {
+    expect(EXT_ENTER).toBe(0.62);
+    expect(DEPTH_ENTER_NO_HAND).toBe(0.22);
+    expect(THRUST_DROP).toBe(0.15);
+    expect(THRUST_WINDOW_MS).toBe(320);
+    expect(JAB_WINDOW_MS).toBe(250);
+  });
 });
 
 // ---- computeMetrics on synthetic landmarks ----
@@ -233,5 +314,39 @@ describe("computeMetrics", () => {
     expect(m.dropL).toBeGreaterThan(0.25);
     expect(m.extR).toBeCloseTo(1, 1);
     expect(m.thrustR).toBe(false);
+  });
+
+  it("side is the outward horizontal offset over arm length, per arm, negative when crossed", () => {
+    const b = createMetricBuffers();
+    // Person's left arm (11/15) is on the mirrored right: raw x smaller = further out.
+    const outL = pose({ 15: { x: 0.0, y: 0.35 } }); // 0.4 image units out from shoulder 11 at x 0.4
+    const m = computeMetrics(outL, world(), baseline, 0, b);
+    expect(m.sideL).toBeCloseTo(1.0);
+    expect(m.atHeightL).toBe(true);
+    expect(m.sideR).toBeCloseTo(0.05); // hanging: wrist 16 at raw x 0.62 is 0.02 outward of shoulder 12 at 0.6
+    const crossed = computeMetrics(pose({ 15: { x: 0.6, y: 0.45 } }), world(), baseline, 33, b);
+    expect(crossed.sideL).toBeCloseTo(-0.5);
+  });
+
+  it("jabRise is the raw side rise inside JAB_WINDOW_MS; thrust drop reads the raw landmarks too", () => {
+    const b = createMetricBuffers();
+    computeMetrics(pose(), world(), baseline, 0, b);
+    const outL = pose({ 15: { x: 0.0, y: 0.35 } });
+    const m = computeMetrics(outL, world(), baseline, 100, b);
+    expect(m.jabRiseL).toBeCloseTo(1.0 - m.sideL + m.jabRiseL, 5); // rose from ~0 to ~1
+    expect(m.jabRiseL).toBeGreaterThan(JAB_RISE);
+    expect(m.jabRiseR).toBe(0);
+    // Smoothed says "hanging" but the raw wrist is already at the shoulder: the drop comes from raw.
+    const b2 = createMetricBuffers();
+    computeMetrics(pose(), world(), baseline, 0, b2);
+    const raw = pose({ 15: { x: 0.42, y: 0.4 } });
+    const m2 = computeMetrics(pose(), world(), baseline, 50, b2, raw);
+    expect(m2.extL).toBeCloseTo(1, 1);
+    expect(m2.dropL).toBeGreaterThan(THRUST_DROP);
+    expect(m2.thrustL).toBe(true);
+    // Aged out of the window, the rise disappears while the level stays.
+    const late = computeMetrics(outL, world(), baseline, 100 + JAB_WINDOW_MS + 50, b);
+    expect(late.sideL).toBeCloseTo(1.0);
+    expect(late.jabRiseL).toBe(0);
   });
 });

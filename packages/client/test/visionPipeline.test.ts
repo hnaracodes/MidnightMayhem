@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { createPipeline, processLandmarks, type DebugFrame, type Pipeline } from "../src/vision/VisionInputSource";
 import {
   CALIBRATION_MS,
+  JAB_EXT,
+  JAB_WINDOW_MS,
   JUMP_LAND,
   JUMP_RISE,
   LEAN_ENTER,
@@ -89,6 +91,10 @@ function mixWrist(a: Wrist, b: Wrist, t: number): Wrist {
 
 // Left wrist thrown straight at the camera: near the shoulder in the image, half a metre ahead of it.
 const THRUST_L: Wrist = { dx: 0.1, dy: 0.25, z: -0.5 };
+// Left wrist jabbed straight out sideways at shoulder height: a full arm length (2 S) away, no depth.
+const SIDE_L: Wrist = { dx: 2.0, dy: 0.0, z: 0 };
+// Left arm raised straight overhead (a swing up to block): a full arm length above the shoulder.
+const OVERHEAD_L: Wrist = { dx: 0.1, dy: -2.0, z: 0 };
 // Arms crossed in front of the chest: each wrist 0.3 S past the midline, at chest height.
 const CROSSED_L: Wrist = { dx: -0.2, dy: 0.5, z: 0 };
 const CROSSED_R: Wrist = { dx: 0.2, dy: 0.5, z: 0 };
@@ -373,6 +379,84 @@ describe("vision pipeline: punch", () => {
     const a = jab(drv, 2);
     const b = jab(drv, 2);
     expect(risingEdges([...a.all, ...b.all], "punchL")).toBe(2);
+  });
+});
+
+describe("vision pipeline: side jab (SIDE_JAB_ENABLED)", () => {
+  /** A horizontal left jab: out in `outFrames`, held 300 ms, back, rest. */
+  const sideJab = (drv: Driver, outFrames: number, dist = 1.5) => {
+    const out = drv.run(outFrames, (i) => body({ dist, wristL: mixWrist(HANGING_L, SIDE_L, (i + 1) / outFrames) }));
+    const held = drv.hold(300, body({ dist, wristL: SIDE_L }));
+    const back = drv.run(outFrames, (i) => body({ dist, wristL: mixWrist(SIDE_L, HANGING_L, (i + 1) / outFrames) }));
+    const rest = drv.hold(400, body({ dist }));
+    return { out, held, back, rest, all: [...out, ...held, ...back, ...rest] };
+  };
+
+  it("a fast sideways jab with zero depth produces exactly one punchL edge via the jab path", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const j = sideJab(drv, 3);
+    expect(risingEdges(j.all, "punchL")).toBe(1);
+    expect(j.held.some((f) => f.frame.punchL)).toBe(true);
+    expect(anyTrue(j.all, "punchR")).toBe(false);
+    expect(anyTrue(j.all, "block")).toBe(false);
+    expect(j.rest[j.rest.length - 1]?.frame.punchL).toBe(false);
+    const on = j.held.find((f) => f.frame.punchL)!;
+    expect(on.punch?.L.path).toBe("jab");
+    expect(on.punch?.L.depthOk).toBe(false);
+    expect(on.punch?.L.thrustOk).toBe(false);
+    expect(on.metrics!.sideL).toBeGreaterThan(JAB_EXT);
+    expect(on.metrics!.depthL).toBeCloseTo(0, 3);
+  });
+
+  it("the same jab lands at 1 m and 2.5 m", () => {
+    for (const dist of [1, 2.5]) {
+      const drv = new Driver();
+      drv.calibrate(dist);
+      expect(risingEdges(sideJab(drv, 3, dist).all, "punchL")).toBe(1);
+    }
+  });
+
+  it("a slow sideways raise never punches, and neither does holding the arm out", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const slowFrames = Math.ceil(JAB_WINDOW_MS / FRAME_MS) * 6;
+    const j = sideJab(drv, slowFrames);
+    expect(anyTrue(j.all, "punchL")).toBe(false);
+    const last = j.held[j.held.length - 1]!;
+    expect(last.metrics!.sideL).toBeGreaterThan(JAB_EXT);
+    expect(last.punch?.L.jabOk).toBe(false);
+  });
+
+  it("crossing the arms fast and swinging an arm up fast never punch", () => {
+    const drv = new Driver();
+    drv.calibrate();
+    const cross = drv.run(2, (i) =>
+      body({ wristL: mixWrist(HANGING_L, CROSSED_L, (i + 1) / 2), wristR: mixWrist(HANGING_R, CROSSED_R, (i + 1) / 2) }),
+    );
+    const held = drv.hold(400, body({ wristL: CROSSED_L, wristR: CROSSED_R }));
+    expect(anyTrue([...cross, ...held], "punchL")).toBe(false);
+    expect(anyTrue([...cross, ...held], "punchR")).toBe(false);
+    expect(held[held.length - 1]?.frame.block).toBe(true);
+    expect(held.every((f) => f.metrics!.sideL < 0 && f.metrics!.sideR < 0)).toBe(true);
+
+    drv.hold(400, body());
+    const up = drv.run(2, (i) => body({ wristL: mixWrist(HANGING_L, OVERHEAD_L, (i + 1) / 2) }));
+    const overhead = drv.hold(400, body({ wristL: OVERHEAD_L }));
+    expect(anyTrue([...up, ...overhead], "punchL")).toBe(false);
+    expect(overhead.every((f) => f.punch!.L.atHeight === false)).toBe(true);
+  });
+
+  it("punch diagnostics ride on every ready frame and vanish when not ready", () => {
+    const drv = new Driver();
+    const during = drv.calibrate();
+    expect(during[0]?.punch).toBeUndefined();
+    const rest = drv.hold(200, body());
+    for (const f of rest) {
+      expect(f.punch).toBeDefined();
+      expect(f.punch!.L).toMatchObject({ extOk: false, depthOk: false, thrustOk: false, jabOk: false, active: false, out: false });
+      expect(f.punch!.R.out).toBe(false);
+    }
   });
 });
 
