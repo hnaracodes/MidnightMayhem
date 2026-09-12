@@ -1,5 +1,6 @@
 import { CHARACTERS } from "@midnight/shared";
 import { session } from "../game/session";
+import { AMBER_FACE, pixelText } from "./pixelFont";
 
 interface LandingHandlers {
   onEnter(name: string, roomId?: string): void;
@@ -32,9 +33,10 @@ export class Landing {
     this.root.replaceChildren();
     this.root.hidden = false;
 
+    // 13.01: the logotype is the game's own pixel face; each letter is a canvas so the entrance can stagger.
     const heading = document.createElement("h1");
     heading.className = "title";
-    heading.textContent = "MIDNIGHT MAYHEM";
+    heading.append(pixelText("MIDNIGHT MAYHEM", { weight: "heavy", fill: AMBER_FACE, depth: 2, className: "px-title" }));
     const invitation = document.createElement("p");
     invitation.className = "invitation";
     invitation.textContent = INVITATION;

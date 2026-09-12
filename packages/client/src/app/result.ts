@@ -1,4 +1,5 @@
 import { CHARACTER_LABEL, type MatchState, type PlayerIndex, type Winner } from "@midnight/shared";
+import { AMBER_FACE, DANGER_FACE, MOON_FACE, pixelText } from "./pixelFont";
 
 export class ResultOverlay {
   private readonly root: HTMLElement;
@@ -20,16 +21,18 @@ export class ResultOverlay {
     const won = winner !== "draw" && winner === localTeam;
     this.root.dataset["verdict"] = winner === "draw" ? "draw" : won ? "win" : "lose";
 
+    // 13.01: the verdict in the pixel face, coloured by outcome; the winner's name under it in moon.
     const heading = document.createElement("h1");
-    heading.textContent = winner === "draw"
-      ? "MUTUAL DERAILMENT"
-      : won ? "YOU WIN" : "YOU LOSE";
+    const verdict = winner === "draw" ? "MUTUAL DERAILMENT" : won ? "YOU WIN" : "YOU LOSE";
+    heading.append(pixelText(verdict, {
+      weight: "heavy", depth: 2,
+      fill: winner === "draw" ? MOON_FACE : won ? AMBER_FACE : DANGER_FACE, className: "px-title",
+    }));
     const detail = winner === "draw"
       ? document.createElement("p")
       : document.createElement("h2");
-    detail.textContent = winner === "draw"
-      ? "Neither fighter leaves the train standing."
-      : `${winnerName(winner, state)} WINS`;
+    if (winner === "draw") detail.textContent = "Neither fighter leaves the train standing.";
+    else detail.append(pixelText(`${winnerName(winner, state)} WINS`, { cell: 4, fill: MOON_FACE, depth: 1 }));
     this.root.append(heading, detail);
     if (winner !== "draw" && state?.config.teams === "2v2") {
       const names = document.createElement("p");

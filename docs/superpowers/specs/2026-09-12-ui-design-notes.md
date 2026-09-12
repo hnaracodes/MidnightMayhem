@@ -103,3 +103,34 @@ Lobby (960): two columns, left the manifest, right the route board and customise
   "empty seat".
 - *Motion*: none in the DOM on load. The one motion is the live train behind the page.
 - *Typeface*: not `Inter`/`system-ui` for display; a condensed heavy stack chosen for the railway-poster voice.
+
+## Pass 3 — retro chrome (13.01, owner: "should scream Midnight Express / retro video game")
+
+Reviewed against screenshots of the live pages on 2026-09-12. What the pass found: the landing composition
+was strong but the title was whatever condensed system face each laptop had (Avenir Next on macOS,
+Bahnschrift on Windows), so the two machines showed different titles; the lobby read as a settings panel over
+a painting, with 17 outlined-amber chips and an outlined Ready; the verdict clipped at 400 px; and `Scale.FIT`'s
+centring margin collapsed through `#game`/`body`, making the page 47 px taller than the viewport mid-match.
+
+What changed:
+
+- **Type**: the display voice is now the game's own 5 × 7 pixel face, drawn in code (`src/app/pixelFont.ts`,
+  same bevel / outline / block-shadow language as the fighter grids), so both laptops draw identical lettering
+  with no font file. `heavy` (strokes dilated one cell) for the logotype and the verdict; `regular` for the room
+  code and the lobby heads. Each letter is its own canvas scaled by the `--cell` custom property
+  (`image-rendering: pixelated`); the text stays in a visually hidden span for screen readers and tests.
+  Buttons, chips, fields and helper copy keep the system stacks; they are controls, not lettering.
+- **Motion** (revises principle 1): one authored entrance on the landing — letters slam down staggered by
+  38 ms with an overshoot, then the invitation and ticket rise — and a glint that walks the title every 9 s.
+  Off under `prefers-reduced-motion`. Nothing else in the DOM animates.
+- **Chrome**: square corners everywhere the pixel face sits (buttons, ticket, seats, chips, tiles, banner);
+  depth is a hard 3–6 px block in `outline`, never a blur. The primary button is always filled amber (Board,
+  Ready, Rematch); a pressed Ready inverts to amber-on-night. Unselected route chips drop to `steel-0` borders
+  and `bone` ink so only the current choice is amber.
+- **Lobby**: the four idlers stay on the roof under the lobby (`session.attract` is kept until the match
+  starts); the scrim is a gradient like the landing's, opaque behind the columns and open below them.
+- **Fix**: `#game` is a flex container of viewport height, which stops the canvas margin collapsing.
+
+Not done, noted for later: a "Leave" next to the room code, "Retry" in the server banner, a one-line hint
+under Enable camera for first-timers, the key legend repeated in the lobby, and the in-match HUD (still the
+Phaser display face; the pixel face can replace names and the clock there in a follow-up).

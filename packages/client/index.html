@@ -474,6 +474,103 @@
     .title { color: var(--bone); }
     .invitation, #result p, .seat-character { color: var(--bone); }
     .seat canvas, .portrait canvas { background: var(--void-0); }
+
+    /* ---- 13.01 retro chrome: the game's own pixel lettering (src/app/pixelFont.ts) for the title, room code,
+       verdict and heads; square corners and hard block shadows to match it; one authored entrance on the
+       landing (letters slam down, the ticket rises), then a slow glint that walks the title every 9 s.
+       The four idlers stay on the roof under the lobby. ---- */
+    .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+    .px { --cell: 4px; display: inline-flex; flex-wrap: wrap; align-items: flex-start; column-gap: calc(var(--cell) * 4); row-gap: calc(var(--cell) * 2); line-height: 0; }
+    .px-word { display: inline-flex; align-items: flex-start; white-space: nowrap; }
+    .px-glyph { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+    .px-title { --cell: clamp(4px, 1.05vw + 1px, 9px); margin-left: calc(var(--cell) * -1); }
+    .title { text-shadow: none; line-height: 0; }
+
+    @keyframes px-slam {
+      0% { opacity: 0; transform: translateY(calc(var(--cell) * -6)) scale(1.25); }
+      60% { opacity: 1; transform: translateY(calc(var(--cell) * 0.75)) scale(0.97); }
+      100% { opacity: 1; transform: none; }
+    }
+    @keyframes px-glint {
+      0%, 92%, 100% { filter: brightness(1); }
+      95% { filter: brightness(1.7) saturate(0.7); }
+    }
+    @keyframes rise { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+    #landing .px-title .px-glyph {
+      animation: px-slam 480ms cubic-bezier(0.18, 1.35, 0.3, 1) both, px-glint 9s linear infinite;
+      animation-delay: calc(var(--i) * 38ms), calc(1.4s + var(--i) * 55ms);
+    }
+    #landing .invitation, #landing .ticket { animation: rise 460ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    #landing .invitation { animation-delay: 560ms; }
+    #landing .ticket { animation-delay: 700ms; }
+    @media (prefers-reduced-motion: reduce) {
+      #landing .px-title .px-glyph, #landing .invitation, #landing .ticket { animation: none; }
+    }
+
+    .invitation {
+      margin-top: 18px;
+      font-family: var(--font-display);
+      font-size: clamp(14px, 1.6vw, 18px);
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--bone);
+      opacity: 1;
+    }
+    .invitation::before { content: ""; display: inline-block; width: 28px; height: 4px; margin: 0 12px 4px 0; background: var(--amber-1); box-shadow: 2px 2px 0 var(--outline); }
+
+    /* Square everything the pixel face sits next to; depth is a hard block, never a blur. */
+    .btn, .btn-primary, .ticket, .ticket .btn-primary, .seat, .seat canvas, .portrait, .portrait canvas, .item, .segment,
+    .progress, .campreview, .campreview-view, .campreview-dots > span, .banner { border-radius: 0; }
+    .btn { border-width: 3px; box-shadow: 4px 4px 0 var(--outline); }
+    .btn:active:not(:disabled) { transform: translate(2px, 2px); box-shadow: 2px 2px 0 var(--outline); }
+    .btn-primary, .btn-primary:hover:not(:disabled), .btn-primary:focus-visible { box-shadow: 5px 5px 0 var(--outline); }
+    .btn-primary:active:not(:disabled) { box-shadow: 2px 2px 0 var(--outline); }
+    .btn:disabled { box-shadow: 4px 4px 0 var(--steel-0); }
+    .ticket { border-width: 3px; border-left: 4px dashed var(--amber-1); box-shadow: 6px 6px 0 var(--outline); }
+    .ticket .btn-primary, .ticket .btn-primary:hover:not(:disabled), .ticket .btn-primary:focus-visible { margin: -3px; box-shadow: none; }
+    .ticket, .seat:not([data-empty="true"]), .portrait, .item, .segment { box-shadow: 4px 4px 0 var(--outline); }
+    .segment { box-shadow: 3px 3px 0 var(--outline); }
+    .seat:not([data-empty="true"]) { box-shadow: 4px 4px 0 var(--outline); }
+
+    /* Lobby: the stage shows through (same scrim as the landing), Ready is the one filled button, and the
+       route board's unselected chips go quiet so the eye lands on the code, your seat and Ready. */
+    #lobby {
+      background:
+        linear-gradient(180deg, rgba(52, 66, 106, 0) 20%, rgba(52, 66, 106, 0.14) 48%, rgba(52, 66, 106, 0) 70%),
+        linear-gradient(180deg,
+          rgba(7, 11, 24, 0.94) 0%, rgba(7, 11, 24, 0.88) 40%, rgba(7, 11, 24, 0.72) 62%,
+          rgba(7, 11, 24, 0.12) 80%, rgba(7, 11, 24, 0.7) 100%);
+    }
+    .btn-primary { color: var(--night-0); background: var(--amber-1); }
+    .btn-primary:hover:not(:disabled) { background: var(--moon); border-color: var(--moon); }
+    .btn-primary[aria-pressed="true"] { color: var(--amber-1); background: var(--night-1); }
+    .btn-primary:disabled { color: var(--steel-2); background: var(--night-1); border-color: var(--steel-1); }
+    #lobby h2 { margin: 0 0 12px; }
+    #lobby .board .route-summary + h2 { margin-top: 22px; }
+    .room-code { align-items: center; margin-bottom: 16px; }
+    .room-code > strong { line-height: 0; text-shadow: none; }
+    .segment { color: var(--bone); background: var(--night-1); border-color: var(--steel-0); }
+    .segment[aria-pressed="true"] { color: var(--night-0); background: var(--amber-1); border-color: var(--amber-1); box-shadow: 3px 3px 0 var(--outline); }
+    .segment[aria-pressed="true"]:disabled { color: var(--night-0); background: var(--amber-2); border-color: var(--amber-2); }
+    .seat-ready { text-shadow: none; }
+    .seat[data-ready="true"] .seat-ready { padding: 2px 8px; color: var(--night-0); background: var(--amber-1); box-shadow: 2px 2px 0 var(--outline); }
+    .portrait { padding: 8px 10px 7px; }
+    .portrait canvas { width: 56px; height: 56px; outline-offset: 2px; }
+    .portrait[aria-pressed="true"] { background: var(--night-2); border-color: var(--amber-1); box-shadow: 4px 4px 0 var(--outline), inset 0 0 0 2px var(--night-0); }
+    .field:focus-within { outline-offset: 0; }
+
+    /* Result: the verdict is the pixel face; the wrappers only centre it. */
+    #result h1, #result h2 { line-height: 0; text-shadow: none; letter-spacing: 0; text-indent: 0; }
+    #result .px-title { --cell: clamp(4px, 1.3vw + 1px, 9px); }
+    #result[data-verdict="draw"] .px-title { --cell: clamp(3px, 0.9vw + 1px, 6px); }
+    #result .px { justify-content: center; }
+    #result p { font-family: var(--font-display); font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; font-size: 16px; }
+    #result .btn-primary { margin-top: 20px; }
+
+    /* Scale.FIT centres the canvas with a top margin; a flex parent stops that margin collapsing through
+       #game and body, which otherwise made the page 47 px taller than the viewport and scrollable mid-match. */
+    #game { display: flex; height: 100dvh; overflow: hidden; }
   </style>
 </head>
 <body>
