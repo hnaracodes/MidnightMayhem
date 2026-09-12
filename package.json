@@ -1,0 +1,13 @@
+{
+  "name": "midnight-mayhem",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "pnpm -r --if-present test",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "build": "pnpm -r --if-present build",
+    "dev:server": "pnpm --filter @midnight/server dev",
+    "dev:client": "pnpm --filter @midnight/client dev"
+  }
+}
