@@ -68,7 +68,9 @@ function lanUrls(port: number): string[] {
 }
 
 const context: ServerContext = { registry: new RoomRegistry(), loops: new Map<string, RoomLoop>(), now: () => performance.now() };
-const certs = loadCerts();
+// MM_HTTP=1 serves plain http even when certs/ exists, so the client's vite `/ws` proxy (ws://) can reach it
+// in headless runs; the client uses the same variable for the same reason.
+const certs = process.env.MM_HTTP === "1" ? null : loadCerts();
 const server = certs ? createHttpsServer(certs, serveStatic) : createHttpServer(serveStatic);
 const wss = new WebSocketServer({ server, path: "/ws", maxPayload: 4096 });
 

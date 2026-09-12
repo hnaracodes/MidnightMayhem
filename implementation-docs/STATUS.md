@@ -90,8 +90,9 @@ V camera preview, M mute. `?debug=1` shows boxes, tick, RTT, map/mode; `?rig=vec
 `?input=keyboard|vision` as before.
 
 Headless (from the repo root, with `MM_HTTP=1 MM_SERVER_PORT=8081 pnpm --filter @midnight/client dev --port 5181`
-and `PORT=8081 pnpm --filter @midnight/server dev`): `node tools/shot.mjs tools/e2e/match-4p.json`. Every report must
-show zero page errors.
+and `MM_HTTP=1 PORT=8081 pnpm --filter @midnight/server dev` — `MM_HTTP=1` on the server skips `certs/` so the vite
+`ws://` proxy can reach it): `node tools/shot.mjs tools/e2e/match-4p.json`. `tools/e2e/match-yolo.json` is the 2p match
+with `?detector=yolo` on every page. Every report must show zero page errors.
 
 ## Human gates that remain
 
