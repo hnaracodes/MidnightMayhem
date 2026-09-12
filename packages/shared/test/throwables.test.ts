@@ -164,6 +164,16 @@ describe("3. fire damage", () => {
     expect(hits(events, 1)).toHaveLength(0);
     expect(cur.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
   });
+  it("burns every grounded fighter in a four-player match, not just the first two", () => {
+    const s = createMatch({ players: 4, teams: "ffa", mode: "deathmatch", map: "roof", items: true });
+    s.phase = "FIGHTING";
+    spawnHazard(s, "fire", 3, 480, WORLD.ROOF_Y, []);
+    for (const f of s.fighters) f.x = 480;
+    const ev: SimEvent[] = [];
+    for (let t = 0; t < ARSENAL.FIRE_EVERY; t++) advanceHazards(s, ev);
+    expect(hits(ev).map((e) => (e as { target: number }).target)).toEqual([0, 1, 2, 3]);
+    expect(s.fighters.map((f) => f.hp)).toEqual([1, 1, 1, 1].map(() => BALANCE.MAX_HP - ARSENAL.FIRE_DAMAGE));
+  });
   it("a fighter outside the patch takes none", () => {
     const { s: s0, h } = landed("molotov");
     const s = structuredClone(s0);
@@ -276,22 +286,27 @@ describe("6. off-world and pits", () => {
 
 describe("7. throw locks", () => {
   it("no movement for 18 ticks, no punch, no block; then free", () => {
-    let s = fighting();
-    const held: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchL: true, right: true, block: true }, EMPTY_FRAME];
-    const r = run(s, THROW_TOTAL, held);
-    s = r.s;
+    // The edge tick must not hold block: a block held on the punch edge suppresses the punch entirely (the
+    // fighter just blocks), which would make every lock assertion below pass without any throw existing.
+    const start = run(fighting(), 1, [P_L, EMPTY_FRAME]);
+    expect(start.s.fighters[0]!.action).toMatchObject({ kind: "throw", elapsed: 0 });
+    // ticks 2..18: walk, block and a fresh punch edge are all refused while the throw runs
+    const held: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchR: true, right: true, block: true }, EMPTY_FRAME];
+    const r = run(start.s, THROW_TOTAL - 1, held);
     expect(r.events.some((e) => e.type === "PUNCH")).toBe(false);
-    expect(s.fighters[0]!.x).toBe(280);
-    expect(s.fighters[0]!.action).toBeNull();
-    // punchL is held (no edge) so re-pressing R during the throw must not start anything either
+    expect(r.s.fighters[0]!.x).toBe(280);
+    expect(r.s.fighters[0]!.blocking).toBe(false);
+    expect(r.s.fighters[0]!.action).toMatchObject({ kind: "throw", elapsed: THROW_TOTAL - 1, released: true });
+    // tick 19: the action clears before input is read, so the fighter walks that same tick
+    const free = run(r.s, 5, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]);
+    expect(free.s.fighters[0]!.action).toBeNull();
+    expect(free.s.fighters[0]!.x).toBe(280 + 5 * BALANCE.WALK_SPEED);
+    // punchL still held (no edge) plus a new R edge mid-throw starts nothing either
     const mid = run(fighting(), 5, [{ ...EMPTY_FRAME, punchL: true }, EMPTY_FRAME]);
     const mid2 = run(mid.s, 3, [{ ...EMPTY_FRAME, punchL: true, punchR: true, block: true }, EMPTY_FRAME]);
     expect(mid2.events.some((e) => e.type === "PUNCH")).toBe(false);
     expect(mid2.s.fighters[0]!.action).toMatchObject({ kind: "throw" });
     expect(mid2.s.fighters[0]!.blocking).toBe(false);
-    // after the throw, walking works again
-    const free = run(s, 5, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]);
-    expect(free.s.fighters[0]!.x).toBe(280 + 5 * BALANCE.WALK_SPEED);
   });
   it("a punch during the throw is not blocked even with block held", () => {
     const s = fighting("molotov", 460, 400);
