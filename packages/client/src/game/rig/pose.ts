@@ -15,7 +15,7 @@ export interface Pt { x: number; y: number }
 export interface Arm { shoulder: Pt; elbow: Pt; wrist: Pt; fist: Pt }
 export interface Leg { hip: Pt; knee: Pt; foot: Pt }
 
-export type RigState = "idle" | "walk" | "jump" | "punch" | "chop" | "sweep" | "laser" | "throw" | "block" | "hit" | "ko" | "offbounds" | "win";
+export type RigState = "idle" | "walk" | "jump" | "punch" | "chop" | "sweep" | "laser" | "throw" | "block" | "hit" | "slip" | "ko" | "offbounds" | "win";
 
 export interface Clock {
   /** Render time in ms; drives the idle bob, block shudder and win bob. */
@@ -213,6 +213,7 @@ interface LocalPose {
 
 export function rigState(f: FighterState, koActive: boolean): RigState {
   if (koActive) return "ko";
+  if (f.slipped > 0) return "slip";
   if (f.hitstun > 0) return "hit";
   if (f.action?.kind === "laser") return "laser";
   if (f.action?.kind === "punch") return "punch";
@@ -557,6 +558,38 @@ function koPose(rig: CharacterRig, frames: number): LocalPose {
   };
 }
 
+/** How far into the floor pose a slip is: falls over SLIP_FALL frames, lies, gets up over the last SLIP_RISE. */
+export function slipStage(slipped: number): { stage: "fall" | "down" | "rise"; t: number } {
+  const elapsed = ARSENAL.SLIP_STUN - slipped;
+  if (elapsed < SLIP_FALL) return { stage: "fall", t: elapsed / SLIP_FALL };
+  if (slipped > SLIP_RISE) return { stage: "down", t: 1 };
+  return { stage: "rise", t: 1 - slipped / SLIP_RISE };
+}
+const SLIP_FALL = 12;
+const SLIP_RISE = 15;
+
+function lerpPose(a: LocalPose, b: LocalPose, t: number): LocalPose {
+  return {
+    alpha: lerp(a.alpha, b.alpha, t),
+    t: {
+      hip: lerpPt(a.t.hip, b.t.hip, t), neck: lerpPt(a.t.neck, b.t.neck, t), head: lerpPt(a.t.head, b.t.head, t),
+      shoulder: lerpPt(a.t.shoulder, b.t.shoulder, t), lean: lerp(a.t.lean, b.t.lean, t),
+    },
+    arms: { F: lerpArm(a.arms.F, b.arms.F, t), B: lerpArm(a.arms.B, b.arms.B, t) },
+    legs: { F: lerpLeg(a.legs.F, b.legs.F, t), B: lerpLeg(a.legs.B, b.legs.B, t) },
+    punchingArm: null,
+  };
+}
+
+/** Owner 2026-09-12: a banana slip puts the fighter flat on the floor (the KO sprawl) for SLIP_STUN, then up again. */
+function slipPose(rig: CharacterRig, f: FighterState): LocalPose {
+  const { stage, t } = slipStage(f.slipped);
+  const down = koPose(rig, 30);
+  if (stage === "fall") return koPose(rig, 30 * t);
+  if (stage === "down") return down;
+  return lerpPose(down, standing(rig), ease(t));
+}
+
 function offboundsPose(rig: CharacterRig): LocalPose {
   const p = standing(rig, 0, { F: 8, B: -4 }, rig.torsoLean + 25, 6);
   const g = guardTargets(rig, p.t.shoulder);
@@ -593,6 +626,7 @@ export function computePose(f: FighterState, clock: Clock): Joints {
   switch (state) {
     case "ko": p = koPose(rig, clock.koFrames); break;
     case "hit": p = hitPose(rig, f.hitstun); break;
+    case "slip": p = slipPose(rig, f); break;
     case "punch": p = punchPose(rig, f); break;
     case "chop": p = withLocomotion(chopPose(rig, f), rig, f); break;
     case "sweep": p = withLocomotion(sweepPose(rig, f), rig, f); break;

@@ -110,13 +110,13 @@ describe("rule 1: every grid parses and every character has every part at the mi
     expect(diff.length).toBeLessThanOrEqual(Math.ceil(K));
   });
 
-  it("every item sprite parses and is 21–29 px on its long side (10–14 authored × 2.1)", () => {
+  it("every item sprite parses and is 21–29 px on its long side (10–14 authored × 2.1); the sword blade is longer (owner 2026-09-12)", () => {
     for (const id of ITEM_IDS) {
       const p = ITEM_SPRITES[id];
       expect(() => parsePart(p)).not.toThrow();
       const { w, h } = parsePart(p);
       expect(Math.max(w, h), id).toBeGreaterThanOrEqual(Math.floor(10 * K));
-      expect(Math.max(w, h), id).toBeLessThanOrEqual(Math.ceil(14 * K));
+      expect(Math.max(w, h), id).toBeLessThanOrEqual(Math.ceil((id === "sword" ? 18 : 14) * K));
     }
   });
 });

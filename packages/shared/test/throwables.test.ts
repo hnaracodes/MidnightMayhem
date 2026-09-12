@@ -353,13 +353,34 @@ describe("5. banana peel", () => {
     expect(run(far, ARSENAL.PEEL_TICKS - 2).s.hazards).toHaveLength(1);
     expect(run(far, ARSENAL.PEEL_TICKS - 1).s.hazards).toHaveLength(0); // age 1 after landing, gone at age 900
   });
-  it("rule 5: the banana uses the same charge (a full hold lands 640 ± 15, a tap ≈ 484)", () => {
-    const full = landingDistance(THROW.CHARGE_MAX + 5, "banana");
-    expect(Math.abs(full - THROW.MAX_RANGE)).toBeLessThanOrEqual(15);
-    const tap = landingDistance(1, "banana");
-    expect(Math.abs(tap - MEDIUM_RANGE)).toBeLessThanOrEqual(15);
+  it("slides along the floor PEEL_SLIDE_PX and settles as the peel; no arc, one use (owner 2026-09-12)", () => {
+    const start = fighting("banana");
+    const r = holdThen(start, 1, (e) => e.type === "HAZARD_SPAWN");
+    // released on the key-up tick, spawned RELEASE_TICKS later, settled PEEL_SLIDE_TICKS after that
+    expect(r.tick).toBe(1 + THROW.RELEASE_TICKS + ARSENAL.PEEL_SLIDE_TICKS);
+    const h = r.s.hazards[0]!;
+    expect(h.kind).toBe("peel");
+    expect(Math.abs(h.x - (280 + HAND_X + ARSENAL.PEEL_SLIDE_PX))).toBeLessThanOrEqual(2);
+    // it never left the floor and never went past the settle point
+    const tapped = run(start, 1, [P_L, EMPTY_FRAME]).s;
+    const mid = run(tapped, THROW.RELEASE_TICKS + 10);
+    const p = mid.s.projectiles[0]!;
+    expect(p.y).toBe(WORLD.ROOF_Y);
+    expect(p.x).toBeGreaterThan(280 + HAND_X);
+    expect(p.x).toBeLessThan(h.x);
   });
-  it("standing on it is safe; walking onto it slips (hitstun 36, damage 0, peel removed)", () => {
+  it("a gap under the sliding peel swallows it (no hazard)", () => {
+    const start = fighting("banana");
+    start.config = { ...start.config, map: "gaps" };
+    // the first gap on "gaps" is 300–380: throw from 240 facing right so the slide crosses it
+    start.fighters[0]!.x = 240;
+    start.fighters[0]!.facing = 1;
+    start.fighters[1]!.x = 800;
+    const r = holdThen(start, 1, (e) => e.type === "HAZARD_SPAWN", 100);
+    expect(r.tick).toBe(-1);
+    expect(r.s.projectiles).toHaveLength(0);
+  });
+  it("standing on it is safe; walking onto it slips (SLIP_STUN on the floor, damage 0, peel removed)", () => {
     const { s: s0, h } = landed("banana");
     const s = structuredClone(s0);
     s.fighters[0]!.x = 100; s.fighters[1]!.x = h.x;
@@ -370,6 +391,8 @@ describe("5. banana peel", () => {
     expect(walk.tick).toBe(1);
     expect(walk.events.find((e) => e.type === "HAZARD_HIT")).toEqual({ type: "HAZARD_HIT", id: h.id, kind: "peel", target: 1, damage: 0 });
     expect(walk.s.fighters[1]!.hitstun).toBe(ARSENAL.SLIP_STUN);
+    expect(walk.s.fighters[1]!.slipped).toBe(ARSENAL.SLIP_STUN);
+    expect(ARSENAL.SLIP_STUN).toBe(90); // 1.5 s on the floor
     expect(walk.s.fighters[1]!.vx).toBe(0);
     expect(walk.s.fighters[1]!.knockbackVx).toBe(0);
     expect(walk.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
@@ -378,6 +401,7 @@ describe("5. banana peel", () => {
     const x = walk.s.fighters[1]!.x;
     const after = run(walk.s, ARSENAL.SLIP_STUN, [EMPTY_FRAME, { ...EMPTY_FRAME, left: true }]);
     expect(after.s.fighters[1]!.hitstun).toBe(0);
+    expect(after.s.fighters[1]!.slipped).toBe(0);
     expect(after.s.fighters[1]!.x).toBe(x);
   });
   it("the owner walking through it within 30 ticks of the spawn is safe, afterwards slips", () => {

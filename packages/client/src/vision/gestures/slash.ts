@@ -2,7 +2,7 @@ import type { ItemId } from "@midnight/shared";
 import { RingBuffer } from "../filters";
 import type { Metrics } from "../metrics";
 import {
-  CHOP_DROP, CHOP_EXT, CHOP_WINDOW_MS, SLASH_EXCLUSIVE_MS, SWEEP_TRAVEL, SWEEP_WINDOW_MS,
+  CHOP_DROP, CHOP_EXT, CHOP_WINDOW_MS, SLASH_GESTURES_ENABLED, SLASH_EXCLUSIVE_MS, SWEEP_TRAVEL, SWEEP_WINDOW_MS,
 } from "../thresholds";
 
 /** One frame of slash output: one-frame pulses plus whether the arm's punch is currently suppressed. */
@@ -76,7 +76,7 @@ export class Slash {
 
     let chop = false;
     let sweep = false;
-    if (held === "sword" && !exclusive) {
+    if (SLASH_GESTURES_ENABLED && held === "sword" && !exclusive) {
       chop = wasAbove && chopDrop >= CHOP_DROP && chopExt;
       sweep = !chop && sweepCross && sweepTravel >= SWEEP_TRAVEL;
       if (chop || sweep) {

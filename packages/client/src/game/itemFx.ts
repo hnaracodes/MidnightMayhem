@@ -446,8 +446,10 @@ export class ItemFx {
       if (p.kind === "molotov") {
         drawMolotov(flight.g, p, flight.trail);
       } else {
-        drawBanana(flight.g, p, flight.spin);
-        flight.spin += BANANA_SPIN;
+        // A sliding peel (owner 2026-09-12) rolls along the floor, slowing with the slide; its centre sits on the ground.
+        const sliding = p.slide !== undefined;
+        drawBanana(flight.g, sliding ? { ...p, y: p.y - BANANA_R / 2 } : p, flight.spin);
+        flight.spin += sliding ? BANANA_SPIN * 2 * Math.sign(p.vx) * (1 - (p.slide ?? 0) / ARSENAL.PEEL_SLIDE_TICKS) : BANANA_SPIN;
       }
     }
     for (const [id, flight] of this.projectiles) {

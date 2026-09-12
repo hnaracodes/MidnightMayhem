@@ -72,7 +72,7 @@ describe("items: equip", () => {
     expect(r3.state.fighters[0]!.item).toEqual({ kind: "sword", uses: ITEMS.sword.uses, ticksLeft: ITEMS.sword.ttl });
   });
 
-  it("2. refused while holding another item, in hitstun, outside the loadout, or with items off", () => {
+  it("2. refused while holding another item, in hitstun, or with items off; loadout no longer gates", () => {
     // holding another item
     let s = equip(match(), 0, "sword");
     let r = step(s, [HOLD("shield"), EMPTY_FRAME]);
@@ -88,12 +88,20 @@ describe("items: equip", () => {
     expect(types(r.events, "ITEM_EQUIP")).toHaveLength(0);
     expect(r.state.fighters[0]!.item).toBeNull();
 
-    // not in the loadout (player 0 has sword + shield)
+    // outside the loadout is fine now (decision 52: any held object equips)
     s = match();
-    expect(canEquip(s, 0, "flash")).toBe(false);
+    expect(canEquip(s, 0, "flash")).toBe(true);
+    r = step(s, [HOLD("flash"), EMPTY_FRAME]);
+    expect(r.events).toContainEqual({ type: "ITEM_EQUIP", player: 0, item: "flash" });
+
+    // an item that stays in view while the hands are busy equips once they are free (no edge needed)
+    s = match();
+    s.fighters[0]!.hitstun = 2;
     r = step(s, [HOLD("flash"), EMPTY_FRAME]);
     expect(types(r.events, "ITEM_EQUIP")).toHaveLength(0);
-    expect(r.state.fighters[0]!.itemsUsed).toEqual([]);
+    r = step(r.state, [HOLD("flash"), EMPTY_FRAME]);
+    r = step(r.state, [HOLD("flash"), EMPTY_FRAME]);
+    expect(r.state.fighters[0]!.item?.kind).toBe("flash");
 
     // items disabled in config
     s = match(2, false);
@@ -141,18 +149,19 @@ describe("items: sword (9.10)", () => {
     return { s: b.state, events: [...a.events, ...b.events] };
   };
 
-  it("3a. a punch with a sword is a plain punch: PUNCH_DAMAGE, PUNCH_REACH, no ITEM_USE", () => {
+  it("3a. a punch with a sword swings it: SWORD_REACH, SWORD_DAMAGE, PUNCH event, no ITEM_USE, sword kept", () => {
     const s = equip(match(), 0, "sword");
-    s.fighters[1]!.x = s.fighters[0]!.x + 120;
-    expect(types(swing(s, { punchL: true }, PUNCH_TOTAL).events, "HIT")).toHaveLength(0);
-    const near = equip(match(), 0, "sword");
-    near.fighters[1]!.x = near.fighters[0]!.x + 60;
-    const r = swing(near, { punchL: true }, PUNCH_TOTAL);
+    s.fighters[1]!.x = s.fighters[0]!.x + 120; // beyond a fist, inside the sword
+    const r = swing(s, { punchL: true }, PUNCH_TOTAL);
     expect(types(r.events, "PUNCH")).toHaveLength(1);
     expect(types(r.events, "SLASH")).toHaveLength(0);
     expect(types(r.events, "ITEM_USE")).toHaveLength(0);
-    expect(types(r.events, "HIT")[0]).toMatchObject({ attacker: 0, target: 1, damage: BALANCE.PUNCH_DAMAGE, blocked: false });
+    expect(types(r.events, "HIT")[0]).toMatchObject({ attacker: 0, target: 1, damage: ARSENAL.SWORD_DAMAGE, blocked: false });
     expect(r.s.fighters[0]!.item).toMatchObject({ kind: "sword" });
+    // a bare fist from the same spot misses
+    const bare = match();
+    bare.fighters[1]!.x = bare.fighters[0]!.x + 120;
+    expect(types(swing(bare, { punchL: true }, PUNCH_TOTAL).events, "HIT")).toHaveLength(0);
   });
 
   it("3b. chop: hits at CHOP_REACH, misses beyond, CHOP_DAMAGE, emits SLASH, does not consume", () => {

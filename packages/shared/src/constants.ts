@@ -52,7 +52,7 @@ export type ItemId = (typeof ITEM_IDS)[number];
 /** `ttl` (ticks) makes an item timed: unlimited uses, breaks when the clock runs out (9.10). */
 export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; cocoLabel: string }> = {
   molotov: { uses: 2, label: "Molotov", cocoLabel: "bottle" },
-  sword: { uses: 0, ttl: 600, label: "Racket sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
+  sword: { uses: 0, ttl: 600, label: "Sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
   shield: { uses: 3, label: "Backpack shield", cocoLabel: "backpack" },
   banana: { uses: 1, label: "Banana peel", cocoLabel: "banana" },
   flash: { uses: 1, label: "Phone flash", cocoLabel: "cell phone" },
@@ -60,7 +60,8 @@ export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; 
 export const DEFAULT_LOADOUT: Loadout = ["molotov", "shield"];
 
 export const ARSENAL = {
-  PARRY_WINDOW: 10, PARRY_STUN: 24,
+  // Owner 2026-09-12 (decision 52): a punch with the sword reaches SWORD_REACH for SWORD_DAMAGE (the pre-9.10 rule is back).
+  SWORD_REACH: 91, SWORD_DAMAGE: 10, PARRY_WINDOW: 10, PARRY_STUN: 24, // 13.00: 130 × 0.7 at the 105 px body
   // 9.10 sword slashes. Chop: slow, tall, guard-crushing (a blocking target takes half). Sweep: fast, wide, shoves.
   // 13.00: gap / reach / hitbox top / hitbox height are 70 % of the 150 px body (were 10/90/170/140 and 10/150/110/70).
   CHOP_STARTUP: 8, CHOP_ACTIVE: 4, CHOP_RECOVERY: 14, CHOP_DAMAGE: 18, CHOP_GAP: 7, CHOP_REACH: 63,
@@ -70,7 +71,9 @@ export const ARSENAL = {
   THROW_STARTUP: 6, THROW_RECOVERY: 12,
   MOLOTOV_VX: 2, MOLOTOV_VY: -3, BANANA_VX: 5, BANANA_VY: -4, // molotov: low ~41-tick lob landing 70–130 px out (9.02 rule 2)
   FIRE_W: 120, FIRE_TICKS: 240, FIRE_DAMAGE: 2, FIRE_EVERY: 20,
-  PEEL_W: 40, PEEL_TICKS: 900, PEEL_OWNER_IMMUNE: 30, SLIP_STUN: 36,
+  // Owner 2026-09-12: the peel slides along the floor PEEL_SLIDE_PX over PEEL_SLIDE_TICKS (linear slow-down) and a
+  // slip puts the fighter on the floor for SLIP_STUN (1.5 s).
+  PEEL_W: 40, PEEL_TICKS: 900, PEEL_OWNER_IMMUNE: 30, SLIP_STUN: 90, PEEL_SLIDE_PX: 300, PEEL_SLIDE_TICKS: 40,
   FLASH_AT: 4, DAZZLE_TICKS: 120,
   LASER_CHARGE: 180, LASER_ACTIVE: 16, LASER_RECOVERY: 20, LASER_COOLDOWN: 720, // charge 3 s; active long enough for the front to cross the world
   LASER_SPEED: 60,        // px per tick the beam front travels (960 px in 16 ticks)
