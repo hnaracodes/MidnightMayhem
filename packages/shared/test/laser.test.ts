@@ -86,7 +86,7 @@ describe("rule 1: edge starts a charge, fires LASER_CHARGE (180, 3 s) ticks late
   });
 });
 
-describe("rule 2: a grounded opponent in front takes 10 once", () => {
+describe("rule 2: a grounded opponent in front takes 20 once", () => {
   it("one LASER_HIT for a 16-tick beam, far across the roof", () => {
     const s = fighting(); s.fighters[0]!.x = 100; s.fighters[1]!.x = 850;
     const { s: out, events } = run(s, TOTAL + 1, [Q, EMPTY_FRAME]);

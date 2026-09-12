@@ -35,7 +35,7 @@ Owns nothing else.
 
 ## Behaviour
 1. `special` edge on a ready fighter → `LASER_CHARGE` that tick, `LASER_FIRE` 180 ticks (3 s) later, `laserCooldown` 720.
-2. A grounded opponent anywhere in front of the beam within the band takes 10 once, even if the beam lasts 16 ticks; the
+2. A grounded opponent anywhere in front of the beam within the band takes 20 once, even if the beam lasts 16 ticks; the
    hit lands on the beam tick whose front first reaches its hurtbox (60 px per tick), not before.
 3. An opponent behind the attacker takes nothing.
 4. Blocking opponent: chip 4, no hitstun. Shield holder: absorbed (0 damage, `SHIELD_ABSORB`).

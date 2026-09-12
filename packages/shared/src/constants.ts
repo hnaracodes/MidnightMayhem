@@ -65,7 +65,7 @@ export const ARSENAL = {
   FLASH_AT: 4, DAZZLE_TICKS: 120,
   LASER_CHARGE: 180, LASER_ACTIVE: 16, LASER_RECOVERY: 20, LASER_COOLDOWN: 720, // charge 3 s; active long enough for the front to cross the world
   LASER_SPEED: 60,        // px per tick the beam front travels (960 px in 16 ticks)
-  LASER_DAMAGE: 10, LASER_CHIP: 4,
+  LASER_DAMAGE: 20, LASER_CHIP: 4,
   LASER_BAND_TOP: 105, LASER_BAND_BOTTOM: 35, // 70 px band (half the 140 px hurtbox) centred on the sprite's middle, feet − 70
 } as const;
 

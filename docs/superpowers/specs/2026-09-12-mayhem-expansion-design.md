@@ -129,7 +129,7 @@ a 4-slot array. `PROTOCOL_VERSION = 2`.
 locked in place; being hit cancels and refunds no cooldown), beam active ticks 180–195 (16 ticks): a hitbox from
 the fighter's x in the facing direction whose front advances 60 px per tick until the world edge, y band
 `[feet − 105, feet − 35]` (70 px, half the sprite height, centred on the sprite's middle). Each living opponent is
-hit at most once per beam: damage 10, blocked chip 4, jump i-frames and being above the band avoid it. Recovery
+hit at most once per beam: damage 20, blocked chip 4, jump i-frames and being above the band avoid it. Recovery
 20 ticks. Cooldown 720 ticks starts when the beam starts. Events LASER_CHARGE at start, LASER_FIRE at tick 180,
 LASER_HIT per target.
 
