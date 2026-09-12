@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type Phaser from "phaser";
 import {
-  ARSENAL, ITEM_IDS, ITEMS, WORLD, createMatch,
+  ARSENAL, BALANCE, ITEM_IDS, ITEMS, WORLD, createMatch,
   type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile, type SimEvent,
 } from "@midnight/shared";
 import { ItemFx, type HandPoint } from "../src/game/itemFx";
 import { P } from "../src/game/palette";
+import { THROW, chargeToRange, chargingThrow, predictFlight, throwVelocity } from "../src/game/throwPreview";
 
 /**
  * Records every Graphics call (name + args), the depth and destruction; everything else is a chainable no-op.
@@ -107,8 +108,11 @@ describe("ItemFx materialise", () => {
     expect(fx.materialising(1)).toBe(true);
     expect(fx.materialising(0)).toBe(false);
     const g = created[0]!;
-    expect(g.count("fillCircle")).toBe(14); // 14 particles on the spawn frame, no flash disc yet
+    expect(g.count("fillCircle")).toBe(24); // 24 particles on the spawn frame, no flash disc yet
     expect(g.colors().has(accent[item])).toBe(true);
+    // the ring starts 60 px out from the hand
+    const first = g.calls.find((c) => c.m === "fillCircle")!.args as number[];
+    expect(Math.hypot(first[0]! - hands(1).x, first[1]! - hands(1).y)).toBeCloseTo(60, 5);
 
     let frames26 = 0;
     for (let k = 0; k < 40; k += 1) {
@@ -120,6 +124,47 @@ describe("ItemFx materialise", () => {
     expect(frames26).toBe(26);
     expect(fx.materialising(1)).toBe(false);
     expect(live(created)).toHaveLength(0);
+  });
+
+  it("the item sprite scales 1.6 → 1 over the 6 frames after it appears", () => {
+    const { scene } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    expect(fx.itemScale(0)).toBe(1);
+    frames(fx, state, 1, [{ type: "ITEM_EQUIP", player: 0, item: "banana" }]);
+    expect(fx.itemScale(0)).toBe(1); // hidden while materialising: no pop yet
+    frames(fx, state, 25); // materialise over
+    expect(fx.materialising(0)).toBe(false);
+    expect(fx.itemScale(0)).toBeCloseTo(1.6, 5);
+    frames(fx, state, 3);
+    const mid = fx.itemScale(0);
+    expect(mid).toBeGreaterThan(1);
+    expect(mid).toBeLessThan(1.6);
+    frames(fx, state, 3);
+    expect(fx.itemScale(0)).toBe(1);
+    expect(fx.itemScale(1)).toBe(1);
+  });
+
+  it("a 2-frame amber screen-edge flash for the local player's equip only", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    // the other fighter equips: no edge flash for the local viewer (player 0)
+    frames(fx, state, 1, [{ type: "ITEM_EQUIP", player: 1, item: "sword" }]);
+    expect(created.filter((g) => g.depth === 11.5)).toHaveLength(0);
+    fx.consume([{ type: "ITEM_EQUIP", player: 0, item: "sword" }], state, hands);
+    fx.draw(state, hands, 0);
+    const edge = created.filter((g) => g.depth === 11.5);
+    expect(edge).toHaveLength(1);
+    const g = edge[0]!;
+    expect(g.count("fillRect")).toBe(4);
+    expect(g.styles()[0]).toEqual({ kind: "fill", color: P.amber1, alpha: 0.08 });
+    fx.update(DT);
+    fx.draw(state, hands, 0);
+    expect(g.count("fillRect")).toBe(4);
+    fx.update(DT);
+    fx.draw(state, hands, 0);
+    expect(g.count("fillRect")).toBe(0);
   });
 
   it("frame 20 shows the moon flash disc r 14 at the hand, fading over the next 6", () => {
@@ -272,8 +317,8 @@ describe("ItemFx sword", () => {
   });
 });
 
-describe("ItemFx shield", () => {
-  it("bubble crack count is 3 − uses and the bubble disappears with the item", () => {
+describe("ItemFx shield barrier", () => {
+  it("a moon 35 % hexagon 70 × 150 in front of the fighter, with a steel edge; cracks are 3 − uses; gone with the item", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
@@ -281,21 +326,69 @@ describe("ItemFx shield", () => {
     f.item = { kind: "shield", uses: 3 };
     fx.draw(state, hands, 0);
     expect(created).toHaveLength(1);
-    const bubble = created[0]!;
-    expect(bubble.depth).toBe(4);
-    expect(bubble.count("fillEllipse")).toBe(1);
-    expect(bubble.count("lineBetween")).toBe(0);
+    const barrier = created[0]!;
+    expect(barrier.depth).toBe(4);
+    expect(barrier.count("fillPoints")).toBeGreaterThanOrEqual(1);
+    const hex = barrier.calls.find((c) => c.m === "fillPoints")!.args[0] as Array<{ x: number; y: number }>;
+    expect(hex).toHaveLength(6);
+    const xs = hex.map((p) => p.x);
+    const ys = hex.map((p) => p.y);
+    expect(Math.max(...xs) - Math.min(...xs)).toBeCloseTo(70, 5);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeCloseTo(150, 5);
+    expect(Math.min(...xs)).toBeCloseTo(f.x + 30, 5); // near edge 30 px in front (facing 1)
+    expect(Math.max(...ys)).toBeCloseTo(f.y, 5);
+    expect(barrier.styles()[0]).toEqual({ kind: "fill", color: P.moon, alpha: 0.35 });
+    const edge = barrier.styles().find((s) => s.kind === "line" && s.color === P.steel2);
+    expect(edge).toBeDefined();
+    expect(barrier.count("lineBetween")).toBe(0); // no cracks at full uses
     f.item = { kind: "shield", uses: 1 };
     fx.draw(state, hands, 0);
-    expect(bubble.count("lineBetween")).toBe(2);
-    expect(bubble.styles()[0]).toEqual({ kind: "fill", color: P.steel2, alpha: 0.3 });
+    expect(barrier.count("strokePoints")).toBeGreaterThanOrEqual(1 + 2); // the edge plus two jagged cracks
     f.item = null;
     fx.draw(state, hands, 0);
-    expect(bubble.destroyed).toBe(true);
-    expect(created).toHaveLength(1); // still one: nothing new created for a fighter without a shield
+    expect(barrier.destroyed).toBe(true);
+    expect(created).toHaveLength(1);
   });
 
-  it("the bubble goes away while the fighter is down a pit and comes back on respawn", () => {
+  it("the barrier follows facing", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    const f = state.fighters[0]!;
+    f.item = { kind: "shield", uses: 3 };
+    f.facing = -1;
+    fx.draw(state, hands, 0);
+    const hex = created[0]!.calls.find((c) => c.m === "fillPoints")!.args[0] as Array<{ x: number }>;
+    expect(Math.max(...hex.map((p) => p.x))).toBeCloseTo(f.x - 30, 5);
+  });
+
+  it("the shimmer band moves top → bottom every 1.2 s", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    const f = state.fighters[0]!;
+    f.item = { kind: "shield", uses: 3 };
+    fx.draw(state, hands, 0);
+    const g = created[0]!;
+    const bandY = () => {
+      const band = g.calls.filter((c) => c.m === "fillPoints")[1]!.args[0] as Array<{ y: number }>;
+      return Math.min(...band.map((p) => p.y));
+    };
+    const start = bandY();
+    fx.update(0.3);
+    fx.draw(state, hands, 0);
+    const y0 = bandY();
+    expect(y0).toBeGreaterThan(start);
+    fx.update(0.3);
+    fx.draw(state, hands, 0);
+    const y1 = bandY();
+    expect(y1 - y0).toBeCloseTo(150 * 0.25, 0); // a quarter of the height per 0.3 s
+    fx.update(0.6);
+    fx.draw(state, hands, 0);
+    expect(bandY()).toBeCloseTo(start, 0); // wrapped after 1.2 s
+  });
+
+  it("the barrier goes away while the fighter is down a pit and comes back on respawn", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
@@ -309,43 +402,49 @@ describe("ItemFx shield", () => {
     f.pitTicks = 0; f.y = WORLD.ROOF_Y;
     fx.draw(state, hands, 0);
     expect(created).toHaveLength(2);
-    expect(created[1]!.count("fillEllipse")).toBe(1);
+    expect(created[1]!.count("fillPoints")).toBeGreaterThanOrEqual(1);
   });
 
-  it("no bubble while the shield is materialising; it appears once the 26 frames end", () => {
+  it("no barrier while the shield is materialising; it appears once the 26 frames end", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
     state.fighters[0]!.item = { kind: "shield", uses: 3 };
     frames(fx, state, 1, [{ type: "ITEM_EQUIP", player: 0, item: "shield" }]);
-    expect(created).toHaveLength(1); // the materialise only
+    expect(created.filter((g) => g.depth === 4)).toHaveLength(1); // the materialise only
     frames(fx, state, 25);
-    expect(created).toHaveLength(1);
+    expect(created.filter((g) => g.depth === 4)).toHaveLength(1);
     frames(fx, state, 1);
-    expect(created).toHaveLength(2);
-    expect(created[1]!.count("fillEllipse")).toBe(1);
+    expect(created.filter((g) => g.depth === 4)).toHaveLength(2);
   });
 
-  it("SHIELD_ABSORB flashes the bubble moon for 2 frames", () => {
+  it("SHIELD_ABSORB: 4-frame white flash, a ripple ring from the impact point, and one more crack", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
     state.fighters[0]!.item = { kind: "shield", uses: 2 };
     fx.draw(state, hands, 0);
-    const bubble = created[0]!;
+    const barrier = created[0]!;
     fx.consume([{ type: "SHIELD_ABSORB", player: 0, left: 2 }], state, hands);
-    const fillColor = () => bubble.styles()[0]!.color;
+    expect(created).toHaveLength(2);
+    const ripple = created[1]!;
+    expect(ripple.count("strokeCircle")).toBe(1);
+    expect(ripple.colors().has(P.white)).toBe(true);
+    const r0 = (ripple.calls.find((c) => c.m === "strokeCircle")!.args as number[])[2]!;
+    const fillColor = () => barrier.styles()[0]!.color;
+    for (let k = 0; k < 4; k += 1) {
+      fx.draw(state, hands, 0);
+      expect(fillColor()).toBe(P.white);
+      fx.update(DT);
+    }
     fx.draw(state, hands, 0);
     expect(fillColor()).toBe(P.moon);
-    fx.update(DT);
-    fx.draw(state, hands, 0);
-    expect(fillColor()).toBe(P.moon);
-    fx.update(DT);
-    fx.draw(state, hands, 0);
-    expect(fillColor()).toBe(P.steel2);
+    expect(barrier.count("strokePoints")).toBe(1 + 2); // edge + one crack with its branch (3 − 2)
+    const r1 = (ripple.calls.find((c) => c.m === "strokeCircle")!.args as number[])[2]!;
+    expect(r1).toBeGreaterThan(r0);
   });
 
-  it("ITEM_BREAK for a shield throws 8 shards for 10 frames; other items do not", () => {
+  it("ITEM_BREAK for a shield shatters the hexagon into 6 shards over 12 frames; other items do not", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
@@ -354,13 +453,114 @@ describe("ItemFx shield", () => {
     frames(fx, state, 1, [{ type: "ITEM_BREAK", player: 0, item: "shield" }]);
     expect(created).toHaveLength(1);
     const g = created[0]!;
-    expect(g.count("fillTriangle")).toBe(8);
-    frames(fx, state, 9);
+    expect(g.count("fillTriangle")).toBe(6);
+    expect(g.colors().has(P.moon)).toBe(true);
+    frames(fx, state, 11);
     expect(g.destroyed).toBe(false);
     frames(fx, state, 1);
     expect(g.destroyed).toBe(true);
   });
 });
+
+describe("throw preview (rule 5)", () => {
+  it("throwVelocity lands within ±10 px of the asked range at 120, 380 and 640 under the sim's Euler step", () => {
+    for (const range of [120, 380, 640]) {
+      const { vx, vy } = throwVelocity(range);
+      expect(vx).toBeGreaterThan(0);
+      expect(vy).toBeLessThan(0);
+      const { landing } = predictFlight({ x: 0, y: -100 }, vx, vy, 0, 12);
+      expect(Math.abs(landing.x - range), `range ${range}`).toBeLessThanOrEqual(10);
+    }
+  });
+
+  it("predictFlight steps exactly like the sim's projectile (gravity, then move) so the dots sit on the real arc", () => {
+    const { vx, vy } = throwVelocity(500);
+    // packages/shared/src/sim/projectiles.ts: `vy += GRAVITY; x += vx; y += vy;` then land when `vy > 0 && y >= surface`.
+    const sim: { x: number; y: number }[] = [];
+    let x = 0;
+    let y = -100;
+    let dy = vy;
+    while (!(dy > 0 && y >= 0)) {
+      dy += BALANCE.GRAVITY;
+      x += vx;
+      y += dy;
+      sim.push({ x, y });
+    }
+    const { landing, dots } = predictFlight({ x: 0, y: -100 }, vx, vy, 0, 12);
+    expect(dots).toHaveLength(12);
+    expect(landing.y).toBe(0);
+    expect(Math.abs(landing.x - x)).toBeLessThanOrEqual(Math.abs(vx)); // the marker backs off along the last step
+    for (const d of dots.slice(0, 11)) {
+      const on = sim.some((p) => Math.abs(p.x - d.x) < 1e-6 && Math.abs(p.y - d.y) < 1e-6);
+      expect(on, `dot (${d.x.toFixed(1)}, ${d.y.toFixed(1)}) lies on the sim path`).toBe(true);
+    }
+  });
+
+  it("chargeToRange is linear 120 → 640 over 0 → 45 and clamps", () => {
+    expect(chargeToRange(0)).toBe(THROW.MIN_RANGE);
+    expect(chargeToRange(THROW.CHARGE_MAX)).toBe(THROW.MAX_RANGE);
+    expect(chargeToRange(22.5)).toBeCloseTo(380, 5);
+    expect(chargeToRange(999)).toBe(THROW.MAX_RANGE);
+    expect(chargeToRange(-5)).toBe(THROW.MIN_RANGE);
+  });
+
+  it("chargingThrow reads only a throw in its charge phase", () => {
+    expect(chargingThrow(null)).toBeNull();
+    expect(chargingThrow({ kind: "punch", arm: "R", elapsed: 0, landed: false, sword: false })).toBeNull();
+    expect(chargingThrow(charging("molotov", 12))).toBe(12);
+    expect(chargingThrow(released("molotov"))).toBeNull();
+  });
+
+  it("12 amber dots fading 60 % → 20 % plus a danger landing ring r 10 while the local fighter charges; none after release", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    const f = state.fighters[0]!;
+    f.item = { kind: "molotov", uses: 2 };
+    f.action = charging("molotov", 0);
+    fx.draw(state, hands, 0);
+    const preview = created.find((g) => g.depth === 4.2)!;
+    expect(preview).toBeDefined();
+    const fills = preview.styles().filter((s) => s.kind === "fill" && s.color === P.amber1);
+    expect(fills).toHaveLength(12);
+    expect(preview.count("fillCircle")).toBe(12 + 1); // the dots plus the landing marker's core
+    expect(fills[0]!.alpha).toBeCloseTo(0.6, 5);
+    expect(fills[11]!.alpha).toBeCloseTo(0.2, 5);
+    const ring = preview.calls.find((c) => c.m === "strokeCircle")!.args as number[];
+    expect(ring[2]).toBe(10);
+    expect(ring[1]).toBeCloseTo(f.y, 5);
+    expect(preview.styles().some((s) => s.kind === "line" && s.color === P.danger)).toBe(true);
+    const near = ring[0]!;
+    f.action = charging("molotov", THROW.CHARGE_MAX);
+    fx.draw(state, hands, 0);
+    const far = (preview.calls.find((c) => c.m === "strokeCircle")!.args as number[])[0]!;
+    expect(far - hands(0).x).toBeGreaterThan(near - hands(0).x + 400);
+    f.action = released("molotov");
+    fx.draw(state, hands, 0);
+    expect(preview.destroyed).toBe(true);
+    expect(created.filter((g) => g.depth === 4.2 && !g.destroyed)).toHaveLength(0);
+  });
+
+  it("only the local fighter's charge draws a preview", () => {
+    const { scene, created } = stubScene();
+    const fx = new ItemFx(scene);
+    const state = fighting();
+    state.fighters[1]!.action = charging("banana", 10);
+    fx.draw(state, hands, 0);
+    expect(created.filter((g) => g.depth === 4.2)).toHaveLength(0);
+    fx.draw(state, hands, 1);
+    expect(created.filter((g) => g.depth === 4.2)).toHaveLength(1);
+  });
+});
+
+function charging(item: "molotov" | "banana", charge: number) {
+  // Lane A's ThrowAction shape; cast until its types merge (INTEGRATOR: drop the cast after merge).
+  return { kind: "throw", item, arm: "R", phase: "charge", charge, elapsed: 0, released: false } as unknown as MatchState["fighters"][0]["action"];
+}
+
+function released(item: "molotov" | "banana") {
+  return { kind: "throw", item, arm: "R", phase: "release", charge: 20, elapsed: 0, released: false } as unknown as MatchState["fighters"][0]["action"];
+}
 
 describe("ItemFx projectiles and hazards", () => {
   const molotov: Projectile = { id: 1, kind: "molotov", owner: 0, x: 300, y: 330, vx: 6, vy: -7 };
