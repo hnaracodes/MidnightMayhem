@@ -1,5 +1,5 @@
 import { EMPTY_FRAME, type InputFrame, type InputSource } from "@midnight/shared";
-import { Calibration, type CalibrationPhase } from "./calibration";
+import { type Baseline, Calibration, type CalibrationPhase } from "./calibration";
 import { frameLoop, openCamera } from "./camera";
 import { classify, type GestureFlags } from "./classify";
 import { VisionInputError } from "./errors";
@@ -20,6 +20,7 @@ export interface DebugFrame {
   metrics: Metrics | null;
   gestures: GestureFlags;
   frame: Readonly<InputFrame>;
+  calibration: { phase: CalibrationPhase; progress: number; baseline: Baseline | null };
   ts: number;
 }
 
@@ -138,7 +139,17 @@ export class VisionInputSource implements InputSource {
       this.frame = EMPTY_FRAME;
     }
 
-    this.debugCb?.({ landmarks: this.smoothed, metrics, gestures: this.gestures, frame: this.frame, ts: r.ts });
+    if (this.debugCb) {
+      const { phase, progress } = this.calibration.state();
+      this.debugCb({
+        landmarks: this.smoothed,
+        metrics,
+        gestures: this.gestures,
+        frame: this.frame,
+        calibration: { phase, progress, baseline: this.calibration.baseline },
+        ts: r.ts,
+      });
+    }
   }
 
   private resetGestures(): void {
