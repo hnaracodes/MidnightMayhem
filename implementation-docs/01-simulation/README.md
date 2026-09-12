@@ -28,6 +28,6 @@ packages/shared/test/*.test.ts
 
 Tick order inside `step` (final, after 04):
 1. clone state, `tick++`
-2. if `FIGHTING`: control both fighters → physics both → facing → advance punches → resolve hits → out-of-bounds → round timer and end checks
+2. if `FIGHTING`: advance existing punches → control both fighters → physics both → facing → resolve hits → out-of-bounds → round timer and end checks
 3. else if `COUNTDOWN` or `ROUND_END`: phase countdown
 4. store this tick's inputs as each fighter's `prev`

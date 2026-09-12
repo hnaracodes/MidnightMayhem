@@ -21,7 +21,7 @@ Create: `packages/shared/src/sim/combat.ts`, `packages/shared/test/combat.test.t
 ## Behaviour
 1. Punch start (in `controlFighter`): rising edge of `punchL` or `punchR` while `action === null`, not blocking, hitstun 0 → `action = { kind: "punch", arm, elapsed: 0, landed: false }`, emit `PUNCH`. `punchL` wins if both edge the same tick. Allowed in the air.
 2. Holding the key does not repeat. A new rising edge after the punch ends is required.
-3. `advancePunches` runs before `resolvePunches` and after physics, so a punch started this tick has `elapsed = 1` at the end of it, and its first active tick is the tick where `elapsed` becomes 4. Contact therefore lands on the 5th tick after the key edge.
+3. `advancePunches` runs first in the tick, before control, so a punch started this tick ends the tick at `elapsed = 0`; it becomes active when `elapsed` reaches 4, on the 5th tick after the key edge (four startup ticks with no hitbox).
 4. `resolvePunches`, pass 1: for each attacker with an active, un-landed punch whose hitbox overlaps the opponent's hurtbox and the opponent is not invulnerable → mark `landed = true`, queue `{ attacker, target, damage: target.blocking ? 3 : 12, blocked: target.blocking }`. Pass 2: apply all queued hits. Both fighters can be hit in the same tick.
 5. Applying a clean hit: `hp = max(0, hp - 12)`, `action = null`, `blocking = false`, `hitstun = 12`, `knockbackVx = attacker.facing * 144 / 12`, `vx = 0`. Emit `HIT{blocked: false}`.
 6. Applying a blocked hit: `hp = max(0, hp - 3)`, no stun, no knockback, target keeps blocking. Emit `HIT{blocked: true}`.
