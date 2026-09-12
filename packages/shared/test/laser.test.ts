@@ -128,7 +128,7 @@ describe("rule 4: block and shield", () => {
 
 describe("rule 5: jumping over the beam", () => {
   it("an opponent at jump apex is above the band and takes nothing", () => {
-    // Opponent jumps one tick after the laser edge: its apex (jumpTicks 30, feet at ROOF_Y - 120) is the first beam tick.
+    // Opponent jumps one tick after the laser edge: on the first beam tick (jumpTicks 30) its feet are ~140 px up, near apex.
     let s = fighting(300);
     s = run(s, 1, [Q, EMPTY_FRAME]).s;
     const { s: out, events } = run(s, LASER_CHARGE - 1, [Q, JUMP]);
@@ -136,7 +136,7 @@ describe("rule 5: jumping over the beam", () => {
     expect(out.fighters[1]!.grounded).toBe(false);
     const r = step(out, [Q, JUMP]);
     expect(r.state.fighters[1]!.jumpTicks).toBe(LASER_CHARGE);
-    expect(Math.abs(r.state.fighters[1]!.y - (WORLD.ROOF_Y - 120))).toBeLessThanOrEqual(5); // discrete apex is 116 px
+    expect(Math.abs(r.state.fighters[1]!.y - (WORLD.ROOF_Y - WORLD.HURTBOX_H))).toBeLessThanOrEqual(5); // 140 px up at tick 30, apex 140.8 at tick 33
     expect(laserHits(r.events)).toHaveLength(0);
     expect(laserHitbox(r.state.fighters[0]!)).not.toBeNull();
     const rest = run(r.state, TOTAL - LASER_CHARGE, [Q, JUMP]);

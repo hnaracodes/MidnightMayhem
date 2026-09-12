@@ -41,7 +41,7 @@ message with the exact export name and signature; A adds it and pushes within mi
 
 Paste this, filling in the role:
 
-> Read `CLAUDE.md`, `DECISIONS_CHANGED.md`, `implementation-docs/README.md`, then `implementation-docs/<phase>/README.md`. You are person <X>; you own only the paths listed for <X> in `implementation-docs/TEAM-SPLIT.md`. Implement feature <id> exactly as its file specifies: use the `Exposes` names verbatim, write the listed tests first, keep `pnpm test` and `pnpm typecheck` green, commit with the phase prefix, do not push. If you need a change in `packages/shared`, stop and write me the exact export you need.
+> Read `CLAUDE.md`, `DECISIONS_CHANGED.md`/, `implementation-docs/README.md`, then `implementation-docs/<phase>/README.md`. You are person <X>; you own only the paths listed for <X> in `implementation-docs/TEAM-SPLIT.md`. Implement feature <id> exactly as its file specifies: use the `Exposes` names verbatim, write the listed tests first, keep `pnpm test` and `pnpm typecheck` green, commit with the phase prefix, do not push. If you need a change in `packages/shared`, stop and write me the exact export you need.
 
 ## Merge protocol (A)
 

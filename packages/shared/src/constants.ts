@@ -25,8 +25,8 @@ export const BALANCE = {
   HITSTUN_TICKS: 12,
   KNOCKBACK_PX: 144,      // total displacement over the hitstun
   WALK_SPEED: 3,          // px per tick (180 px/s)
-  JUMP_VELOCITY: -8,      // px per tick, negative is up
-  GRAVITY: 8 / 30,        // px per tick^2, apex 120 px at tick 30
+  JUMP_VELOCITY: -8.8,    // px per tick, negative is up; apex ~141 px (one fighter height, HURTBOX_H) at tick 33, airborne 66 ticks
+  GRAVITY: 8 / 30,        // px per tick^2, shared with projectiles so throw arcs are unchanged
   JUMP_IFRAME_START: 3,   // inclusive, ticks since takeoff
   JUMP_IFRAME_END: 10,    // inclusive
   OOB_DAMAGE: 3,

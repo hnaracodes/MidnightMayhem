@@ -20,14 +20,14 @@ describe("movement", () => {
   it("no movement during COUNTDOWN", () => {
     expect(run(createMatch(), 5, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]).s.fighters[0]!.x).toBe(280);
   });
-  it("jump apex ~120 at tick 30, lands by 61, jumpTicks resets", () => {
+  it("jump apex ~ one fighter height (140) at tick 33, lands by 66, jumpTicks resets", () => {
     const J: [typeof EMPTY_FRAME, typeof EMPTY_FRAME] = [{ ...EMPTY_FRAME, jump: true }, EMPTY_FRAME];
     let { s } = run(fighting(), 1, J);
     expect(s.fighters[0]!.grounded).toBe(false);
-    s = run(s, 29, J).s;
-    expect(WORLD.ROOF_Y - s.fighters[0]!.y).toBeGreaterThan(110);
-    expect(WORLD.ROOF_Y - s.fighters[0]!.y).toBeLessThan(125);
-    s = run(s, 31).s;
+    s = run(s, 32, J).s;
+    expect(WORLD.ROOF_Y - s.fighters[0]!.y).toBeGreaterThan(WORLD.HURTBOX_H - 5);
+    expect(WORLD.ROOF_Y - s.fighters[0]!.y).toBeLessThan(WORLD.HURTBOX_H + 5);
+    s = run(s, 33).s;
     expect(s.fighters[0]!.grounded).toBe(true); expect(s.fighters[0]!.y).toBe(WORLD.ROOF_Y); expect(s.fighters[0]!.jumpTicks).toBe(0);
   });
   it("held jump does not re-jump on landing", () => {

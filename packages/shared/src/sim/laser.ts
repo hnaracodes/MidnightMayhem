@@ -50,7 +50,7 @@ export function laserHitbox(f: FighterState): Rect | null {
 /**
  * The part of a target the beam can touch: its hurtbox trimmed to its own chest band. A grounded target's band is
  * the beam's band, so it is always inside; a target whose feet have risen more than the band height (60 px) is
- * above it. This is what makes the beam jumpable: the full 140 px hurtbox would still clip the band at a 120 px apex.
+ * above it. This is what makes the beam jumpable: the full 140 px hurtbox would still clip the band at a ~141 px apex.
  */
 function laserHurtbox(f: FighterState): Rect {
   const hb = hurtbox(f);

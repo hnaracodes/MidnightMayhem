@@ -11,7 +11,7 @@ Source of truth after review: `docs/superpowers/plans/2026-09-12-midnight-expres
 
 | # | Topic | Original (which doc) | Now | Why | OK? |
 |---|---|---|---|---|---|
-| 1 | Player movement | 3 lanes, fixed x=130/870, dodge = lane change (Combat 01) | Free horizontal walk at 180 px/s, jump 120 px apex, no lanes, fighters always face each other | Owner D1; design merge | |
+| 1 | Player movement | 3 lanes, fixed x=130/870, dodge = lane change (Combat 01) | Free horizontal walk at 180 px/s, jump apex one fighter height (~141 px; was 120 px, raised on the owner's request 2026-09-12), no lanes, fighters always face each other | Owner D1; design merge | |
 | 2 | Dodging | DODGE_LEFT/RIGHT with i-frames ticks 3–7 (Combat 01) | Jump is the only evade. **Jump grants i-frames on ticks 3–10 after takeoff** (tunable `JUMP_IFRAME_START/END`); hits during that window are ignored and the rig draws a ghost trail | Owner, round 4: "we do want i frames" | |
 | 3 | Attacks | 5 object abilities, no punches (Combat 01) / punches only (VisFighter) | Punches only: punchL and punchR, identical frame data. 3 weapon slots reserved as `null` | Owner D3 | |
 | 4 | Punch frame data | 4/3/8 ticks at 60 Hz (VisFighter), 8 damage, chip 2 | 4/3/8 ticks, **12 damage, chip 3** | HP dropped to 40, so 12 = about 4 clean hits per round | |

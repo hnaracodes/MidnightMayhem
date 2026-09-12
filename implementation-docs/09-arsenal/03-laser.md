@@ -36,7 +36,7 @@ Owns nothing else.
 2. A grounded opponent anywhere in front of the beam within the band takes 10 once, even if the beam lasts 12 ticks.
 3. An opponent behind the attacker takes nothing.
 4. Blocking opponent: chip 4, no hitstun. Shield holder: absorbed (0 damage, `SHIELD_ABSORB`).
-5. An opponent at jump apex (feet at `ROOF_Y − 120`) is above the band and takes nothing; an opponent in jump i-frames
+5. An opponent near jump apex (feet at `ROOF_Y − 140`) is above the band and takes nothing; an opponent in jump i-frames
    (jumpTicks 3–10) takes nothing.
 6. During charge the attacker cannot walk or jump; a punch landing on him during charge cancels the laser, no
    `LASER_FIRE` follows, cooldown stays 720.

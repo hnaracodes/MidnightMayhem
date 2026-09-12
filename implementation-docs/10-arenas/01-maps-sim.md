@@ -42,7 +42,7 @@ Owns `maps.ts` and `fighter.ts`. Does not edit `combat.ts`, `rounds.ts`, `create
    reaches `PIT.Y` in a finite number of ticks, takes 8, `PIT_FALL`; 40 ticks later `PIT_RESPAWN` at x 260 (300 − 40),
    `invuln 30`, and he cannot be punched for those 30 ticks.
 3. `gaps`: jumping from x 290 with `right` held clears the 80 px gap (lands on ground at x ≥ 380) — assert the jump
-   arc covers it: 60 ticks airborne × 3 px = 180 px horizontal, apex 120.
+   arc covers it: 66 ticks airborne × 3 px = 198 px horizontal, apex ~141.
 4. `platforms`: jumping from x 240 lands on platform 0 at `y = 330` (feet), `onPlatform 0`, `LAND`; walking off its edge
    (x > 330) falls back to the roof and lands with `LAND`, `onPlatform null`.
 5. `platforms`: jumping from directly under a platform passes through it on the way up and lands on top on the way

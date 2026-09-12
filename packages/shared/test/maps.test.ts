@@ -171,12 +171,12 @@ describe("rule 3 (gaps): a running jump clears the 80 px gap", () => {
   it("jumping from 290 with right held lands on ground at x ≥ 380 without a pit fall", () => {
     const s0 = fightingOn("gaps");
     s0.fighters[0]!.x = 290;
-    const up = run(s0, 30, JUMP_RIGHT);
+    const up = run(s0, 33, JUMP_RIGHT);
     expect(f0(up.s).grounded).toBe(false);
-    expect(WORLD.ROOF_Y - f0(up.s).y).toBeGreaterThan(110);
-    expect(WORLD.ROOF_Y - f0(up.s).y).toBeLessThan(125);
+    expect(WORLD.ROOF_Y - f0(up.s).y).toBeGreaterThan(WORLD.HURTBOX_H - 5);
+    expect(WORLD.ROOF_Y - f0(up.s).y).toBeLessThan(WORLD.HURTBOX_H + 5);
     const land = runUntil(up.s, (s) => f0(s).grounded, JUMP_RIGHT);
-    expect(30 + land.ticks).toBeGreaterThanOrEqual(60);
+    expect(33 + land.ticks).toBeGreaterThanOrEqual(60);
     const f = f0(land.s);
     expect(f.x).toBeGreaterThanOrEqual(380);
     expect(f.x).toBeLessThanOrEqual(580);

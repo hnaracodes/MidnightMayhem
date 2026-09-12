@@ -63,8 +63,8 @@ CHAR_HEIGHT    = 150     // standing, crown of head to sole
 HURTBOX        = { w: 72, h: 140 }   // anchored bottom-centre at the fighter's feet
 ```
 
-Vertical budget above the roof: 430 px. A fighter at 150 px plus a jump apex of 120 px tops out around
-`y = 160`, leaving the upper 160 px permanently clear for moon, stars and HUD.
+Vertical budget above the roof: 430 px. A fighter at 150 px plus a jump apex of ~141 px tops out around
+`y = 140`, leaving the upper 140 px permanently clear for moon, stars and HUD.
 
 ## Out-of-bounds zone
 
