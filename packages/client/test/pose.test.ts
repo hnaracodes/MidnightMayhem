@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ARSENAL, BALANCE, WORLD, createMatch, punchHitbox, type FighterState } from "@midnight/shared";
-import { computePose, rigState, slashStage, type Clock, type Joints } from "../src/game/rig/pose";
+import { computePose, rigState, slashStage, slipStage, type Clock, type Joints } from "../src/game/rig/pose";
 import { RIG } from "../src/game/rig/characters";
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
@@ -400,5 +400,25 @@ describe("9.10 slash poses", () => {
     const plain = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: e, landed: false, sword: false } }), clock);
     const armed = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: e, landed: false, sword: true } }), clock);
     expect(armed.arms.F.fist).toEqual(plain.arms.F.fist);
+  });
+});
+
+describe("slip pose (owner 2026-09-12)", () => {
+  it("rigState is slip while slipped > 0, ahead of hit", () => {
+    const f = fighter({ hitstun: 90, slipped: 90 });
+    expect(rigState(f, false)).toBe("slip");
+    expect(rigState({ ...f, slipped: 0 }, false)).toBe("hit");
+  });
+  it("falls, lies flat, then rises over the last frames", () => {
+    expect(slipStage(ARSENAL.SLIP_STUN)).toEqual({ stage: "fall", t: 0 });
+    expect(slipStage(ARSENAL.SLIP_STUN - 45).stage).toBe("down");
+    expect(slipStage(1).stage).toBe("rise");
+    expect(slipStage(1).t).toBeGreaterThan(0.9);
+  });
+  it("the head is far lower while down than when standing, and back up once the slip ends", () => {
+    const down = computePose(fighter({ hitstun: 45, slipped: 45 }), clock);
+    const up = computePose(fighter(), clock);
+    expect(down.state).toBe("slip");
+    expect(down.head.y).toBeGreaterThan(up.head.y + 40);
   });
 });

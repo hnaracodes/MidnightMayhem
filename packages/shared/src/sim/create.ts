@@ -26,6 +26,7 @@ export function createFighter(i: PlayerIndex, config: MatchConfig, entry: Roster
     laserCooldown: 0,
     blockTicks: 0,
     dazzle: 0,
+    slipped: 0,
     pitTicks: 0,
     onPlatform: null,
     invuln: 0,

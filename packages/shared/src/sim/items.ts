@@ -14,6 +14,7 @@ export function tickCooldowns(s: MatchState, events: SimEvent[] = []): void {
     const f = s.fighters[i]!;
     if (f.laserCooldown > 0) f.laserCooldown--;
     if (f.dazzle > 0) f.dazzle--;
+    if (f.slipped > 0) f.slipped--;
     if (f.invuln > 0) f.invuln--;
     // 9.10: a timed item (sword) drains while held, KO'd or down a pit alike; at 0 the slot clears.
     if (f.item && f.item.ticksLeft !== null) {
