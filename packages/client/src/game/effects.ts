@@ -5,7 +5,7 @@ import { P } from "./palette";
 /**
  * 4.06 — Effects and feel. Reacts to `SimEvent`s and state reads; never predicts and never mutates the state.
  *
- * Per render frame the scene calls, in this order: `consume(events, state)`, then the readers
+ * Per render frame the scene calls, in this order: `consume(events, state, newest)`, then the readers
  * (`frozen`, `fillFor`, `squashFor`, `koFrames`, `landFrames`, `timeScale`, `drawTrail`), then `update(dtSec)`.
  * Every timer counts render frames; hit-stop is a display freeze (the scene draws `frozen(i)`), never a Phaser pause.
  *
@@ -92,9 +92,13 @@ export class Effects {
 
   constructor(private readonly scene: Phaser.Scene) {}
 
-  /** Drain this frame's events and read the sampled state. Call once per render frame before the readers. */
-  consume(events: SimEvent[], state: MatchState): void {
-    for (const event of events) this.onEvent(event, state);
+  /**
+   * Drain this frame's events and read the sampled state. Call once per render frame before the readers.
+   * `newest` is the latest snapshot in the buffer (the one that carried the events): hit-stop freezes it, not the
+   * 50 ms-delayed `state`, so the held pose is the contact pose (arm extended, target in hitstun).
+   */
+  consume(events: SimEvent[], state: MatchState, newest: MatchState = state): void {
+    for (const event of events) this.onEvent(event, state, newest);
     this.readLandings(state);
     this.readWalking(state);
     this.readKo(state);
@@ -191,7 +195,7 @@ export class Effects {
 
   // ---- events ----
 
-  private onEvent(event: SimEvent, state: MatchState): void {
+  private onEvent(event: SimEvent, state: MatchState, newest: MatchState): void {
     switch (event.type) {
       case "HIT": {
         const target = state.fighters[event.target];
@@ -204,7 +208,7 @@ export class Effects {
           this.spawn(FRAMES.BLOCK_RING, (g, t) => drawBlockRing(g, at, t));
         } else {
           this.freezeFrames = FRAMES.HIT_STOP;
-          this.frozenSnap = structuredClone(state.fighters);
+          this.frozenSnap = structuredClone(newest.fighters);
           this.flashFrames[event.target] = FRAMES.FLASH_WHITE + FRAMES.FLASH_DANGER;
           this.flashBlocked[event.target] = false;
           this.spawn(FRAMES.IMPACT, (g, t) => drawImpact(g, at, t));

@@ -10,7 +10,8 @@ Create: `packages/client/src/game/effects.ts`.
 4.01, 4.02.
 
 ## Exposes
-- `class Effects { constructor(scene); consume(events: SimEvent[], state: MatchState): void; frozen(i): FighterState | null; fillFor(i): { fillOverride?, fillAlpha? }; squashFor(i): number; update(dtSec): void }`
+- `class Effects { constructor(scene); consume(events: SimEvent[], state: MatchState, newest?: MatchState): void; frozen(i): FighterState | null; fillFor(i): { fillOverride?, fillAlpha? }; squashFor(i): number; update(dtSec): void }`
+- `consume`'s third argument is the newest snapshot in the buffer (`session.buffer.latest()`, the snapshot that carried the events; defaults to `state`). Hit-stop freezes `newest`, not the 50 ms-delayed sampled `state`, so the held pose is the contact pose: attacker's arm extended, target in hitstun, and with `?debug=1` the active hitbox stays drawn through the freeze. (polish amendment)
 - `koFrames(i): number` — render frames since the KO `ROUND_END` for that fighter, 0 when none (integrator amendment)
 - `landFrames(i): number` — render frames since that fighter's last landing, large when none yet (integrator amendment)
 - `timeScale(): number` — 0.25 during the 30-frame KO slowdown, else 1; the scene multiplies its render clock by it (integrator amendment)

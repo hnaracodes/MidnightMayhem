@@ -95,7 +95,7 @@ export class ArenaScene extends Phaser.Scene {
       this.hud.setNames([this.names[0].toUpperCase(), this.names[1].toUpperCase()]);
     }
 
-    this.effects.consume(session.events.splice(0), state);
+    this.effects.consume(session.events.splice(0), state, newest);
     this.advanceHint(newest);
 
     this.shadow.clear();

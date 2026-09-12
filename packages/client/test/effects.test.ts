@@ -78,6 +78,25 @@ describe("Effects hit-stop and flashes", () => {
     expect(seen).toEqual([500, 500, 500, 500, null, null]);
   });
 
+  it("freezes the newest snapshot at HIT time, not the 50 ms-delayed sampled one", () => {
+    const { scene } = stubScene();
+    const fx = new Effects(scene);
+    const sampled = fighting();
+    sampled.fighters[0].action = { kind: "punch", arm: "L", elapsed: 1, landed: false }; // still in startup
+    const newest = fighting();
+    newest.tick = sampled.tick + 3;
+    newest.fighters[0].action = { kind: "punch", arm: "L", elapsed: BALANCE.PUNCH_STARTUP, landed: true };
+    newest.fighters[1].hitstun = BALANCE.HITSTUN_TICKS;
+    newest.fighters[1].x = 520;
+
+    fx.consume([hit(1, false)], sampled, newest);
+    expect(fx.frozen(0)?.action?.elapsed).toBe(BALANCE.PUNCH_STARTUP);
+    expect(fx.frozen(1)?.hitstun).toBe(BALANCE.HITSTUN_TICKS);
+    expect(fx.frozen(1)?.x).toBe(520);
+    newest.fighters[1].x = 999; // a copy, not a reference
+    expect(fx.frozen(1)?.x).toBe(520);
+  });
+
   it("flashes the target white 70 % for 2 frames then danger 30 % for 4, attacker untouched", () => {
     const { scene } = stubScene();
     const fx = new Effects(scene);
