@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Midnight Mayhem — Stage Preview</title>
+  <link rel="icon" href="data:," />
+  <style>
+    html, body { margin: 0; background: #070B18; color: #E8F0FF; font: 13px/1.4 system-ui, sans-serif; }
+    #stage { width: 960px; height: 540px; }
+    #stage canvas { display: block; }
+    #help { padding: 8px 12px; color: #5B6375; }
+    kbd { color: #E8F0FF; }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <p id="help">Dev preview (not built). <kbd>1</kbd> standard, <kbd>2</kbd> tunnel, <kbd>3</kbd> final car. <code>window.__stage.setCar(car)</code>, <code>window.__stage.scroll(sec)</code>.</p>
+  <script type="module" src="../src/dev/stagePreview.ts"></script>
+</body>
+</html>

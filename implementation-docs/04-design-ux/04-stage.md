@@ -16,6 +16,8 @@ Create: `packages/client/src/game/backgrounds.ts`.
 - `createBackgrounds(scene): Layers`
 - `scrollBackgrounds(layers, dtSec): void`
 - `applyTrainCar(scene, layers, car): void`
+- `Layers.tiles` is the ordered array of the six parallax `TileSprite`s (sky, stars, clouds far, clouds near, roof, body) so the arena assembler can set depths; `tunnel`, `track`, `dark`, `tint`, `moon`, `glow`, `railing`, `lamp`, `roofSpeed` are the rest of the contract (integrator amendment)
+- `applyTrainCar` is idempotent and safe to call before an earlier transition finished: it kills running tweens on the same targets first (integrator amendment)
 
 ## Behaviour
 1. Textures and their generators follow the table in `design/03` row by row: sky bands, seeded stars with eight haloed ones, moon with glow and two craters, far and near cloud blobs, roof with seams every 240 px and rivet pairs every 60 px and one ridge, body with amber windows every 120 px and a 30 px upward glow strip, tunnel brick wall with lamps every 320 px, track trail with sleepers.
