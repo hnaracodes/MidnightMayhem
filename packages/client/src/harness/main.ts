@@ -7,6 +7,7 @@ import { createPanel } from "./panel";
 
 const MESSAGES: Record<VisionErrorCode, string> = {
   "camera-denied": "Camera permission was denied. Allow the camera for this site and reload.",
+  "camera-busy": "The camera is in use by another app (Zoom, FaceTime, Photo Booth…). Close it and reload.",
   "no-camera": "No usable camera was found.",
   "model-load": "The pose model failed to load. Run `pnpm --filter @midnight/client vision:setup` and reload.",
   "worker-failed": "The vision worker crashed before it was ready.",

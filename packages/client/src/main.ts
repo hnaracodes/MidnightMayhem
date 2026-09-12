@@ -27,6 +27,7 @@ session.localSource = inputSource;
 const sourceChoice = selectSource();
 const CAMERA_MESSAGES: Record<VisionErrorCode, string> = {
   "camera-denied": "Camera permission was denied. Allow the camera for this site and try again. Keyboard still works.",
+  "camera-busy": "The camera is in use by another app (Zoom, FaceTime, Photo Booth…). Close it and try again. Keyboard still works.",
   "no-camera": "No usable camera was found. Keyboard still works.",
   "model-load": "The pose model failed to load (run vision:setup on this laptop). Keyboard still works.",
   "worker-failed": "The camera tracker crashed before it was ready. Keyboard still works.",

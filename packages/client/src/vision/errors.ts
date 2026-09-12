@@ -1,5 +1,5 @@
 /** Failure modes of the vision layer, surfaced to the shell as a banner. */
-export type VisionErrorCode = "camera-denied" | "no-camera" | "model-load" | "worker-failed";
+export type VisionErrorCode = "camera-denied" | "camera-busy" | "no-camera" | "model-load" | "worker-failed";
 
 export class VisionInputError extends Error {
   readonly code: VisionErrorCode;
