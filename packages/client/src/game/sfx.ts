@@ -170,17 +170,25 @@ const NOTE = { C4: 261.63, E4: 329.63, G4: 392.0, A4: 440.0, B4: 493.88 } as con
 const ARP_NOTE = 0.09;
 const ARP_STEPS = [0, 4, 7]; // root, major third, fifth
 const TEXTURE_AT = 2 * ARP_NOTE; // the texture starts under the third note so the whole motif fits in 1.4 s
+/** 9.08 rule 4: a 60 ms noise "snap" (the item locking into the hand) before the motif, which then plays +6 dB. */
+const SNAP = 0.06;
+const MOTIF_BOOST = 2; // +6 dB
 
-/** The equip signature: a rising three-note square arpeggio then the item's texture. */
+/** The equip signature: a snap, then a rising three-note square arpeggio and the item's texture, boosted. */
 function equip(base: number, texture: (ctx: BaseAudioContext, out: AudioNode, t: number) => number): Recipe {
   return (ctx, out, t0) => {
+    noise(ctx, out, t0, { dur: SNAP, peak: 0.5, attack: 0.002, filter: "bandpass", f0: 2600, f1: 900, q: 1.2 });
+    const boost = ctx.createGain();
+    boost.gain.setValueAtTime(MOTIF_BOOST, t0);
+    boost.connect(out);
+    const t1 = t0 + SNAP;
     ARP_STEPS.forEach((semis, i) => {
-      tone(ctx, out, t0 + i * ARP_NOTE, {
+      tone(ctx, boost, t1 + i * ARP_NOTE, {
         type: "square", f0: base * Math.pow(2, semis / 12), dur: ARP_NOTE, peak: 0.16, attack: 0.004, hold: 0.05,
       });
     });
-    const textureDur = texture(ctx, out, t0 + TEXTURE_AT);
-    return Math.max(ARP_STEPS.length * ARP_NOTE, TEXTURE_AT + textureDur);
+    const textureDur = texture(ctx, boost, t1 + TEXTURE_AT);
+    return SNAP + Math.max(ARP_STEPS.length * ARP_NOTE, TEXTURE_AT + textureDur);
   };
 }
 
@@ -196,11 +204,11 @@ const RECIPES: Record<SfxName, Recipe> = {
     return 0.7;
   }),
   equip_sword: equip(NOTE.A4, (ctx, out, t) => {
-    // Metallic ring: two detuned triangles, 1.2 s decay.
-    tone(ctx, out, t, { type: "triangle", f0: 1760, dur: 1.2, peak: 0.22, attack: 0.003 });
-    tone(ctx, out, t, { type: "triangle", f0: 1760, detune: 18, dur: 1.2, peak: 0.18, attack: 0.003 });
+    // Metallic ring: two detuned triangles, 1.1 s decay (1.2 before the snap took its 60 ms of the 1.4 s budget).
+    tone(ctx, out, t, { type: "triangle", f0: 1760, dur: 1.1, peak: 0.22, attack: 0.003 });
+    tone(ctx, out, t, { type: "triangle", f0: 1760, detune: 18, dur: 1.1, peak: 0.18, attack: 0.003 });
     noise(ctx, out, t, { dur: 0.06, peak: 0.25, filter: "highpass", f0: 4000 });
-    return 1.2;
+    return 1.1;
   }),
   equip_shield: equip(NOTE.C4, (ctx, out, t) => {
     // Deep thunk: sine sweep 120 → 60 Hz.

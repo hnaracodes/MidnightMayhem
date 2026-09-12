@@ -117,6 +117,28 @@ describe("Sfx.RECIPES", () => {
     }
   });
 
+  it("equip cue (9.08 rule 4): a 60 ms noise snap first, then the motif at +6 dB, within 1.4 s", () => {
+    for (const name of EQUIPS) {
+      const ctx = new FakeContext();
+      const out = ctx.createGain();
+      const t0 = 2;
+      const duration = Sfx.RECIPES[name](ctx as unknown as BaseAudioContext, out as unknown as AudioNode, t0);
+      expect(duration, name).toBeLessThanOrEqual(1.4);
+      const started = ctx.sources.filter((s) => s.started !== null).sort((a, b) => a.started! - b.started!);
+      const snap = started[0]!;
+      expect(snap.kind, `${name} snap is noise`).toBe("buffer");
+      expect(snap.started).toBeCloseTo(t0, 5);
+      expect(snap.stopped! - snap.started!, `${name} snap ~60 ms`).toBeCloseTo(0.08, 2);
+      const squares = ctx.sources.filter((s) => s.type === "square" && s.started !== null).sort((a, b) => a.started! - b.started!);
+      expect(squares[0]!.started!, `${name} motif follows the snap`).toBeCloseTo(t0 + 0.06, 5);
+      for (const s of started) if (s !== snap) expect(s.started!).toBeGreaterThanOrEqual(t0 + 0.06 - 1e-9);
+      // The motif routes through a +6 dB (x2) boost gain that feeds `out`; the snap goes straight to `out`.
+      const boost = ctx.nodes.find((n): n is FakeGain => n instanceof FakeGain && n.connections.includes(out)
+        && n.gain.automation.some((a) => a.op === "set" && Math.abs(a.value - 2) < 1e-9));
+      expect(boost, `${name} boost gain`).toBeDefined();
+    }
+  });
+
   it("equip arpeggios start on the item's base note", () => {
     const base: Record<string, number> = { equip_molotov: 329.63, equip_sword: 440, equip_shield: 261.63, equip_banana: 392, equip_flash: 493.88 };
     for (const name of EQUIPS) {
