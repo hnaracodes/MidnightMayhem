@@ -5,12 +5,14 @@ import {
   type SimEvent,
 } from "@midnight/shared";
 import { P } from "./palette";
+import { chargeToRange, chargingThrow, predictFlight, throwVelocity } from "./throwPreview";
 
 /**
- * 9.05 — Item and laser effects. Everything the arsenal draws *around* the item sprites (11.01 draws the item in the
- * hand): materialise, laser charge ring and beam, sword slash, parry spark, shield bubble and shards, molotov and
- * banana in flight, fire tongues, banana peel, hazard hits and the flashbang burst. Event-driven or state-read,
- * never predicted, never mutating.
+ * 9.05 / 9.08 — Item and laser effects. Everything the arsenal draws *around* the item sprites (11.01 draws the item
+ * in the hand): materialise, laser charge ring and beam, sword slash, parry spark, shield barrier and shards, molotov
+ * and banana in flight, fire tongues, banana peel, hazard hits, the flashbang burst and the local throw preview.
+ * Event-driven or state-read, never mutating. The one prediction is the preview arc (9.08 rule 5), which only
+ * re-derives the sim's own launch numbers for the local fighter.
  *
  * Per render frame the scene calls, in this order: `consume(events, newest, hands)`, `draw(state, hands, local)`,
  * the readers (`materialising`, `dazzleAlpha`), then `update(dtSec)`. Every timer counts render frames.
@@ -37,18 +39,25 @@ const FRAMES = {
   SLASH: 3,
   PARRY: 6,
   PARRY_SHAKE: 8, // the spark is 6 frames; the 2 px shake decays over 8
-  ABSORB_FLASH: 2,
-  SHARDS: 10,
+  ABSORB_FLASH: 4,
+  RIPPLE: 10,
+  SHARDS: 12,
+  EDGE_FLASH: 2,
+  ITEM_POP: 6,
   FEET_FLASH: 5,
   SLIP_STARS: 6,
   FLASH_BURST: 6,
 } as const;
 
 const FRAME_MS = 1000 / 60;
-const DEPTH = { FX: 4, PROJECTILE: 4, HAZARD: 0.5, BEAM: 4.5, BUBBLE: 4 } as const;
+/** EDGE sits over the HUD (10–11) and under the dazzle whiteout (12). PREVIEW sits just over the fighters. */
+const DEPTH = { FX: 4, PROJECTILE: 4, HAZARD: 0.5, BEAM: 4.5, BARRIER: 4, PREVIEW: 4.2, EDGE: 11.5 } as const;
 
-const MATERIALISE_PARTICLES = 14;
-const MATERIALISE_RING_R = 40;
+const MATERIALISE_PARTICLES = 24;
+const MATERIALISE_RING_R = 60;
+const EDGE_FLASH_ALPHA = 0.08;
+const EDGE_FLASH_BAND = 56;
+const ITEM_POP_SCALE = 1.6;
 const MATERIALISE_DISC_R = 14;
 const CHARGE_R0 = 6;
 const CHARGE_R1 = 22;
@@ -64,10 +73,24 @@ const IMPACT_OFFSET = 20;
 const IMPACT_LENGTHS = [26, 16, 22, 14, 26, 18, 20, 14] as const;
 const SLASH_REACH = ARSENAL.SWORD_REACH;
 const SLASH_SWEEP = Math.PI / 3; // 60°
-const BUBBLE_W = 90;
-const BUBBLE_H = 150;
-const BUBBLE_ALPHA = 0.3;
-const SHARD_COUNT = 8;
+const BARRIER_W = 70;
+const BARRIER_H = 150;
+const BARRIER_ALPHA = 0.35;
+const BARRIER_OFFSET = 30; // near edge this far in front of the fighter's centre line
+const BARRIER_SHIMMER_SEC = 1.2;
+const BARRIER_SHIMMER_H = 16;
+/** Crack geometry: where each crack starts on the outer edge (dy from centre) and its jagged run/rise steps. */
+const CRACK_START_DY = [-22, 30, 4] as const;
+const CRACK_STEPS = [
+  { run: 9, rise: 10 }, { run: 13, rise: -7 }, { run: 7, rise: 12 }, { run: 11, rise: -4 }, { run: 8, rise: 6 },
+] as const;
+const SHARD_COUNT = 6; // the hexagon's own six slices
+const SHARD_FLY = 110;
+const PREVIEW_DOTS = 12;
+const PREVIEW_ALPHA0 = 0.6;
+const PREVIEW_ALPHA1 = 0.2;
+const PREVIEW_DOT_R = 3;
+const LANDING_R = 10;
 const MOLOTOV_R = 8;
 const MOLOTOV_FLAME = 12;
 const TRAIL_POINTS = 6;
@@ -122,9 +145,16 @@ export class ItemFx {
   private readonly timed: Timed[] = [];
   private readonly projectiles = new Map<number, Flight>();
   private readonly hazards = new Map<number, Graphics>();
-  private readonly bubbles: Per<Graphics | null> = per(null);
+  private readonly barriers: Per<Graphics | null> = per(null);
   private readonly materialiseFrames: Per<number> = per(0);
   private readonly absorbFrames: Per<number> = per(0);
+  /** Frames left of the 1.6 → 1 item pop; armed by the equip, started when the materialise ends. */
+  private readonly popFrames: Per<number> = per(0);
+  private readonly popArmed: Per<boolean> = per(false);
+  /** Frames left of the screen-edge flash per equipping fighter; only the local one is drawn. */
+  private readonly edgeFrames: Per<number> = per(0);
+  private edge: Graphics | null = null;
+  private preview: Graphics | null = null;
   private clockSec = 0;
 
   constructor(private readonly scene: Phaser.Scene) {}
@@ -134,11 +164,13 @@ export class ItemFx {
     for (const event of events) this.onEvent(event, newest, hands);
   }
 
-  /** Draw state-driven visuals: projectiles, hazards, beams, shield bubble, charge ring. */
-  draw(state: MatchState, hands: (i: PlayerIndex) => HandPoint, _localIndex: PlayerIndex): void {
+  /** Draw state-driven visuals: projectiles, hazards, beams, shield barrier, charge ring, the local throw preview. */
+  draw(state: MatchState, hands: (i: PlayerIndex) => HandPoint, localIndex: PlayerIndex): void {
     this.drawProjectiles(state.projectiles);
     this.drawHazards(state.hazards);
-    for (const i of PLAYERS) this.drawBubble(i, state.fighters[i]);
+    for (const i of PLAYERS) this.drawBarrier(i, state.fighters[i]);
+    this.drawPreview(state.fighters[localIndex], hands, localIndex);
+    this.drawEdgeFlash(localIndex);
     for (const fx of this.timed) {
       if (fx.player === null) continue;
       const f = state.fighters[fx.player];
@@ -151,8 +183,17 @@ export class ItemFx {
   update(dtSec: number): void {
     this.clockSec += dtSec;
     for (const i of PLAYERS) {
-      if (this.materialiseFrames[i] > 0) this.materialiseFrames[i] -= 1;
+      if (this.materialiseFrames[i] > 0) {
+        this.materialiseFrames[i] -= 1;
+        if (this.materialiseFrames[i] === 0 && this.popArmed[i]) {
+          this.popArmed[i] = false;
+          this.popFrames[i] = FRAMES.ITEM_POP;
+        }
+      } else if (this.popFrames[i] > 0) {
+        this.popFrames[i] -= 1;
+      }
       if (this.absorbFrames[i] > 0) this.absorbFrames[i] -= 1;
+      if (this.edgeFrames[i] > 0) this.edgeFrames[i] -= 1;
     }
     for (let k = this.timed.length - 1; k >= 0; k -= 1) {
       const fx = this.timed[k]!;
@@ -180,6 +221,17 @@ export class ItemFx {
     return this.materialiseFrames[i] > 0;
   }
 
+  /**
+   * Scale for that fighter's item sprite: 1.6 on the frame it appears, easing to 1 over the next 6 (rule 3).
+   * INTEGRATOR: 11.05 passes this to `SpriteFighter.update` once the sprite grows an `itemScale` option.
+   */
+  itemScale(i: PlayerIndex): number {
+    const left = this.popFrames[i];
+    if (left <= 0 || this.materialiseFrames[i] > 0) return 1;
+    const t = 1 - left / FRAMES.ITEM_POP; // 0 on the first visible frame → 1 when done
+    return 1 + (ITEM_POP_SCALE - 1) * (1 - t);
+  }
+
   destroy(): void {
     for (const fx of this.timed) fx.g.destroy();
     this.timed.length = 0;
@@ -188,11 +240,18 @@ export class ItemFx {
     for (const g of this.hazards.values()) g.destroy();
     this.hazards.clear();
     for (const i of PLAYERS) {
-      this.bubbles[i]?.destroy();
-      this.bubbles[i] = null;
+      this.barriers[i]?.destroy();
+      this.barriers[i] = null;
       this.materialiseFrames[i] = 0;
       this.absorbFrames[i] = 0;
+      this.popFrames[i] = 0;
+      this.popArmed[i] = false;
+      this.edgeFrames[i] = 0;
     }
+    this.edge?.destroy();
+    this.edge = null;
+    this.preview?.destroy();
+    this.preview = null;
   }
 
   // ---- events ----
@@ -202,6 +261,9 @@ export class ItemFx {
       case "ITEM_EQUIP": {
         const accent = ACCENT[event.item];
         this.materialiseFrames[event.player] = FRAMES.MATERIALISE;
+        this.popArmed[event.player] = true;
+        this.popFrames[event.player] = 0;
+        this.edgeFrames[event.player] = FRAMES.EDGE_FLASH;
         this.spawnAnchored(event.player, hands, newest, FRAMES.MATERIALISE, DEPTH.FX, null,
           (g, _t, frame, a) => drawMaterialise(g, a.at, frame, accent));
         break;
@@ -241,15 +303,20 @@ export class ItemFx {
         this.shake(PARRY_SHAKE_PX, FRAMES.PARRY_SHAKE);
         break;
       }
-      case "SHIELD_ABSORB":
+      case "SHIELD_ABSORB": {
         this.absorbFrames[event.player] = FRAMES.ABSORB_FLASH;
+        const f = newest.fighters[event.player];
+        if (!f) break;
+        const at = impactPoint(f);
+        this.spawn(FRAMES.RIPPLE, DEPTH.FX, (g, t) => drawRipple(g, at, t));
         break;
+      }
       case "ITEM_BREAK": {
         if (event.item !== "shield") break;
         const f = newest.fighters[event.player];
         if (!f) break;
-        const centre = { x: f.x, y: f.y - BUBBLE_H / 2 };
-        this.spawn(FRAMES.SHARDS, DEPTH.FX, (g, t) => drawShards(g, centre, t));
+        const centre = barrierCentre(f);
+        this.spawn(FRAMES.SHARDS, DEPTH.FX, (g, t) => drawShards(g, centre, f.facing, t));
         break;
       }
       case "HAZARD_HIT": {
@@ -374,21 +441,55 @@ export class ItemFx {
     }
   }
 
-  private drawBubble(i: PlayerIndex, f: FighterState | undefined): void {
+  private drawBarrier(i: PlayerIndex, f: FighterState | undefined): void {
     const item = f?.item;
-    // No bubble while the shield is still materialising (11.01 hides the item sprite until then too), nor while the
-    // fighter is down a pit: the sprite is hidden for those 40 ticks and the bubble is tied to the fighter (9.05 rule 4).
+    // No barrier while the shield is still materialising (11.01 hides the item sprite until then too), nor while the
+    // fighter is down a pit: the sprite is hidden for those 40 ticks and the barrier is tied to the fighter.
     if (!f || !item || item.kind !== "shield" || this.materialiseFrames[i] > 0 || f.pitTicks > 0) {
-      const old = this.bubbles[i];
+      const old = this.barriers[i];
       if (old) {
         old.destroy();
-        this.bubbles[i] = null;
+        this.barriers[i] = null;
       }
       return;
     }
-    const g = (this.bubbles[i] ??= this.scene.add.graphics().setDepth(DEPTH.BUBBLE));
+    const g = (this.barriers[i] ??= this.scene.add.graphics().setDepth(DEPTH.BARRIER));
     const cracks = Math.max(0, ITEMS.shield.uses - item.uses);
-    drawBubble(g, { x: f.x, y: f.y - BUBBLE_H / 2 }, cracks, this.absorbFrames[i] > 0);
+    const shimmer = (this.clockSec / BARRIER_SHIMMER_SEC) % 1;
+    drawBarrier(g, barrierCentre(f), f.facing, cracks, this.absorbFrames[i] > 0, shimmer);
+  }
+
+  /** Rule 5: the dotted arc and landing ring while the local fighter charges a throw; removed on release. */
+  private drawPreview(f: FighterState | undefined, hands: (i: PlayerIndex) => HandPoint, local: PlayerIndex): void {
+    const charge = f ? chargingThrow(f.action) : null;
+    if (charge === null || !f) {
+      if (this.preview) {
+        this.preview.destroy();
+        this.preview = null;
+      }
+      return;
+    }
+    const g = (this.preview ??= this.scene.add.graphics().setDepth(DEPTH.PREVIEW));
+    const { vx, vy } = throwVelocity(chargeToRange(charge));
+    const from = hands(local);
+    const flight = predictFlight(from, vx * f.facing, vy, f.y, PREVIEW_DOTS);
+    drawPreview(g, flight.dots, flight.landing);
+  }
+
+  /** Rule 3: a 2-frame amber 8 % band around the screen edge, for the local player's own equip only. */
+  private drawEdgeFlash(local: PlayerIndex): void {
+    if (this.edgeFrames[local] <= 0) {
+      this.edge?.clear();
+      return;
+    }
+    const g = (this.edge ??= this.scene.add.graphics().setDepth(DEPTH.EDGE));
+    g.clear();
+    g.fillStyle(P.amber1, EDGE_FLASH_ALPHA);
+    const b = EDGE_FLASH_BAND;
+    g.fillRect(0, 0, WORLD.WIDTH, b);
+    g.fillRect(0, WORLD.HEIGHT - b, WORLD.WIDTH, b);
+    g.fillRect(0, b, b, WORLD.HEIGHT - 2 * b);
+    g.fillRect(WORLD.WIDTH - b, b, b, WORLD.HEIGHT - 2 * b);
   }
 }
 
@@ -406,6 +507,17 @@ function anchorFor(hand: HandPoint, f: FighterState | undefined): Anchor {
   return { at: { x: hand.x, y: hand.y }, facing: f?.facing ?? 1, band: laserBand(f) };
 }
 
+/** Barrier centre: the hexagon hangs from the feet to head height, its near edge 30 px in front of the centre line. */
+function barrierCentre(f: FighterState): Pt {
+  return { x: f.x + f.facing * (BARRIER_OFFSET + BARRIER_W / 2), y: f.y - BARRIER_H / 2 };
+}
+
+/** Where a blocked hit lands on the barrier: its outer edge at chest height. */
+function impactPoint(f: FighterState): Pt {
+  const c = barrierCentre(f);
+  return { x: c.x + f.facing * (BARRIER_W / 2), y: f.y - CHEST_ABOVE_FEET };
+}
+
 function holdsSword(f: FighterState): boolean {
   // The last swing breaks the sword in the same tick (item null + ITEM_BREAK), so the action flag also counts.
   return f.item?.kind === "sword" || (f.action?.kind === "punch" && f.action.sword);
@@ -413,7 +525,7 @@ function holdsSword(f: FighterState): boolean {
 
 // ---- pure drawing helpers (world coordinates) ----
 
-/** Rule 1: 14 particles implode from a 40 px ring over 20 frames, then a moon disc r 14 fading over 6. */
+/** 9.08 rule 3: 24 particles implode from a 60 px ring over 20 frames, then a moon disc r 14 fading over 6. */
 function drawMaterialise(g: Graphics, hand: Pt, frame: number, accent: number): void {
   g.clear();
   if (frame < FRAMES.MATERIALISE_IMPLODE) {
@@ -515,44 +627,129 @@ function drawSparkStar(g: Graphics, at: Pt, t: number): void {
   g.fillCircle(at.x, at.y, 5 * (1 - t) + 2);
 }
 
-/** Rule 4: steel-2 30 % ellipse 90 × 150 with `cracks` lines; moon while an absorb flashes. */
-function drawBubble(g: Graphics, centre: Pt, cracks: number, flash: boolean): void {
+/** The six corners of the barrier hexagon: pointed top and bottom, 70 wide, 150 tall. */
+function hexagon(centre: Pt): Pt[] {
+  const hw = BARRIER_W / 2;
+  const hh = BARRIER_H / 2;
+  const q = hh / 2;
+  return [
+    { x: centre.x, y: centre.y - hh },
+    { x: centre.x + hw, y: centre.y - q },
+    { x: centre.x + hw, y: centre.y + q },
+    { x: centre.x, y: centre.y + hh },
+    { x: centre.x - hw, y: centre.y + q },
+    { x: centre.x - hw, y: centre.y - q },
+  ];
+}
+
+/** Half-width of the hexagon at a height `dy` from its centre (0 at the points, full across the middle). */
+function hexHalfWidth(dy: number): number {
+  const hh = BARRIER_H / 2;
+  const q = hh / 2;
+  const a = Math.abs(dy);
+  if (a <= q) return BARRIER_W / 2;
+  return (BARRIER_W / 2) * Math.max(0, (hh - a) / (hh - q));
+}
+
+/**
+ * 9.08 rule 1: a moon 35 % hexagon with a 2 px steel-2 edge in front of the fighter, a shimmer band sliding top →
+ * bottom (`shimmer` 0..1), one jagged crack per absorbed hit, and white for the absorb flash.
+ */
+function drawBarrier(g: Graphics, centre: Pt, facing: Facing, cracks: number, flash: boolean, shimmer: number): void {
+  const pts = hexagon(centre);
   g.clear();
-  g.fillStyle(flash ? P.moon : P.steel2, flash ? 0.6 : BUBBLE_ALPHA);
-  g.fillEllipse(centre.x, centre.y, BUBBLE_W, BUBBLE_H);
-  g.lineStyle(2, flash ? P.moon : P.steel2, 0.9);
-  g.strokeEllipse(centre.x, centre.y, BUBBLE_W, BUBBLE_H);
-  g.lineStyle(2, P.moon, 0.8);
+  g.fillStyle(flash ? P.white : P.moon, flash ? 0.7 : BARRIER_ALPHA);
+  g.fillPoints(pts, true);
+
+  // Shimmer: a faint band clipped to the hexagon's width at its height.
+  const top = centre.y - BARRIER_H / 2 + shimmer * BARRIER_H - BARRIER_SHIMMER_H / 2;
+  const bottom = top + BARRIER_SHIMMER_H;
+  const y0 = Math.max(centre.y - BARRIER_H / 2, top);
+  const y1 = Math.min(centre.y + BARRIER_H / 2, bottom);
+  if (y1 > y0) {
+    const w0 = hexHalfWidth(y0 - centre.y);
+    const w1 = hexHalfWidth(y1 - centre.y);
+    g.fillStyle(P.white, flash ? 0.2 : 0.16);
+    g.fillPoints([
+      { x: centre.x - w0, y: y0 }, { x: centre.x + w0, y: y0 },
+      { x: centre.x + w1, y: y1 }, { x: centre.x - w1, y: y1 },
+    ], true);
+  }
+
+  g.lineStyle(2, flash ? P.white : P.steel2, 1);
+  g.strokePoints(pts, true);
+
+  // Cracks: jagged polylines from the struck (outer) edge inward, one per absorbed hit, deterministic.
+  g.lineStyle(2, flash ? P.white : P.moon, 0.9);
   for (let k = 0; k < cracks; k += 1) {
-    // Deterministic jagged cracks from the rim inward, one per absorbed hit.
-    const ang = -0.6 + k * 2.1;
-    const rx = (BUBBLE_W / 2) * Math.cos(ang);
-    const ry = (BUBBLE_H / 2) * Math.sin(ang);
-    const x0 = centre.x + rx;
-    const y0 = centre.y + ry;
-    const x1 = centre.x + rx * 0.45 + (k % 2 ? 8 : -8);
-    const y1 = centre.y + ry * 0.45 + (k % 2 ? -6 : 6);
-    g.lineBetween(x0, y0, x1, y1);
+    const startY = centre.y + CRACK_START_DY[k % CRACK_START_DY.length]!;
+    const startX = centre.x + facing * hexHalfWidth(startY - centre.y);
+    const crack: Pt[] = [{ x: startX, y: startY }];
+    let x = startX;
+    let y = startY;
+    const sign = k % 2 ? -1 : 1;
+    for (let seg = 0; seg < CRACK_STEPS.length; seg += 1) {
+      const step = CRACK_STEPS[(seg + k) % CRACK_STEPS.length]!;
+      x -= facing * step.run;
+      y += sign * step.rise;
+      crack.push({ x, y });
+    }
+    g.strokePoints(crack, false);
+    // A short side branch off the second joint, the way glass splits.
+    const j = crack[2]!;
+    g.strokePoints([j, { x: j.x - facing * 6, y: j.y - sign * 11 }, { x: j.x - facing * 14, y: j.y - sign * 15 }], false);
   }
 }
 
-/** Rule 4: 8 steel shards flying out from the bubble over 10 frames. */
-function drawShards(g: Graphics, centre: Pt, t: number): void {
+/** 9.08 rule 1: a white ring rippling out from the impact point over 10 frames. */
+function drawRipple(g: Graphics, at: Pt, t: number): void {
   g.clear();
-  g.fillStyle(P.steel2, 1 - t);
+  g.lineStyle(3 - 2 * t, P.white, 0.9 * (1 - t));
+  g.strokeCircle(at.x, at.y, 8 + 40 * t);
+}
+
+/** 9.08 rule 1: the hexagon shatters into its six slices, each flying outward over 12 frames and tumbling. */
+function drawShards(g: Graphics, centre: Pt, facing: Facing, t: number): void {
+  const pts = hexagon(centre);
+  g.clear();
+  g.fillStyle(P.moon, 0.7 * (1 - t));
+  g.lineStyle(1, P.steel2, 1 - t);
+  const ease = 1 - (1 - t) * (1 - t);
   for (let k = 0; k < SHARD_COUNT; k += 1) {
-    const ang = (k / SHARD_COUNT) * Math.PI * 2 + 0.3;
-    const dist = 30 + 90 * t;
-    const x = centre.x + Math.cos(ang) * dist;
-    const y = centre.y + Math.sin(ang) * dist * (BUBBLE_H / BUBBLE_W) + 30 * t * t;
-    const s = 9 - 3 * t;
-    const rot = ang + t * 3;
-    g.fillTriangle(
-      x + Math.cos(rot) * s, y + Math.sin(rot) * s,
-      x + Math.cos(rot + 2.4) * s, y + Math.sin(rot + 2.4) * s,
-      x + Math.cos(rot + 4.2) * s * 0.6, y + Math.sin(rot + 4.2) * s * 0.6,
-    );
+    const a = pts[k]!;
+    const b = pts[(k + 1) % SHARD_COUNT]!;
+    const cx = (centre.x + a.x + b.x) / 3;
+    const cy = (centre.y + a.y + b.y) / 3;
+    const ang = Math.atan2(cy - centre.y, cx - centre.x);
+    const dx = Math.cos(ang) * SHARD_FLY * ease + facing * 24 * ease;
+    const dy = Math.sin(ang) * SHARD_FLY * 0.6 * ease + 40 * t * t;
+    const rot = (k % 2 ? 1 : -1) * 1.4 * ease;
+    const cos = Math.cos(rot);
+    const sin = Math.sin(rot);
+    const spin = (p: Pt): Pt => ({
+      x: cx + dx + (p.x - cx) * cos - (p.y - cy) * sin,
+      y: cy + dy + (p.x - cx) * sin + (p.y - cy) * cos,
+    });
+    const c = spin(centre);
+    const pa = spin(a);
+    const pb = spin(b);
+    g.fillTriangle(c.x, c.y, pa.x, pa.y, pb.x, pb.y);
+    g.strokeTriangle(c.x, c.y, pa.x, pa.y, pb.x, pb.y);
   }
+}
+
+/** 9.08 rule 5: 12 amber dots fading 60 % → 20 % along the predicted flight and a danger ring at the landing. */
+function drawPreview(g: Graphics, dots: Pt[], landing: Pt): void {
+  g.clear();
+  dots.forEach((d, k) => {
+    const u = dots.length > 1 ? k / (dots.length - 1) : 0;
+    g.fillStyle(P.amber1, PREVIEW_ALPHA0 + (PREVIEW_ALPHA1 - PREVIEW_ALPHA0) * u);
+    g.fillCircle(d.x, d.y, PREVIEW_DOT_R);
+  });
+  g.lineStyle(2, P.danger, 0.9);
+  g.strokeCircle(landing.x, landing.y, LANDING_R);
+  g.fillStyle(P.danger, 0.25);
+  g.fillCircle(landing.x, landing.y, LANDING_R - 4);
 }
 
 /** Rule 5: an 8 px steel bottle with a 12 px amber flame tail and a trail through the last 6 positions. */

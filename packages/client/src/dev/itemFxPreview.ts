@@ -5,6 +5,7 @@ import {
 } from "@midnight/shared";
 import { ItemFx, type HandPoint } from "../game/itemFx";
 import { P } from "../game/palette";
+import { THROW, chargeToRange, throwVelocity } from "../game/throwPreview";
 
 /**
  * Dev-only preview for 9.05 (`dev/itemfx.html`, not a build input). A night-1 fill, the roof line, two stand-in
@@ -22,6 +23,7 @@ type Effect =
   | "shield" | "absorb" | "break"
   | "molotov" | "banana" | "hazard-fire" | "hazard-peel" | "burn" | "slip"
   | "flash" | "flash-other"
+  | "charge" | "charge-full" | "release"
   | "clear";
 
 interface ItemFxDriver {
@@ -42,6 +44,7 @@ const EFFECTS: Effect[] = [
   "shield", "absorb", "break",
   "molotov", "banana", "hazard-fire", "hazard-peel", "burn", "slip",
   "flash", "flash-other",
+  "charge", "charge-full", "release",
 ];
 
 const LOCAL: PlayerIndex = 0;
@@ -59,6 +62,8 @@ class ItemFxPreviewScene extends Phaser.Scene {
   private dazzle!: Phaser.GameObjects.Graphics;
   private label!: Phaser.GameObjects.Text;
   private current = "-";
+  /** The fabricated punch key stays held while the throw preview charges (`release` lets go). */
+  private chargeHeld = false;
 
   constructor() {
     super("itemfx-preview");
@@ -118,8 +123,9 @@ class ItemFxPreviewScene extends Phaser.Scene {
       g.fillStyle(this.itemFx.materialising(i) ? P.steel1 : P.moon, 1);
       g.fillCircle(hand.x, hand.y, 5);
       if (f.item && !this.itemFx.materialising(i)) {
+        const k = this.itemFx.itemScale(i); // 9.08 rule 3: the sprite pops 1.6 → 1 as it appears
         g.fillStyle(P.amber1, 1);
-        g.fillRect(hand.x - 4, hand.y - 16, 8, 12); // stand-in for 11.01's item sprite
+        g.fillRect(hand.x - 4 * k, hand.y - 10 - 6 * k, 8 * k, 12 * k); // stand-in for 11.01's item sprite
       }
     }
 
@@ -155,6 +161,10 @@ class ItemFxPreviewScene extends Phaser.Scene {
       if (f.action?.kind === "laser") {
         f.action.elapsed += 1;
         if (f.action.elapsed >= ARSENAL.LASER_CHARGE + ARSENAL.LASER_ACTIVE + ARSENAL.LASER_RECOVERY) f.action = null;
+      }
+      const charging = f.action as { kind: string; phase?: string; charge?: number } | null;
+      if (charging?.kind === "throw" && charging.phase === "charge" && this.chargeHeld) {
+        charging.charge = Math.min(THROW.CHARGE_MAX, (charging.charge ?? 0) + 1);
       }
     }
     for (let k = s.projectiles.length - 1; k >= 0; k -= 1) {
@@ -272,7 +282,29 @@ class ItemFxPreviewScene extends Phaser.Scene {
         other.dazzle = ARSENAL.DAZZLE_TICKS;
         this.pending.push({ type: "FLASH", player: 0 });
         break;
+      case "charge":
+      case "charge-full": {
+        // Lane A's charging ThrowAction (9.08); the sim's `charge` counts up while the key is held.
+        if (me.item?.kind !== "molotov") me.item = { kind: "molotov", uses: ITEMS.molotov.uses };
+        const charge = name === "charge-full" ? THROW.CHARGE_MAX : 0;
+        me.action = { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge, elapsed: 0, released: false } as unknown as NonNullable<typeof me.action>;
+        this.chargeHeld = name === "charge";
+        break;
+      }
+      case "release": {
+        const a = me.action as { kind: string; charge?: number } | null;
+        const charge = a?.kind === "throw" ? a.charge ?? 0 : THROW.CHARGE_MAX * 0.7;
+        me.action = null;
+        this.chargeHeld = false;
+        const hand = this.hand(0);
+        const v = throwVelocity(chargeToRange(charge));
+        const p: Projectile = { id: s.nextId++, kind: "molotov", owner: 0, x: hand.x, y: hand.y, vx: me.facing * v.vx, vy: v.vy };
+        s.projectiles.push(p);
+        this.pending.push({ type: "PROJECTILE_SPAWN", id: p.id, kind: "molotov", owner: 0 });
+        break;
+      }
       case "clear":
+        this.chargeHeld = false;
         me.item = null;
         other.item = null;
         me.action = null;
