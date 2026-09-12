@@ -2,13 +2,14 @@ import { BALANCE, PIT, WORLD, type MapId } from "../constants";
 import { risingEdges, type InputFrame } from "../input";
 import { playerIndices } from "./create";
 import { startSlash, usePunchWithItem } from "./items";
-import { startLaser } from "./laser";
+import { laserPhase, startLaser } from "./laser";
 import { groundYAt, platformAt, surfaceBelow } from "./maps";
 import type { Arm, FighterState, MatchState, PlayerIndex, SimEvent } from "./types";
 
 /**
  * Reads input; sets blocking, starts punches, laser and jumps, sets velocities. Does not move the fighter.
- * A KO'd fighter or one down a pit takes no input.
+ * A KO'd fighter or one down a pit takes no input. Only a punch or a block pins a grounded fighter in place
+ * (9.10): a laser or a throw is charged, fired and released on the move.
  */
 export function controlFighter(s: MatchState, i: PlayerIndex, input: InputFrame, events: SimEvent[]): void {
   const f = s.fighters[i];
@@ -41,15 +42,38 @@ export function controlFighter(s: MatchState, i: PlayerIndex, input: InputFrame,
     else if (edge.special) startLaser(s, i, events);
   }
 
-  const lockedOnGround = f.grounded && (f.action !== null || f.blocking);
+  const lockedOnGround = f.grounded && (actionLocksMovement(f) || f.blocking);
   f.vx = lockedOnGround ? 0 : (input.left ? -BALANCE.WALK_SPEED : 0) + (input.right ? BALANCE.WALK_SPEED : 0);
 
-  if (edge.jump && f.grounded && f.action === null && !f.blocking) {
+  if (edge.jump && f.grounded && !actionLocksMovement(f) && !f.blocking) {
     f.vy = BALANCE.JUMP_VELOCITY;
     f.grounded = false;
     f.jumpTicks = 0;
     events.push({ type: "JUMP", player: i });
   }
+}
+
+/**
+ * Whether an action pins a grounded fighter: only a punch does. Every other action — a laser in any of its three
+ * phases, a throw being charged or released, and anything added later — leaves walking and jumping alone, so a new
+ * action is mobile by default (9.10). Blocking is a separate lock, handled by `controlFighter`.
+ */
+function actionLocksMovement(f: FighterState): boolean {
+  return f.action?.kind === "punch";
+}
+
+/**
+ * Whether the fighter's aim is committed, which freezes its facing. A punch commits for its whole animation, a
+ * laser from its first beam tick, a throw from its release. A *charging* laser or throw still turns toward the
+ * nearest opponent, so walking past someone mid-charge re-aims; the beam or the release then locks the direction.
+ */
+export function aimLocked(f: FighterState): boolean {
+  const a = f.action;
+  if (!a) return false;
+  if (a.kind === "punch") return true;
+  if (a.kind === "throw") return a.phase === "release";
+  const phase = laserPhase(f);
+  return phase === "beam" || phase === "recover";
 }
 
 /**
@@ -102,11 +126,14 @@ export function applyPhysics(f: FighterState, i: PlayerIndex, map: MapId, events
   }
 }
 
-/** A fighter not currently acting faces its nearest living opponent. Ties keep facing; dead fighters keep facing. */
+/**
+ * A fighter whose aim is not committed faces its nearest living opponent. Ties keep facing; dead fighters keep
+ * facing. A laser or throw being charged still tracks (9.10); see `aimLocked`.
+ */
 export function updateFacing(s: MatchState): void {
   for (const i of playerIndices(s)) {
     const f = s.fighters[i]!;
-    if (f.action !== null || f.hp <= 0) continue;
+    if (aimLocked(f) || f.hp <= 0) continue;
     let best: FighterState | null = null;
     let bestDist = Infinity;
     for (const j of playerIndices(s)) {

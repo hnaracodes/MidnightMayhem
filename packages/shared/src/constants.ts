@@ -12,7 +12,7 @@ export const WORLD = {
 } as const;
 
 export const BALANCE = {
-  MAX_HP: 40,
+  MAX_HP: 50,
   PUNCH_DAMAGE: 12,
   CHIP_DAMAGE: 3,
   PUNCH_STARTUP: 4,

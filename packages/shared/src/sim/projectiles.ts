@@ -42,7 +42,11 @@ export function chargeToRange(charge: number): number {
   return THROW.MIN_RANGE + (THROW.MAX_RANGE - THROW.MIN_RANGE) * t;
 }
 
-/** Starts a throw action for the held throwable in its charge phase; true when the punch edge was consumed. */
+/**
+ * Starts a throw action for the held throwable in its charge phase; true when the punch edge was consumed.
+ * The charge does not pin the fighter (9.10): it walks and jumps while winding up, and `releaseThrows` spawns the
+ * projectile from wherever it stands, in the facing `updateFacing` froze when the release phase began.
+ */
 export function startThrow(s: MatchState, i: PlayerIndex, arm: Arm, _events: SimEvent[]): boolean {
   const f = s.fighters[i];
   if (!f || !f.item || !isThrowable(f.item.kind)) return false;

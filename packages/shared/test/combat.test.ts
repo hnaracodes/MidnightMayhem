@@ -62,7 +62,8 @@ describe("punch resolution", () => {
   it("same-tick trade lands both", () => {
     const { s, events } = run(fighting(60), TOTAL, [P_L, P_L]);
     expect(events.filter((e) => e.type === "HIT")).toHaveLength(2);
-    expect(s.fighters[0]!.hp).toBe(28); expect(s.fighters[1]!.hp).toBe(28);
+    const traded = BALANCE.MAX_HP - BALANCE.PUNCH_DAMAGE;
+    expect(s.fighters[0]!.hp).toBe(traded); expect(s.fighters[1]!.hp).toBe(traded);
   });
   it("held punch does not repeat", () => {
     expect(run(fighting(60), TOTAL * 3, [P_L, EMPTY_FRAME]).events.filter((e) => e.type === "PUNCH")).toHaveLength(1);

@@ -432,31 +432,50 @@ describe("6. off-world and pits", () => {
 });
 
 describe("7. throw locks", () => {
-  it("rule 4: no walk, jump or block while charging; nor through the release and recovery; then free", () => {
+  it("rule 4 (9.10): walks and jumps while charging, through the release and the recovery; block and a second punch are still refused", () => {
     // The edge tick must not hold block: a block held on the punch edge suppresses the punch entirely (the
-    // fighter just blocks), which would make every lock assertion below pass without any throw existing.
+    // fighter just blocks), which would leave no throw for the assertions below to be about.
     const start = run(fighting(), 1, [P_L, EMPTY_FRAME]);
     expect(start.s.fighters[0]!.action).toMatchObject({ kind: "throw", phase: "charge", charge: 1 });
-    // 10 ticks of charge with walk, jump, block and the other punch all held: nothing moves
+    // 10 ticks of charge with walk, jump, block and the other punch all held: it walks and jumps, and the
+    // charge keeps building; blocking and a second punch are still shut out by the action.
     const held: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchL: true, punchR: true, right: true, jump: true, block: true }, EMPTY_FRAME];
     const c = run(start.s, 10, held);
-    expect(c.events.some((e) => e.type === "PUNCH" || e.type === "JUMP")).toBe(false);
-    expect(c.s.fighters[0]!.x).toBe(280);
-    expect(c.s.fighters[0]!.grounded).toBe(true);
+    expect(c.events.some((e) => e.type === "PUNCH")).toBe(false);
+    expect(c.events.filter((e) => e.type === "JUMP")).toHaveLength(1);
+    expect(c.s.fighters[0]!.x).toBe(280 + 10 * BALANCE.WALK_SPEED);
+    expect(c.s.fighters[0]!.grounded).toBe(false);
     expect(c.s.fighters[0]!.blocking).toBe(false);
     expect(c.s.fighters[0]!.action).toMatchObject({ kind: "throw", phase: "charge", charge: 11, elapsed: 0 });
-    // key up: release; the same locks hold through release and recovery
+    // key up: release. It keeps moving through the release and the recovery, and the projectile leaves from
+    // wherever it is by then, not from where the charge began.
     const rel: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchR: true, right: true, jump: true, block: true }, EMPTY_FRAME];
     const r = run(c.s, THROW_TOTAL, rel);
-    expect(r.events.some((e) => e.type === "PUNCH" || e.type === "JUMP")).toBe(false);
+    expect(r.events.some((e) => e.type === "PUNCH")).toBe(false);
     expect(r.events.some((e) => e.type === "PROJECTILE_SPAWN")).toBe(true);
-    expect(r.s.fighters[0]!.x).toBe(280);
+    expect(r.s.fighters[0]!.x).toBe(280 + (10 + THROW_TOTAL) * BALANCE.WALK_SPEED);
     expect(r.s.fighters[0]!.blocking).toBe(false);
     expect(r.s.fighters[0]!.action).toMatchObject({ kind: "throw", phase: "release", elapsed: THROW_TOTAL - 1, released: true });
-    // the action clears before input is read, so the fighter walks that same tick
+    // the projectile leaves from the hand where the fighter has walked to, not from where the charge began
+    let cur = c.s;
+    let handX = 0;
+    let projX = 0;
+    for (let k = 0; k < THROW_TOTAL; k++) {
+      const tick = step(cur, rel);
+      cur = tick.state;
+      if (tick.events.some((e) => e.type === "PROJECTILE_SPAWN")) {
+        handX = cur.fighters[0]!.x + HAND_X;
+        projX = cur.projectiles[0]!.x;
+        break;
+      }
+    }
+    expect(handX).toBeGreaterThan(280 + 10 * BALANCE.WALK_SPEED + HAND_X); // it walked on through the release
+    expect(projX).toBeGreaterThan(handX); // and left from that hand, already a tick downrange
+    // the action clears before input is read, so the fighter keeps walking that same tick
+    const x0 = r.s.fighters[0]!.x;
     const free = run(r.s, 5, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]);
     expect(free.s.fighters[0]!.action).toBeNull();
-    expect(free.s.fighters[0]!.x).toBe(280 + 5 * BALANCE.WALK_SPEED);
+    expect(free.s.fighters[0]!.x).toBe(x0 + 5 * BALANCE.WALK_SPEED);
   });
   it("a punch during the throw is not blocked even with block held", () => {
     const s = fighting("molotov", 460, 400);

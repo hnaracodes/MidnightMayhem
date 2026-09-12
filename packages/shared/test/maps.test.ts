@@ -85,7 +85,10 @@ describe("rule 1: roof is unchanged", () => {
     let s = createMatch();
     const events: SimEvent[] = [];
     // Round 1 fights from tick 181 to 1980; 1500 scripted ticks then 80 idle so every jump has landed.
+    // Both fighters are topped up every tick so no KO ends the round: this is a geometry test, and a round reset
+    // lands a fighter that was still in the air without a LAND event, which would fail the count below.
     for (let t = 0; t < 1580; t++) {
+      for (const f of s.fighters) f.hp = BALANCE.MAX_HP;
       const scripted = t < 1500;
       const r = step(s, [
         { ...EMPTY_FRAME, right: scripted && t % 7 < 4, jump: scripted && t % 50 === 0 },

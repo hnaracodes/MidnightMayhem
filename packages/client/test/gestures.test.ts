@@ -7,8 +7,8 @@ import { Jump } from "../src/vision/gestures/jump";
 import { Punch } from "../src/vision/gestures/punch";
 import { Walk } from "../src/vision/gestures/walk";
 import {
-  DEPTH_ENTER_NO_HAND, EXT_ENTER, JAB_EXIT, JAB_EXT, JAB_RISE, JAB_WINDOW_MS, SIDE_JAB_ENABLED, THRUST_DROP,
-  THRUST_WINDOW_MS,
+  DEPTH_ENTER_NO_HAND, EXT_ENTER, JAB_EXIT, JAB_EXT, JAB_RISE, JAB_WINDOW_MS, PUNCH_RETRIGGER_COOLDOWN_MS,
+  SIDE_JAB_ENABLED, THRUST_DROP, THRUST_WINDOW_MS,
 } from "../src/vision/thresholds";
 import type { Landmark } from "../src/vision/workerClient";
 
@@ -149,16 +149,40 @@ describe("Punch", () => {
     expect(run(p, metrics({ extL: 0.9, depthL: 0.5, atHeightL: true, thrustL: true }), 10)).toBe(false);
   });
 
-  it("holds at least 100 ms, then releases when the arm retracts", () => {
+  it("emits one short pulse for a held pose and re-arms after the motion signal clears", () => {
     const p = new Punch("R");
     const thrownR = metrics({ extR: 0.4, depthR: 0.5, atHeightR: true, thrustR: true });
-    p.update(thrownR, 0);
+    expect(p.update(thrownR, 0)).toBe(false);
     expect(p.update(thrownR, 33)).toBe(true);
-    const retracted = metrics({ extR: 0.9, depthR: 0.0 });
-    expect(p.update(retracted, 50)).toBe(true);
-    expect(p.update(retracted, 70)).toBe(true);
-    expect(p.update(retracted, 90)).toBe(true);
-    expect(p.update(retracted, 140)).toBe(false);
+    expect(p.update(thrownR, 99)).toBe(true);
+    expect(p.update(thrownR, 165)).toBe(false);
+    // A held raised hand still meets the level gates, but cannot repeatedly pulse.
+    expect(run(p, thrownR, 6, 198)).toBe(false);
+
+    // Once the old motion event ages out, a new punch motion can generate one new pulse.
+    const held = metrics({ extR: 0.4, depthR: 0.5, atHeightR: true, thrustR: false });
+    expect(p.update(held, 400)).toBe(false);
+    expect(p.update(thrownR, 433)).toBe(false);
+    expect(p.update(thrownR, 466)).toBe(true);
+  });
+
+  it("does not retrigger from a retraction-sized motion during the short cooldown", () => {
+    const p = new Punch("L");
+    const thrownL = metrics({ extL: 0.4, depthL: 0.5, atHeightL: true, thrustL: true });
+    const heldL = metrics({ extL: 0.4, depthL: 0.5, atHeightL: true, thrustL: false });
+
+    expect(p.update(thrownL, 0)).toBe(false);
+    expect(p.update(thrownL, 33)).toBe(true);
+    // The held frame clears the previous motion; the retraction-shaped signal follows immediately.
+    expect(p.update(heldL, 66)).toBe(true);
+    // The original 100 ms pulse is still visible here; it must then clear instead of starting again.
+    expect(p.update(thrownL, 132)).toBe(true);
+    expect(p.update(thrownL, 165)).toBe(false);
+
+    // A later, distinct motion can still start a new punch after the cooldown.
+    expect(p.update(heldL, 33 + PUNCH_RETRIGGER_COOLDOWN_MS)).toBe(false);
+    expect(p.update(thrownL, 66 + PUNCH_RETRIGGER_COOLDOWN_MS)).toBe(false);
+    expect(p.update(thrownL, 99 + PUNCH_RETRIGGER_COOLDOWN_MS)).toBe(true);
   });
 
   it("uses only its own arm", () => {
@@ -199,16 +223,16 @@ describe("Punch: side-jab entry", () => {
     expect(p.diag()).toMatchObject({ jabOk: true, extOk: false, depthOk: false, thrustOk: false, path: "jab" });
   });
 
-  it("releases when the arm comes back below JAB_EXIT, not on the thrust exits", () => {
+  it("pulses once per jab motion instead of holding the indicator while the arm is out", () => {
     const p = new Punch("R");
     const jabR = metrics({ extR: 1.0, atHeightR: true, sideR: JAB_EXT + 0.08, jabRiseR: JAB_RISE + 0.3 });
     run(p, jabR, 2);
-    // Still out past the jab window: the rise has aged out but the level holds, and ext > EXT_EXIT is not an exit here.
+    // Still out past the jab window: the level holds but the old motion signal expires, so the pulse clears.
     const held = metrics({ extR: 1.0, atHeightR: true, sideR: JAB_EXT + 0.05, jabRiseR: 0 });
-    expect(run(p, held, 10, 66)).toBe(true);
-    const back = metrics({ extR: 0.8, atHeightR: true, sideR: JAB_EXIT - 0.05, jabRiseR: 0 });
-    expect(run(p, back, 3, 500)).toBe(false);
-    expect(p.diag().path).toBeNull();
+    expect(run(p, held, 10, 66)).toBe(false);
+    // The next fast jab is a separate motion and pulses after debounce.
+    expect(p.update(jabR, 500)).toBe(false);
+    expect(p.update(jabR, 533)).toBe(true);
   });
 
   it("crossed arms (side negative) never jab-punch even with a fast move", () => {
