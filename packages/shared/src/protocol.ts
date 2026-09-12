@@ -11,6 +11,7 @@ export const InputFrameSchema = z.object({
   left: z.boolean(), right: z.boolean(), jump: z.boolean(),
   punchL: z.boolean(), punchR: z.boolean(), block: z.boolean(),
   special: z.boolean(), item: z.enum(ITEM_IDS).nullable(),
+  chop: z.boolean(), sweep: z.boolean(),
 }).strict();
 
 export const MatchConfigSchema = z.object({

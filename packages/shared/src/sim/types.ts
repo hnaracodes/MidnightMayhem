@@ -9,7 +9,8 @@ export type Phase = "COUNTDOWN" | "FIGHTING" | "ROUND_END" | "MATCH_END";
 /** A TEAM index (== player index in free-for-all), or "draw". */
 export type Winner = number | "draw";
 
-export interface HeldItem { kind: ItemId; uses: number }
+/** `ticksLeft` counts down a timed item (9.10 sword); null for a use-counted one. */
+export interface HeldItem { kind: ItemId; uses: number; ticksLeft: number | null }
 
 export interface PunchAction { kind: "punch"; arm: Arm; elapsed: number; landed: boolean; sword: boolean }
 /**
@@ -21,7 +22,9 @@ export interface ThrowAction {
   phase: "charge" | "release"; charge: number; elapsed: number; released: boolean;
 }
 export interface LaserAction { kind: "laser"; elapsed: number; hit: PlayerIndex[] }
-export type Action = PunchAction | ThrowAction | LaserAction;
+/** 9.10: a sword chop or sweep; timing and hitbox from ARSENAL.CHOP_* / SWEEP_*. */
+export interface SlashAction { kind: "slash"; style: "chop" | "sweep"; elapsed: number; landed: boolean }
+export type Action = PunchAction | ThrowAction | LaserAction | SlashAction;
 
 export interface FighterState {
   character: CharacterId;
@@ -95,6 +98,7 @@ export type SimEvent =
   | { type: "HAZARD_SPAWN"; id: number; kind: Hazard["kind"]; x: number }
   | { type: "HAZARD_HIT"; id: number; kind: Hazard["kind"]; target: PlayerIndex; damage: number }
   | { type: "FLASH"; player: PlayerIndex }
+  | { type: "SLASH"; player: PlayerIndex; style: "chop" | "sweep" }
   | { type: "PIT_FALL"; player: PlayerIndex }
   | { type: "PIT_RESPAWN"; player: PlayerIndex }
   | { type: "LAND"; player: PlayerIndex };
