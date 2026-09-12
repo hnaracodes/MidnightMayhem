@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ARSENAL, BALANCE, EMPTY_FRAME, ITEMS, THROW, WORLD,
   type InputFrame, type ItemId, type MatchState, type SimEvent,
@@ -9,6 +9,31 @@ import { advanceProjectiles, chargeToRange, startThrow, throwVelocity, THROW_REL
 import { advanceHazards, hazardRect, spawnHazard } from "../src/sim/hazards";
 
 const NONE: [InputFrame, InputFrame] = [EMPTY_FRAME, EMPTY_FRAME];
+
+// The hold-to-charge path (9.08) is off by default since the owner made throwables use-only (2026-09-12); every
+// rule below that holds a key still runs with the flag on, so the path stays verified for when it is turned back on.
+const throwFlags = THROW as { CHARGE_ENABLED: boolean };
+const DEFAULT_CHARGE_ENABLED = THROW.CHARGE_ENABLED;
+beforeAll(() => { throwFlags.CHARGE_ENABLED = true; });
+afterAll(() => { throwFlags.CHARGE_ENABLED = DEFAULT_CHARGE_ENABLED; });
+
+describe("0. use-only throws (CHARGE_ENABLED false, the shipped default)", () => {
+  beforeAll(() => { throwFlags.CHARGE_ENABLED = false; });
+  afterAll(() => { throwFlags.CHARGE_ENABLED = true; });
+  it("the shipped default is use-only", () => {
+    expect(DEFAULT_CHARGE_ENABLED).toBe(false);
+  });
+  it("a tap, a 30-tick hold and a 90-tick hold all land at the same VISION_CHARGE range", () => {
+    const tap = landed("molotov");
+    const d1 = tap.h.x - (280 + HAND_X);
+    expect(d1).toBeGreaterThanOrEqual(MEDIUM_RANGE - 15);
+    expect(d1).toBeLessThanOrEqual(MEDIUM_RANGE + 15);
+    // the key never comes up: with charging off the throw still leaves at once and lands at the same spot
+    const held = runUntil(fighting("molotov"), 300, [P_L, EMPTY_FRAME], (e) => e.type === "HAZARD_SPAWN");
+    expect(held.tick).toBeGreaterThan(0);
+    expect(Math.abs(held.s.hazards[0]!.x - tap.h.x)).toBeLessThan(1);
+  });
+});
 const P_L: InputFrame = { ...EMPTY_FRAME, punchL: true };
 /** Ticks from the release (key up or CHARGE_MAX) until the action clears; combat.ts owns the clear. */
 const THROW_TOTAL = THROW.RELEASE_TICKS + THROW.RECOVERY;
@@ -37,7 +62,7 @@ function fighting(item: ItemId | null = "molotov", x0 = 280, x1 = 680): MatchSta
   s.phase = "FIGHTING";
   s.fighters[0]!.x = x0; s.fighters[1]!.x = x1;
   s.fighters[0]!.facing = x0 < x1 ? 1 : -1; s.fighters[1]!.facing = x1 < x0 ? 1 : -1;
-  if (item) s.fighters[0]!.item = { kind: item, uses: ITEMS[item].uses };
+  if (item) s.fighters[0]!.item = { kind: item, uses: ITEMS[item].uses, ticksLeft: ITEMS[item].ttl ?? null };
   return s;
 }
 
@@ -98,7 +123,7 @@ describe("1. throw release (9.08 charged, aimed)", () => {
     expect(p.vx).toBeCloseTo(v.vx, 5);
     expect(r.s.fighters[0]!.action).toMatchObject({ kind: "throw", item: "molotov", arm: "L", phase: "release", released: true });
     expect(r.events.filter((e) => e.type === "ITEM_USE")).toEqual([{ type: "ITEM_USE", player: 0, item: "molotov" }]);
-    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: 1 });
+    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: 1, ticksLeft: null });
   });
   it("rule 1: a tap lands ≈ 484 px (0.7 of the range) from the hand on roof", () => {
     const d = landingDistance(1);
@@ -106,14 +131,14 @@ describe("1. throw release (9.08 charged, aimed)", () => {
     expect(d).toBeLessThanOrEqual(MEDIUM_RANGE + 15);
     expect(MEDIUM_RANGE).toBeCloseTo(0.7 * (640 - 120) + 120, 5);
   });
-  it("rule 2: held 45+ ticks lands 640 ± 15; held 22 ticks lands ≈ 374 ± 15", () => {
-    const full = landingDistance(50);
+  it("rule 2: held CHARGE_MAX+ ticks lands 640 ± 15; held 22 ticks lands at chargeToRange(22) ± 15", () => {
+    const full = landingDistance(THROW.CHARGE_MAX + 5);
     expect(full).toBeGreaterThanOrEqual(THROW.MAX_RANGE - 15);
     expect(full).toBeLessThanOrEqual(THROW.MAX_RANGE + 15);
     const half = landingDistance(22);
     expect(half).toBeGreaterThanOrEqual(chargeToRange(22) - 15);
     expect(half).toBeLessThanOrEqual(chargeToRange(22) + 15);
-    expect(chargeToRange(22)).toBeCloseTo(374.2, 0);
+    expect(chargeToRange(22)).toBeCloseTo(THROW.MIN_RANGE + (THROW.MAX_RANGE - THROW.MIN_RANGE) * (22 / THROW.CHARGE_MAX), 0);
   });
   it("rule 3: holding past CHARGE_MAX auto-releases at CHARGE_MAX", () => {
     const held = run(fighting(), THROW.CHARGE_MAX - 1, [P_L, EMPTY_FRAME]);
@@ -150,7 +175,7 @@ describe("1. throw release (9.08 charged, aimed)", () => {
     expect(s.fighters[0]!.action).toBeNull();
     s.fighters[0]!.item = null;
     expect(startThrow(s, 0, "L", [])).toBe(false);
-    s.fighters[0]!.item = { kind: "banana", uses: 1 };
+    s.fighters[0]!.item = { kind: "banana", uses: 1, ticksLeft: null };
     expect(startThrow(s, 0, "R", [])).toBe(true);
     expect(s.fighters[0]!.action).toEqual({ kind: "throw", item: "banana", arm: "R", phase: "charge", charge: 0, elapsed: 0, released: false });
   });
@@ -286,7 +311,7 @@ describe("3. fire damage", () => {
     const s = createMatch({ players: 2, teams: "ffa", mode: "deathmatch", map: "roof", items: true });
     s.phase = "FIGHTING";
     spawnHazard(s, "fire", 0, 480, WORLD.ROOF_Y, []);
-    s.fighters[1]!.x = 480; s.fighters[1]!.item = { kind: "shield", uses: 3 }; s.fighters[0]!.x = 100;
+    s.fighters[1]!.x = 480; s.fighters[1]!.item = { kind: "shield", uses: 3, ticksLeft: null }; s.fighters[0]!.x = 100;
     const { s: mid, events } = run(s, 3 * ARSENAL.FIRE_EVERY);
     expect(events.filter((e) => e.type === "SHIELD_ABSORB")).toHaveLength(3);
     expect(events.filter((e) => e.type === "ITEM_BREAK")).toHaveLength(1);
@@ -329,7 +354,7 @@ describe("5. banana peel", () => {
     expect(run(far, ARSENAL.PEEL_TICKS - 1).s.hazards).toHaveLength(0); // age 1 after landing, gone at age 900
   });
   it("rule 5: the banana uses the same charge (a full hold lands 640 ± 15, a tap ≈ 484)", () => {
-    const full = landingDistance(50, "banana");
+    const full = landingDistance(THROW.CHARGE_MAX + 5, "banana");
     expect(Math.abs(full - THROW.MAX_RANGE)).toBeLessThanOrEqual(15);
     const tap = landingDistance(1, "banana");
     expect(Math.abs(tap - MEDIUM_RANGE)).toBeLessThanOrEqual(15);
@@ -432,31 +457,50 @@ describe("6. off-world and pits", () => {
 });
 
 describe("7. throw locks", () => {
-  it("rule 4: no walk, jump or block while charging; nor through the release and recovery; then free", () => {
+  it("rule 4 (9.10): walks and jumps while charging, through the release and the recovery; block and a second punch are still refused", () => {
     // The edge tick must not hold block: a block held on the punch edge suppresses the punch entirely (the
-    // fighter just blocks), which would make every lock assertion below pass without any throw existing.
+    // fighter just blocks), which would leave no throw for the assertions below to be about.
     const start = run(fighting(), 1, [P_L, EMPTY_FRAME]);
     expect(start.s.fighters[0]!.action).toMatchObject({ kind: "throw", phase: "charge", charge: 1 });
-    // 10 ticks of charge with walk, jump, block and the other punch all held: nothing moves
+    // 10 ticks of charge with walk, jump, block and the other punch all held: it walks and jumps, and the
+    // charge keeps building; blocking and a second punch are still shut out by the action.
     const held: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchL: true, punchR: true, right: true, jump: true, block: true }, EMPTY_FRAME];
     const c = run(start.s, 10, held);
-    expect(c.events.some((e) => e.type === "PUNCH" || e.type === "JUMP")).toBe(false);
-    expect(c.s.fighters[0]!.x).toBe(280);
-    expect(c.s.fighters[0]!.grounded).toBe(true);
+    expect(c.events.some((e) => e.type === "PUNCH")).toBe(false);
+    expect(c.events.filter((e) => e.type === "JUMP")).toHaveLength(1);
+    expect(c.s.fighters[0]!.x).toBe(280 + 10 * BALANCE.WALK_SPEED);
+    expect(c.s.fighters[0]!.grounded).toBe(false);
     expect(c.s.fighters[0]!.blocking).toBe(false);
     expect(c.s.fighters[0]!.action).toMatchObject({ kind: "throw", phase: "charge", charge: 11, elapsed: 0 });
-    // key up: release; the same locks hold through release and recovery
+    // key up: release. It keeps moving through the release and the recovery, and the projectile leaves from
+    // wherever it is by then, not from where the charge began.
     const rel: [InputFrame, InputFrame] = [{ ...EMPTY_FRAME, punchR: true, right: true, jump: true, block: true }, EMPTY_FRAME];
     const r = run(c.s, THROW_TOTAL, rel);
-    expect(r.events.some((e) => e.type === "PUNCH" || e.type === "JUMP")).toBe(false);
+    expect(r.events.some((e) => e.type === "PUNCH")).toBe(false);
     expect(r.events.some((e) => e.type === "PROJECTILE_SPAWN")).toBe(true);
-    expect(r.s.fighters[0]!.x).toBe(280);
+    expect(r.s.fighters[0]!.x).toBe(280 + (10 + THROW_TOTAL) * BALANCE.WALK_SPEED);
     expect(r.s.fighters[0]!.blocking).toBe(false);
     expect(r.s.fighters[0]!.action).toMatchObject({ kind: "throw", phase: "release", elapsed: THROW_TOTAL - 1, released: true });
-    // the action clears before input is read, so the fighter walks that same tick
+    // the projectile leaves from the hand where the fighter has walked to, not from where the charge began
+    let cur = c.s;
+    let handX = 0;
+    let projX = 0;
+    for (let k = 0; k < THROW_TOTAL; k++) {
+      const tick = step(cur, rel);
+      cur = tick.state;
+      if (tick.events.some((e) => e.type === "PROJECTILE_SPAWN")) {
+        handX = cur.fighters[0]!.x + HAND_X;
+        projX = cur.projectiles[0]!.x;
+        break;
+      }
+    }
+    expect(handX).toBeGreaterThan(280 + 10 * BALANCE.WALK_SPEED + HAND_X); // it walked on through the release
+    expect(projX).toBeGreaterThan(handX); // and left from that hand, already a tick downrange
+    // the action clears before input is read, so the fighter keeps walking that same tick
+    const x0 = r.s.fighters[0]!.x;
     const free = run(r.s, 5, [{ ...EMPTY_FRAME, right: true }, EMPTY_FRAME]);
     expect(free.s.fighters[0]!.action).toBeNull();
-    expect(free.s.fighters[0]!.x).toBe(280 + 5 * BALANCE.WALK_SPEED);
+    expect(free.s.fighters[0]!.x).toBe(x0 + 5 * BALANCE.WALK_SPEED);
   });
   it("a punch during the throw is not blocked even with block held", () => {
     const s = fighting("molotov", 460, 400);
@@ -475,7 +519,7 @@ describe("8. hit during the charge or release", () => {
     expect(r.events.some((e) => e.type === "PROJECTILE_SPAWN")).toBe(false);
     expect(r.events.some((e) => e.type === "ITEM_USE")).toBe(false);
     expect(r.s.projectiles).toHaveLength(0);
-    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: ITEMS.molotov.uses });
+    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: ITEMS.molotov.uses, ticksLeft: null });
     expect(r.s.fighters[0]!.action).toBeNull();
     // a fresh edge after the hitstun charges again
     const again = run(run(r.s, 1).s, 3, [P_L, EMPTY_FRAME]);
@@ -490,7 +534,7 @@ describe("8. hit during the charge or release", () => {
     expect(r.events.some((e) => e.type === "PROJECTILE_SPAWN")).toBe(false);
     expect(r.events.some((e) => e.type === "ITEM_USE")).toBe(false);
     expect(r.s.projectiles).toHaveLength(0);
-    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: ITEMS.molotov.uses });
+    expect(r.s.fighters[0]!.item).toEqual({ kind: "molotov", uses: ITEMS.molotov.uses, ticksLeft: null });
     expect(r.s.fighters[0]!.action).toBeNull();
   });
 });

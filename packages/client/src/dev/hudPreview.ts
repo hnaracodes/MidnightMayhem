@@ -47,13 +47,13 @@ function demo(s: MatchState): void {
   const [a, b, c, d] = s.fighters;
   if (a) {
     a.hp = 28;
-    a.item = { kind: "sword", uses: 4 };
+    a.item = { kind: "sword", uses: 4, ticksLeft: null };
     a.itemsUsed = ["sword"];
     a.laserCooldown = 300;
   }
   if (b) {
     b.hp = 12;
-    b.item = { kind: "shield", uses: 1 };
+    b.item = { kind: "shield", uses: 1, ticksLeft: null };
     b.itemsUsed = ["molotov", "shield"];
     b.laserCooldown = 0;
     b.dazzle = ARSENAL.DAZZLE_TICKS;
@@ -65,7 +65,7 @@ function demo(s: MatchState): void {
   }
   if (d) {
     d.hp = 36;
-    d.item = { kind: "banana", uses: ITEMS.banana.uses };
+    d.item = { kind: "banana", uses: ITEMS.banana.uses, ticksLeft: null };
     d.itemsUsed = ["molotov", "banana"];
     d.laserCooldown = 40;
   }

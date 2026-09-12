@@ -202,7 +202,7 @@ class ItemFxPreviewScene extends Phaser.Scene {
     const other = s.fighters[1]!;
     if (name.startsWith("equip-")) {
       const item = name.slice("equip-".length) as ItemId;
-      me.item = { kind: item, uses: ITEMS[item].uses };
+      me.item = { kind: item, uses: ITEMS[item].uses, ticksLeft: null };
       this.pending.push({ type: "ITEM_EQUIP", player: 0, item });
       return;
     }
@@ -221,20 +221,20 @@ class ItemFxPreviewScene extends Phaser.Scene {
         this.pending.push({ type: "LASER_HIT", attacker: 0, target: 1, damage: ARSENAL.LASER_DAMAGE, blocked: false });
         break;
       case "slash":
-        me.item = { kind: "sword", uses: ITEMS.sword.uses };
+        me.item = { kind: "sword", uses: ITEMS.sword.uses, ticksLeft: null };
         me.action = { kind: "punch", arm: "R", elapsed: 0, landed: false, sword: true };
         this.pending.push({ type: "PUNCH", player: 0, arm: "R" });
         this.later(8, () => { if (me.action?.kind === "punch") me.action = null; });
         break;
       case "parry":
-        other.item = { kind: "sword", uses: ITEMS.sword.uses };
+        other.item = { kind: "sword", uses: ITEMS.sword.uses, ticksLeft: null };
         this.pending.push({ type: "PARRY", player: 1, attacker: 0 });
         break;
       case "shield":
-        me.item = { kind: "shield", uses: ITEMS.shield.uses };
+        me.item = { kind: "shield", uses: ITEMS.shield.uses, ticksLeft: null };
         break;
       case "absorb":
-        if (me.item?.kind !== "shield") me.item = { kind: "shield", uses: ITEMS.shield.uses };
+        if (me.item?.kind !== "shield") me.item = { kind: "shield", uses: ITEMS.shield.uses, ticksLeft: null };
         me.item.uses = Math.max(0, me.item.uses - 1);
         this.pending.push({ type: "SHIELD_ABSORB", player: 0, left: me.item.uses });
         if (me.item.uses === 0) this.later(1, () => this.play("break"));
@@ -285,7 +285,7 @@ class ItemFxPreviewScene extends Phaser.Scene {
       case "charge":
       case "charge-full": {
         // Lane A's charging ThrowAction (9.08); the sim's `charge` counts up while the key is held.
-        if (me.item?.kind !== "molotov") me.item = { kind: "molotov", uses: ITEMS.molotov.uses };
+        if (me.item?.kind !== "molotov") me.item = { kind: "molotov", uses: ITEMS.molotov.uses, ticksLeft: null };
         const charge = name === "charge-full" ? THROW.CHARGE_MAX : 0;
         me.action = { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge, elapsed: 0, released: false } as unknown as NonNullable<typeof me.action>;
         this.chargeHeld = name === "charge";

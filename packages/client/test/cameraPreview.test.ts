@@ -11,6 +11,7 @@ function frame(overrides: Partial<PreviewFrame> = {}): PreviewFrame {
     metrics: null,
     gestures: {
       left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null,
+      windupL: false, windupR: false, chop: false, sweep: false, slashL: false, slashR: false, held: null,
     },
     frame: EMPTY_FRAME,
     calibration: { phase: "ready", progress: 1, baseline: null },
@@ -31,15 +32,15 @@ function diag(overrides: Partial<PunchDiag> = {}): PunchDiag {
 }
 
 describe("previewModel", () => {
-  it("lists one dot per input key in display order L R J PL PR B SP", () => {
-    expect(DOT_LABELS).toEqual(["L", "R", "J", "PL", "PR", "B", "SP"]);
+  it("lists one dot per input key in display order L R J PL PR B SP CH SW", () => {
+    expect(DOT_LABELS).toEqual(["L", "R", "J", "PL", "PR", "B", "SP", "CH", "SW"]);
     expect([...DOT_KEYS].sort()).toEqual([...INPUT_KEYS].sort());
-    expect(DOT_KEYS).toEqual(["left", "right", "jump", "punchL", "punchR", "block", "special"]);
+    expect(DOT_KEYS).toEqual(["left", "right", "jump", "punchL", "punchR", "block", "special", "chop", "sweep"]);
   });
 
   it("shows no camera and dark dots before the first frame", () => {
     const m = previewModel(null);
-    expect(m.dots).toEqual([false, false, false, false, false, false, false]);
+    expect(m.dots).toEqual([false, false, false, false, false, false, false, false, false]);
     expect(m.status).toBe("no camera");
     expect(m.gates).toBeNull();
     expect(m.item).toBeNull();
@@ -49,7 +50,7 @@ describe("previewModel", () => {
 
   it("lights the dots whose InputFrame key is true", () => {
     const m = previewModel(frame({ frame: { ...EMPTY_FRAME, right: true, punchL: true } }));
-    expect(m.dots).toEqual([false, true, false, true, false, false, false]);
+    expect(m.dots).toEqual([false, true, false, true, false, false, false, false, false]);
   });
 
   it("9.04: exposes special and the held item with its label", () => {

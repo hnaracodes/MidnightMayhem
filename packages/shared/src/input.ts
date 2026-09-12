@@ -13,17 +13,19 @@ export interface InputFrame {
   block: boolean;
   special: boolean;      // laser: both arms thrust forward together / key Q
   item: ItemId | null;   // what the camera sees in the hand / keys 1–5 while held
+  chop: boolean;         // sword overhead chop: wrist over the head then dropped / key E (9.10)
+  sweep: boolean;        // sword horizontal sweep: wrist across the body / key R (9.10)
 }
 
 /** Two distinct items chosen pre-fight. */
 export type Loadout = [ItemId, ItemId];
 
 export const EMPTY_FRAME: Readonly<InputFrame> = Object.freeze({
-  left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null,
+  left: false, right: false, jump: false, punchL: false, punchR: false, block: false, special: false, item: null, chop: false, sweep: false,
 });
 
 /** The boolean inputs. `item` is compared separately by `framesEqual` and never edge-detected. */
-export const INPUT_KEYS = ["left", "right", "jump", "punchL", "punchR", "block", "special"] as const;
+export const INPUT_KEYS = ["left", "right", "jump", "punchL", "punchR", "block", "special", "chop", "sweep"] as const;
 export type InputKey = (typeof INPUT_KEYS)[number];
 
 /** Anything that can produce InputFrames. sample() must be non-blocking. */
@@ -44,6 +46,8 @@ export function risingEdges(prev: Readonly<InputFrame>, next: Readonly<InputFram
     block: !prev.block && next.block,
     special: !prev.special && next.special,
     item: null,
+    chop: !prev.chop && next.chop,
+    sweep: !prev.sweep && next.sweep,
   };
 }
 

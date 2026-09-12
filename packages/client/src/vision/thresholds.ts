@@ -94,3 +94,20 @@ export const RECORDER_SECONDS = 15; // seconds of { ts, metrics, gestures, frame
 export const COLOR_POSE = "#4FE3F5"; // skeleton lines and joints, cyan
 export const COLOR_MARKER = "#E8434F"; // thresholds and active-gesture markers, red
 export const COLOR_LABEL = "#FFFFFF"; // text labels, white
+
+// ---- 9.10 molotov wind-up (elbow bent, hand raised; release throws) ----
+export const WINDUP_ELBOW_DEG = 110; // shoulder–elbow–wrist angle at or below this counts as bent
+export const WINDUP_RAISE = 0.1; // wrist must be at least this far above the shoulder, in S
+export const WINDUP_EXTEND = 40; // elbow opening past WINDUP_ELBOW_DEG + this releases (the throw)
+export const WINDUP_DROP = -0.2; // raise below this (hand dropped) also releases
+export const WINDUP_ENABLED = false; // owner 2026-09-12 13:40: throwables are use-only (a thrust throws); the wind-up stays behind this flag
+export const WINDUP_ON = 3; // frames of the bent pose before the wind-up starts
+export const WINDUP_OFF = 2; // frames of the release pose before the throw fires
+
+// ---- 9.10 sword slashes ----
+export const CHOP_DROP = 0.6; // wrist must fall by this much, in S, after being above the nose
+export const CHOP_WINDOW_MS = 250; // window for the chop drop
+export const CHOP_EXT = 0.6; // arm must be extended past this (over arm length) as the chop lands
+export const SWEEP_TRAVEL = 0.8; // horizontal wrist travel across the shoulder midline, in S
+export const SWEEP_WINDOW_MS = 250; // window for the sweep travel
+export const SLASH_EXCLUSIVE_MS = 300; // a slash suppresses that arm's punch for this long

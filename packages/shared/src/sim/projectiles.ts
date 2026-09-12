@@ -42,7 +42,11 @@ export function chargeToRange(charge: number): number {
   return THROW.MIN_RANGE + (THROW.MAX_RANGE - THROW.MIN_RANGE) * t;
 }
 
-/** Starts a throw action for the held throwable in its charge phase; true when the punch edge was consumed. */
+/**
+ * Starts a throw action for the held throwable in its charge phase; true when the punch edge was consumed.
+ * The charge does not pin the fighter (9.10): it walks and jumps while winding up, and `releaseThrows` spawns the
+ * projectile from wherever it stands, in the facing `updateFacing` froze when the release phase began.
+ */
 export function startThrow(s: MatchState, i: PlayerIndex, arm: Arm, _events: SimEvent[]): boolean {
   const f = s.fighters[i];
   if (!f || !f.item || !isThrowable(f.item.kind)) return false;
@@ -67,9 +71,11 @@ export function advanceThrowCharge(s: MatchState, inputs: readonly InputFrame[])
     a.elapsed = 0;
     const input = inputs[i];
     const held = input ? (a.arm === "L" ? input.punchL : input.punchR) : false;
-    if (held) a.charge = Math.min(THROW.CHARGE_MAX, a.charge + 1);
-    if (held && a.charge < THROW.CHARGE_MAX) continue;
-    if (a.charge < TAP_TICKS) a.charge = THROW.VISION_CHARGE * THROW.CHARGE_MAX;
+    if (THROW.CHARGE_ENABLED) {
+      if (held) a.charge = Math.min(THROW.CHARGE_MAX, a.charge + 1);
+      if (held && a.charge < THROW.CHARGE_MAX) continue;
+    }
+    if (!THROW.CHARGE_ENABLED || a.charge < TAP_TICKS) a.charge = THROW.VISION_CHARGE * THROW.CHARGE_MAX;
     a.phase = "release";
     a.elapsed = 0;
   }

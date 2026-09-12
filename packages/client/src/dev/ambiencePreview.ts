@@ -127,7 +127,7 @@ class AmbiencePreviewScene extends Phaser.Scene {
     switch (action) {
       case "punch":
       case "sword":
-        if (action === "sword") f.item = { kind: "sword", uses: 6 };
+        if (action === "sword") f.item = { kind: "sword", uses: 6, ticksLeft: null };
         f.action = { kind: "punch", arm: "R", elapsed: 0, landed: false, sword: action === "sword" };
         this.actionTotal = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH_RECOVERY;
         this.pending.push({ type: "PUNCH", player: 0, arm: "R" } as SimEvent);
@@ -138,7 +138,7 @@ class AmbiencePreviewScene extends Phaser.Scene {
         this.pending.push({ type: "LASER_CHARGE", player: 0 });
         break;
       case "throw":
-        f.item = { kind: "molotov", uses: 2 };
+        f.item = { kind: "molotov", uses: 2, ticksLeft: null };
         f.action = { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 0, elapsed: 0, released: false };
         this.actionTotal = THROW.CHARGE_MAX + THROW.RELEASE_TICKS + THROW.RECOVERY;
         break;
@@ -153,12 +153,12 @@ class AmbiencePreviewScene extends Phaser.Scene {
         this.actionTotal = 0;
         break;
       case "shield":
-        f.item = { kind: "shield", uses: 3 };
+        f.item = { kind: "shield", uses: 3, ticksLeft: null };
         f.blocking = true;
         this.actionTotal = 0;
         break;
       case "flash":
-        f.item = { kind: "flash", uses: 1 };
+        f.item = { kind: "flash", uses: 1, ticksLeft: null };
         this.actionTotal = 0;
         this.pending.push({ type: "FLASH", player: 0 });
         break;

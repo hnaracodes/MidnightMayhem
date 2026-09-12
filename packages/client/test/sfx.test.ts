@@ -87,7 +87,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 describe("Sfx.RECIPES", () => {
   it("has a recipe for every SfxName that schedules at least one node and returns a duration > 0", () => {
-    expect(NAMES.length).toBe(32);
+    expect(NAMES.length).toBe(34);
     for (const name of NAMES) {
       const ctx = new FakeContext();
       const out = ctx.createGain();
@@ -372,7 +372,9 @@ describe("Sfx.consume", () => {
     [{ type: "SHIELD_ABSORB", player: 0, left: 2 }, ["shield_absorb"]],
     [{ type: "ITEM_BREAK", player: 0, item: "shield" }, ["shield_break"]],
     [{ type: "ITEM_BREAK", player: 0, item: "sword" }, []],
-    [{ type: "ITEM_USE", player: 0, item: "sword" }, ["slash"]],
+    [{ type: "ITEM_USE", player: 0, item: "sword" }, []],
+    [{ type: "SLASH", player: 0, style: "chop" }, ["slash"]],
+    [{ type: "SLASH", player: 0, style: "sweep" }, ["sweep_whoosh"]],
     [{ type: "ITEM_USE", player: 0, item: "shield" }, []],
     [{ type: "PROJECTILE_SPAWN", id: 1, kind: "molotov", owner: 0 }, ["molotov_throw"]],
     [{ type: "PROJECTILE_SPAWN", id: 2, kind: "banana", owner: 0 }, ["peel_throw"]],

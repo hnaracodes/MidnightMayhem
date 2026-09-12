@@ -27,6 +27,20 @@ describe("KeyboardInputSource", () => {
     expect(source.sample().left).toBe(false);
   });
 
+  it("maps E to chop and R to sweep (9.10)", async () => {
+    const source = new KeyboardInputSource();
+    await source.start();
+    fakeWindow.dispatchEvent(keyEvent("keydown", "KeyE"));
+    expect(source.sample().chop).toBe(true);
+    expect(source.sample().sweep).toBe(false);
+    fakeWindow.dispatchEvent(keyEvent("keyup", "KeyE"));
+    fakeWindow.dispatchEvent(keyEvent("keydown", "KeyR"));
+    expect(source.sample().chop).toBe(false);
+    expect(source.sample().sweep).toBe(true);
+    fakeWindow.dispatchEvent(keyEvent("keyup", "KeyR"));
+    expect(source.sample().sweep).toBe(false);
+  });
+
   it("ignores repeated keydown events and preserves frame identity", async () => {
     const source = new KeyboardInputSource();
     await source.start();
@@ -56,6 +70,8 @@ describe("KeyboardInputSource", () => {
       block: false,
       special: false,
       item: null,
+      chop: false,
+      sweep: false,
     });
   });
 

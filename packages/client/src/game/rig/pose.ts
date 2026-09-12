@@ -13,7 +13,7 @@ export interface Pt { x: number; y: number }
 export interface Arm { shoulder: Pt; elbow: Pt; wrist: Pt; fist: Pt }
 export interface Leg { hip: Pt; knee: Pt; foot: Pt }
 
-export type RigState = "idle" | "walk" | "jump" | "punch" | "laser" | "throw" | "block" | "hit" | "ko" | "offbounds" | "win";
+export type RigState = "idle" | "walk" | "jump" | "punch" | "chop" | "sweep" | "laser" | "throw" | "block" | "hit" | "ko" | "offbounds" | "win";
 
 export interface Clock {
   /** Render time in ms; drives the idle bob, block shudder and win bob. */
@@ -57,8 +57,12 @@ const WALK_ARM_SWING = 13;
 const BLOCK_FIST = { B: { x: 14, dy: -4 }, F: { x: 26, dy: 4 } } as const;
 /** Active punch fist target in local space. Must sit inside the sim punch hitbox with the fist radius to spare. */
 const PUNCH_FIST: Pt = { x: 63, y: -104 };
-/** 12.04 rule 3: a sword punch strikes higher and winds up higher. */
-const SWORD_FIST = { x: 63, y: -118 };
+/** 9.10: chop — the front arm winds straight overhead, drops through the strike, recovers to guard. */
+const CHOP_OVERHEAD: Pt = { x: 6, y: -175 };
+const CHOP_STRIKE: Pt = { x: 66, y: -70 };
+/** 9.10: sweep — the front arm crosses to the back side at shoulder height, then whips across the front. */
+const SWEEP_BACK: Pt = { x: -40, y: -105 };
+const SWEEP_FRONT: Pt = { x: 74, y: -100 };
 /** 12.04 rule 1: the kamehameha — cupped hands at the back hip, then a two-palm thrust inside the beam band. */
 const LASER_CUP = { x: -18, y: -60 };
 const LASER_THRUST = { x: 58, y: -80 };
@@ -210,6 +214,7 @@ export function rigState(f: FighterState, koActive: boolean): RigState {
   if (f.hitstun > 0) return "hit";
   if (f.action?.kind === "laser") return "laser";
   if (f.action?.kind === "punch") return "punch";
+  if (f.action?.kind === "slash") return f.action.style;
   if (f.action?.kind === "throw") return "throw";
   if (!f.grounded) return "jump";
   if (f.blocking) return "block";
@@ -300,8 +305,8 @@ function punchPose(rig: CharacterRig, f: FighterState): LocalPose {
   if (!action || action.kind !== "punch") return standing(rig);
   const { PUNCH_STARTUP: s, PUNCH_ACTIVE: a, PUNCH_RECOVERY: r } = BALANCE;
   const e = action.elapsed;
-  const sword = action.sword;
-  const target = sword ? SWORD_FIST : PUNCH_FIST;
+  // 9.10: a punch with a sword is a plain punch; the slashes have their own poses
+  const target = PUNCH_FIST;
   // the player's left arm is the back arm when facing right and the front arm when facing left
   const arm: "F" | "B" = (action.arm === "L") === (f.facing === 1) ? "B" : "F";
   const other: "F" | "B" = arm === "F" ? "B" : "F";
@@ -315,7 +320,7 @@ function punchPose(rig: CharacterRig, f: FighterState): LocalPose {
   const g = guardTargets(rig, p.t.shoulder);
   if (e < s) {
     const t = e / s;
-    const wind = sword ? { x: -10 * t, y: -24 * t } : { x: -14 * t, y: -4 * t };
+    const wind = { x: -14 * t, y: -4 * t };
     p.arms[arm] = armTo(p.t.shoulder, add(g[arm], wind));
   } else if (e < s + a) {
     p.arms[arm] = armStraightTo(p.t.shoulder, target);
@@ -328,6 +333,60 @@ function punchPose(rig: CharacterRig, f: FighterState): LocalPose {
     p.arms[other] = armTo(p.t.shoulder, add(g[other], { x: -6 * (1 - t), y: 0 }));
   }
   p.punchingArm = arm;
+  return p;
+}
+
+/** 9.10: which phase a slash is in from `elapsed` against its ARSENAL timings. Pure. */
+export function slashStage(style: "chop" | "sweep", elapsed: number): { stage: "startup" | "active" | "recover"; t: number } {
+  const s = style === "chop" ? ARSENAL.CHOP_STARTUP : ARSENAL.SWEEP_STARTUP;
+  const a = style === "chop" ? ARSENAL.CHOP_ACTIVE : ARSENAL.SWEEP_ACTIVE;
+  const r = style === "chop" ? ARSENAL.CHOP_RECOVERY : ARSENAL.SWEEP_RECOVERY;
+  if (elapsed < s) return { stage: "startup", t: clamp(elapsed / s, 0, 1) };
+  if (elapsed < s + a) return { stage: "active", t: clamp((elapsed - s) / a, 0, 1) };
+  return { stage: "recover", t: clamp((elapsed - s - a) / r, 0, 1) };
+}
+
+/** 9.10: chop — arm overhead in startup, driven down through the active frames, settling back to guard. */
+function chopPose(rig: CharacterRig, f: FighterState): LocalPose {
+  const action = f.action;
+  if (!action || action.kind !== "slash") return standing(rig);
+  const { stage, t } = slashStage("chop", action.elapsed);
+  const lean = stage === "startup" ? rig.torsoLean - 8 * t : stage === "active" ? rig.torsoLean + 12 : rig.torsoLean + 12 * (1 - ease(t));
+  const footDx = stage === "startup" ? { F: 0, B: 0 } : { F: 8 * (stage === "active" ? 1 : 1 - ease(t)), B: 0 };
+  const p = standing(rig, stage === "active" ? 4 : 0, footDx, lean, stage === "startup" ? -6 * t : 4);
+  const g = guardTargets(rig, p.t.shoulder);
+  if (stage === "startup") {
+    p.arms.F = armTo(p.t.shoulder, lerpPt(g.F, CHOP_OVERHEAD, ease(t)));
+  } else if (stage === "active") {
+    p.arms.F = armStraightTo(p.t.shoulder, lerpPt(CHOP_OVERHEAD, CHOP_STRIKE, t));
+    p.arms.B = armTo(p.t.shoulder, add(g.B, { x: -6, y: 0 }));
+  } else {
+    p.arms.F = lerpArm(armTo(p.t.shoulder, CHOP_STRIKE), armTo(p.t.shoulder, g.F), ease(t));
+    p.arms.B = armTo(p.t.shoulder, add(g.B, { x: -6 * (1 - t), y: 0 }));
+  }
+  p.punchingArm = "F";
+  return p;
+}
+
+/** 9.10: sweep — the arm drawn across the body, then whipped across the front at shoulder height. */
+function sweepPose(rig: CharacterRig, f: FighterState): LocalPose {
+  const action = f.action;
+  if (!action || action.kind !== "slash") return standing(rig);
+  const { stage, t } = slashStage("sweep", action.elapsed);
+  const lean = stage === "startup" ? rig.torsoLean - 4 * t : stage === "active" ? rig.torsoLean + 6 : rig.torsoLean + 6 * (1 - ease(t));
+  const footDx = stage === "active" ? { F: 10, B: 4 } : stage === "recover" ? { F: 10 * (1 - ease(t)), B: 4 * (1 - ease(t)) } : { F: 0, B: 0 };
+  const p = standing(rig, 0, footDx, lean);
+  const g = guardTargets(rig, p.t.shoulder);
+  if (stage === "startup") {
+    p.arms.F = armTo(p.t.shoulder, lerpPt(g.F, SWEEP_BACK, ease(t)));
+  } else if (stage === "active") {
+    p.arms.F = armStraightTo(p.t.shoulder, lerpPt(SWEEP_BACK, SWEEP_FRONT, ease(t)));
+    p.arms.B = armTo(p.t.shoulder, add(g.B, { x: -8, y: 4 }));
+  } else {
+    p.arms.F = lerpArm(armTo(p.t.shoulder, SWEEP_FRONT), armTo(p.t.shoulder, g.F), ease(t));
+    p.arms.B = armTo(p.t.shoulder, add(g.B, { x: -8 * (1 - t), y: 4 * (1 - t) }));
+  }
+  p.punchingArm = "F";
   return p;
 }
 
@@ -521,6 +580,8 @@ export function computePose(f: FighterState, clock: Clock): Joints {
     case "ko": p = koPose(rig, clock.koFrames); break;
     case "hit": p = hitPose(rig, f.hitstun); break;
     case "punch": p = punchPose(rig, f); break;
+    case "chop": p = chopPose(rig, f); break;
+    case "sweep": p = sweepPose(rig, f); break;
     case "laser": p = laserPose(rig, f, clock.renderMs); break;
     case "throw": p = throwPose(rig, f); break;
     case "jump": p = jumpPose(rig, f); break;

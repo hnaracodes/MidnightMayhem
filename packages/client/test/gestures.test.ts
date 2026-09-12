@@ -39,6 +39,7 @@ function metrics(o: Partial<Metrics> = {}): Metrics {
     jabRiseR: 0,
     wristGap: 2,
     guard: false,
+    elbowL: 180, elbowR: 180, raiseL: -2, raiseR: -2, noseDropL: 2.75, noseDropR: 2.75, wristXL: -0.5, wristXR: 0.5,
     ...o,
   };
 }

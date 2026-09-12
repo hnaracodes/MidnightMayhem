@@ -21,7 +21,7 @@ describe("punch hint", () => {
     expect(canHint(punching, true)).toBe(false);
     expect(canHint({ ...idle(), hitstun: 3 }, true)).toBe(false);
     expect(canHint({ ...idle(), blocking: true }, true)).toBe(false);
-    expect(canHint({ ...idle(), item: { kind: "molotov", uses: 2 } }, true)).toBe(false); // 11.05: item punches are not hinted
+    expect(canHint({ ...idle(), item: { kind: "molotov", uses: 2, ticksLeft: null } }, true)).toBe(false); // 11.05: item punches are not hinted
     expect(canHint(idle(), false)).toBe(false);
     expect(advanceHint(null, edge("punchL"), punching, true)).toBeNull();
     expect(advanceHint(null, edge("punchL"), idle(), false)).toBeNull();

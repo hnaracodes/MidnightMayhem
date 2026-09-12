@@ -48,6 +48,18 @@ export interface Metrics {
   wristGap: number;
   /** ARMS-style guard; always false until the hands plan. */
   guard: false;
+  /** 9.10 wind-up: shoulder–elbow–wrist angle in degrees (world landmarks); 180 = straight, 0 = folded. */
+  elbowL: number;
+  elbowR: number;
+  /** 9.10 wind-up: (shoulder.y − wrist.y) / S in image space; positive = hand above the shoulder. */
+  raiseL: number;
+  raiseR: number;
+  /** 9.10 slash: (wrist.y − nose.y) / S; negative = wrist above the nose. */
+  noseDropL: number;
+  noseDropR: number;
+  /** 9.10 slash: (xm(wrist) − midX) / S; sign says which side of the shoulder midline the wrist is on. */
+  wristXL: number;
+  wristXR: number;
 }
 
 /** Ring buffers computeMetrics needs across frames. One set per VisionInputSource. */
@@ -75,6 +87,17 @@ export function clearMetricBuffers(b: MetricBuffers): void {
 }
 
 const xm = (l: Landmark) => 1 - l.x;
+
+/** Angle at `b` between `a` and `c` in degrees (3D); 180 when either segment has no length. */
+export function jointAngle(a: Landmark | undefined, b: Landmark | undefined, c: Landmark | undefined): number {
+  if (!a || !b || !c) return 180;
+  const ux = a.x - b.x, uy = a.y - b.y, uz = a.z - b.z;
+  const vx = c.x - b.x, vy = c.y - b.y, vz = c.z - b.z;
+  const lu = Math.hypot(ux, uy, uz), lv = Math.hypot(vx, vy, vz);
+  if (lu === 0 || lv === 0) return 180;
+  const cos = Math.max(-1, Math.min(1, (ux * vx + uy * vy + uz * vz) / (lu * lv)));
+  return (Math.acos(cos) * 180) / Math.PI;
+}
 const dist2D = (a: Landmark, b: Landmark) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function arm(
@@ -128,6 +151,7 @@ export function computeMetrics(
   const rh = landmarks[24] as Landmark;
   const lw = landmarks[15] as Landmark;
   const rw = landmarks[16] as Landmark;
+  const nose = landmarks[0] as Landmark;
 
   const midX = (xm(ls) + xm(rs)) / 2;
   const hipMidX = (xm(lh) + xm(rh)) / 2;
@@ -171,5 +195,13 @@ export function computeMetrics(
     jabRiseR: R.jabRise,
     wristGap: dist2D(lw, rw) / S,
     guard: false,
+    elbowL: jointAngle(world[11], world[13], world[15]),
+    elbowR: jointAngle(world[12], world[14], world[16]),
+    raiseL: (ls.y - lw.y) / S,
+    raiseR: (rs.y - rw.y) / S,
+    noseDropL: (lw.y - nose.y) / S,
+    noseDropR: (rw.y - nose.y) / S,
+    wristXL: (xm(lw) - midX) / S,
+    wristXR: (xm(rw) - midX) / S,
   };
 }

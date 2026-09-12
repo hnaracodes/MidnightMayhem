@@ -12,7 +12,7 @@ export const WORLD = {
 } as const;
 
 export const BALANCE = {
-  MAX_HP: 40,
+  MAX_HP: 50,
   PUNCH_DAMAGE: 12,
   CHIP_DAMAGE: 3,
   PUNCH_STARTUP: 4,
@@ -47,9 +47,10 @@ export const MAX_PLAYERS = 4;
 // ---- Items (spec §3.2) ----
 export const ITEM_IDS = ["molotov", "sword", "shield", "banana", "flash"] as const;
 export type ItemId = (typeof ITEM_IDS)[number];
-export const ITEMS: Record<ItemId, { uses: number; label: string; cocoLabel: string }> = {
+/** `ttl` (ticks) makes an item timed: unlimited uses, breaks when the clock runs out (9.10). */
+export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; cocoLabel: string }> = {
   molotov: { uses: 2, label: "Molotov", cocoLabel: "bottle" },
-  sword: { uses: 6, label: "Racket sword", cocoLabel: "tennis racket" },
+  sword: { uses: 0, ttl: 600, label: "Racket sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
   shield: { uses: 3, label: "Backpack shield", cocoLabel: "backpack" },
   banana: { uses: 1, label: "Banana peel", cocoLabel: "banana" },
   flash: { uses: 1, label: "Phone flash", cocoLabel: "cell phone" },
@@ -57,7 +58,12 @@ export const ITEMS: Record<ItemId, { uses: number; label: string; cocoLabel: str
 export const DEFAULT_LOADOUT: Loadout = ["molotov", "shield"];
 
 export const ARSENAL = {
-  SWORD_REACH: 130, SWORD_DAMAGE: 10, PARRY_WINDOW: 10, PARRY_STUN: 24,
+  PARRY_WINDOW: 10, PARRY_STUN: 24,
+  // 9.10 sword slashes. Chop: slow, tall, guard-crushing (a blocking target takes half). Sweep: fast, wide, shoves.
+  CHOP_STARTUP: 8, CHOP_ACTIVE: 4, CHOP_RECOVERY: 14, CHOP_DAMAGE: 18, CHOP_GAP: 10, CHOP_REACH: 90,
+  CHOP_HITBOX_TOP: 170, CHOP_HITBOX_H: 140, CHOP_GUARD_FRACTION: 0.5,
+  SWEEP_STARTUP: 5, SWEEP_ACTIVE: 5, SWEEP_RECOVERY: 10, SWEEP_DAMAGE: 8, SWEEP_GAP: 10, SWEEP_REACH: 150,
+  SWEEP_HITBOX_TOP: 110, SWEEP_HITBOX_H: 70, SWEEP_PUSH: 2,
   THROW_STARTUP: 6, THROW_RECOVERY: 12,
   MOLOTOV_VX: 2, MOLOTOV_VY: -3, BANANA_VX: 5, BANANA_VY: -4, // molotov: low ~41-tick lob landing 70–130 px out (9.02 rule 2)
   FIRE_W: 120, FIRE_TICKS: 240, FIRE_DAMAGE: 2, FIRE_EVERY: 20,
@@ -76,7 +82,10 @@ export const ARSENAL = {
  * ARSENAL.THROW_STARTUP + THROW_RECOVERY, the total `combat.ts` clears the action at.
  */
 export const THROW = {
-  CHARGE_MAX: 45, MIN_RANGE: 120, MAX_RANGE: 640, ANGLE_DEG: 45, VISION_CHARGE: 0.7, RELEASE_TICKS: 6, RECOVERY: 12,
+  // CHARGE_ENABLED false (owner, 2026-09-12 13:40): every throw is a single use at VISION_CHARGE range; the
+  // hold-to-charge path stays in the code behind this flag.
+  CHARGE_ENABLED: false,
+  CHARGE_MAX: 90, MIN_RANGE: 120, MAX_RANGE: 640, ANGLE_DEG: 45, VISION_CHARGE: 0.7, RELEASE_TICKS: 6, RECOVERY: 12,
 } as const;
 
 // ---- Maps (spec §4.4) ----

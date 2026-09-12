@@ -1,3 +1,4 @@
+import { ITEM_IDS, type ItemId } from "@midnight/shared";
 import { VisionInputSource } from "../vision/VisionInputSource";
 import { selectDetector } from "../vision/selectDetector";
 import { VisionInputError, type VisionErrorCode } from "../vision/errors";
@@ -28,6 +29,15 @@ const progressBar = $("progress").firstElementChild as HTMLElement;
 const calState = $("cal-state");
 
 const source = new VisionInputSource({ detector: selectDetector() });
+/**
+ * 9.10: the wind-up and slash gestures only run while the fighter holds a throwable / the sword, which in a match
+ * comes from the sim. The harness has no sim, so it feeds what the camera sees in the hand; `?held=sword|molotov`
+ * pins it so the motions can be tested without the object.
+ */
+const heldOverride = (() => {
+  const v = new URLSearchParams(location.search).get("held");
+  return v && (ITEM_IDS as readonly string[]).includes(v) ? (v as ItemId) : null;
+})();
 const overlay = createOverlay(canvas, () => {
   const v = source.video;
   return { w: v?.videoWidth || 640, h: v?.videoHeight || 480 };
@@ -57,6 +67,7 @@ const devHook = {
 (window as unknown as { __vision: typeof devHook }).__vision = devHook;
 
 source.onDebug((f) => {
+  source.setHeldItem(heldOverride ?? f.frame.item);
   if (!videoAttached && source.video) {
     wrap.prepend(source.video);
     videoAttached = true;

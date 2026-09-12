@@ -70,11 +70,12 @@ describe("rule 1: edge starts a charge, fires LASER_CHARGE (180, 3 s) ticks late
     expect(fireTick).toBe(LASER_CHARGE);
     expect(s.fighters[0]!.action).toBeNull();
   });
-  it("startLaser refuses when airborne, blocking, acting, in hitstun, on cooldown, ko, in a pit or outside FIGHTING", () => {
+  it("startLaser refuses when blocking, acting, in hitstun, on cooldown, ko, in a pit or outside FIGHTING; airborne is allowed", () => {
     const ready = () => { const s = fighting(300); return s; };
     const ev: SimEvent[] = [];
     expect(startLaser(ready(), 0, ev)).toBe(true);
-    let s = ready(); s.fighters[0]!.grounded = false; expect(startLaser(s, 0, ev)).toBe(false);
+    // 9.10: being off the ground is not a bar — the laser starts, charges and fires mid-air.
+    let s = ready(); s.fighters[0]!.grounded = false; expect(startLaser(s, 0, ev)).toBe(true);
     s = ready(); s.fighters[0]!.blocking = true; expect(startLaser(s, 0, ev)).toBe(false);
     s = ready(); s.fighters[0]!.action = { kind: "punch", arm: "L", elapsed: 0, landed: false, sword: false }; expect(startLaser(s, 0, ev)).toBe(false);
     s = ready(); s.fighters[0]!.hitstun = 3; expect(startLaser(s, 0, ev)).toBe(false);
@@ -82,7 +83,7 @@ describe("rule 1: edge starts a charge, fires LASER_CHARGE (180, 3 s) ticks late
     s = ready(); s.fighters[0]!.hp = 0; expect(startLaser(s, 0, ev)).toBe(false);
     s = ready(); s.fighters[0]!.pitTicks = 5; expect(startLaser(s, 0, ev)).toBe(false);
     s = ready(); s.phase = "COUNTDOWN"; expect(startLaser(s, 0, ev)).toBe(false);
-    expect(ev.filter((e) => e.type === "LASER_CHARGE")).toHaveLength(1);
+    expect(ev.filter((e) => e.type === "LASER_CHARGE")).toHaveLength(2); // the grounded and the airborne start
   });
 });
 
@@ -111,11 +112,30 @@ describe("rule 2: a grounded opponent in front takes 20 once", () => {
 });
 
 describe("rule 3: an opponent behind the attacker takes nothing", () => {
-  it("no LASER_HIT, hp untouched", () => {
+  it("nothing behind the muzzle for the whole sweep", () => {
+    // Pinned mid-beam, so this is the geometry alone. Since 9.10 a *charging* fighter re-aims at its nearest
+    // opponent, so with a single opponent the beam can no longer be pointed away from it for 180 ticks.
     const s = fighting(); s.fighters[0]!.x = 600; s.fighters[0]!.facing = 1; s.fighters[1]!.x = 100;
-    const { s: out, events } = run(s, TOTAL + 1, [Q, EMPTY_FRAME]);
+    const f = s.fighters[0]!;
+    const events: SimEvent[] = [];
+    for (let k = 0; k < LASER_ACTIVE; k++) {
+      f.action = { kind: "laser", elapsed: LASER_CHARGE + k, hit: [] };
+      resolveLaser(s, events);
+    }
     expect(laserHits(events)).toHaveLength(0);
-    expect(out.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+    expect(s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+  });
+  it("3-player FFA: the beam takes the opponent in front and never the one behind", () => {
+    const s = createMatch({ players: 3, teams: "ffa", mode: "rounds", map: "roof", items: true });
+    s.phase = "FIGHTING"; s.roundTicks = MATCH.ROUND_TICKS;
+    s.fighters[0]!.x = 500; s.fighters[1]!.x = 560; s.fighters[2]!.x = 100; // nearest is in front, the other behind
+    let cur = s; const events: SimEvent[] = [];
+    for (let i = 0; i < TOTAL + 1; i++) {
+      const r = step(cur, [Q, EMPTY_FRAME, EMPTY_FRAME]); cur = r.state; events.push(...r.events);
+    }
+    expect(laserHits(events).map((h) => h.type === "LASER_HIT" && h.target)).toEqual([1]);
+    expect(cur.fighters[1]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);
+    expect(cur.fighters[2]!.hp).toBe(BALANCE.MAX_HP);
   });
 });
 
@@ -130,14 +150,14 @@ describe("rule 4: block and shield", () => {
     expect(s.fighters[1]!.blocking).toBe(true);
   });
   it("shield holder: absorbed, 0 hp lost, no hitstun, SHIELD_ABSORB", () => {
-    const start = fighting(300); start.fighters[1]!.item = { kind: "shield", uses: 3 };
+    const start = fighting(300); start.fighters[1]!.item = { kind: "shield", uses: 3, ticksLeft: null };
     const { s, events } = run(start, TOTAL + 1, [Q, EMPTY_FRAME]);
     expect(events.filter((e) => e.type === "SHIELD_ABSORB")).toEqual([{ type: "SHIELD_ABSORB", player: 1, left: 2 }]);
     expect(laserHits(events)).toHaveLength(1);
     expect(laserHits(events)[0]).toMatchObject({ damage: 0, blocked: false });
     expect(s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
     expect(s.fighters[1]!.hitstun).toBe(0);
-    expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 2 });
+    expect(s.fighters[1]!.item).toEqual({ kind: "shield", uses: 2, ticksLeft: null });
   });
 });
 
@@ -182,16 +202,88 @@ describe("rule 5: jumping over the beam", () => {
   });
 });
 
-describe("rule 6: charging locks the attacker; a hit cancels the laser without refunding the cooldown", () => {
-  it("no walking or jumping during charge", () => {
+describe("rule 6 (9.10): the charge does not lock the attacker; a hit cancels the laser without refunding the cooldown", () => {
+  it("walks and jumps through the charge at full speed", () => {
     let s = fighting(300);
     s = run(s, 1, [Q, EMPTY_FRAME]).s;
     const x0 = s.fighters[0]!.x;
-    const walk: InputFrame = { ...EMPTY_FRAME, special: true, right: true, jump: true };
-    const { s: out, events } = run(s, LASER_CHARGE - 1, [walk, EMPTY_FRAME]);
-    expect(out.fighters[0]!.x).toBe(x0);
-    expect(out.fighters[0]!.grounded).toBe(true);
-    expect(events.filter((e) => e.type === "JUMP")).toHaveLength(0);
+    const walk: InputFrame = { ...EMPTY_FRAME, special: true, right: true };
+    const r = run(s, 10, [walk, EMPTY_FRAME]);
+    expect(r.s.fighters[0]!.x).toBe(x0 + 10 * BALANCE.WALK_SPEED);
+    expect(r.s.fighters[0]!.action?.kind).toBe("laser");
+    const j = run(r.s, 1, [{ ...walk, jump: true }, EMPTY_FRAME]);
+    expect(j.events.filter((e) => e.type === "JUMP")).toHaveLength(1);
+    expect(j.s.fighters[0]!.grounded).toBe(false);
+    expect(j.s.fighters[0]!.action?.kind).toBe("laser");
+  });
+  it("the beam sweeps from where the attacker walked to, not from where it started charging", () => {
+    let s = fighting(300); // attacker 400, opponent 700
+    s = run(s, 1, [Q, EMPTY_FRAME]).s;
+    const walk: InputFrame = { ...EMPTY_FRAME, special: true, right: true };
+    s = run(s, 40, [walk, EMPTY_FRAME]).s;
+    const x = s.fighters[0]!.x;
+    expect(x).toBe(400 + 40 * BALANCE.WALK_SPEED);
+    const r = run(s, LASER_CHARGE - 40, [Q, EMPTY_FRAME]); // stand still for the rest of the charge
+    expect(r.events.filter((e) => e.type === "LASER_FIRE")).toHaveLength(1);
+    expect(laserPhase(r.s.fighters[0]!)).toBe("beam");
+    expect(laserHitbox(r.s.fighters[0]!)).toEqual({ x, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: LASER_SPEED, h: BAND_H });
+  });
+  it("a beam fired from the top of a jump passes over a grounded opponent", () => {
+    // Take off 30 ticks before the beam: the attacker's feet are ~149 px up when it fires, so its band
+    // ([feet − 105, feet − 35)) sits entirely above a grounded opponent's.
+    let s = fighting(300);
+    s = run(s, 1, [Q, EMPTY_FRAME]).s;
+    s = run(s, LASER_CHARGE - 31, [Q, EMPTY_FRAME]).s;
+    const QJ: InputFrame = { ...EMPTY_FRAME, special: true, jump: true };
+    const up = run(s, 31, [QJ, EMPTY_FRAME]); // the last of these is the fire tick
+    expect(up.events.filter((e) => e.type === "LASER_FIRE")).toHaveLength(1);
+    expect(up.s.fighters[0]!.grounded).toBe(false);
+    expect(WORLD.ROOF_Y - up.s.fighters[0]!.y).toBeGreaterThan(BAND_H);
+    const rest = run(up.s, LASER_ACTIVE, [QJ, EMPTY_FRAME]);
+    expect(laserHits(up.events)).toHaveLength(0);
+    expect(laserHits(rest.events)).toHaveLength(0);
+    expect(rest.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
+  });
+  it("a beam fired just after take-off is still low enough to land", () => {
+    let s = fighting(300);
+    s = run(s, 1, [Q, EMPTY_FRAME]).s;
+    s = run(s, LASER_CHARGE - 3, [Q, EMPTY_FRAME]).s;
+    const QJ: InputFrame = { ...EMPTY_FRAME, special: true, jump: true };
+    const r = run(s, 2 + LASER_ACTIVE, [QJ, EMPTY_FRAME]);
+    expect(r.s.fighters[0]!.grounded).toBe(false);
+    expect(laserHits(r.events)).toHaveLength(1);
+  });
+  it("a charging fighter re-aims; firing commits the direction", () => {
+    let s = fighting(300); // attacker 400 facing right, opponent 700
+    s = run(s, 1, [Q, EMPTY_FRAME]).s;
+    expect(s.fighters[0]!.facing).toBe(1);
+    const walk: InputFrame = { ...EMPTY_FRAME, special: true, right: true };
+    s = run(s, 120, [walk, EMPTY_FRAME]).s; // walk past the opponent
+    expect(s.fighters[0]!.x).toBe(760);
+    expect(s.fighters[0]!.facing).toBe(-1);
+    const r = run(s, LASER_CHARGE - 120, [Q, EMPTY_FRAME]);
+    expect(r.events.filter((e) => e.type === "LASER_FIRE")).toHaveLength(1);
+    expect(laserHitbox(r.s.fighters[0]!)).toMatchObject({ x: 760 - LASER_SPEED, w: LASER_SPEED });
+    const cur = r.s;
+    cur.fighters[1]!.x = 900; // behind the attacker now: the committed aim does not follow
+    const after = step(cur, [Q, EMPTY_FRAME]);
+    expect(after.state.fighters[0]!.facing).toBe(-1);
+  });
+  it("walking into a pit mid-charge cancels the laser and never refunds the cooldown", () => {
+    const s = createMatch({ players: 2, teams: "ffa", mode: "rounds", map: "gaps", items: true });
+    s.phase = "FIGHTING"; s.roundTicks = MATCH.ROUND_TICKS;
+    s.fighters[0]!.x = 290; s.fighters[1]!.x = 900; // ground runs out at 300
+    const start = run(s, 1, [Q, EMPTY_FRAME]);
+    expect(start.s.fighters[0]!.action?.kind).toBe("laser");
+    const off = run(start.s, 5, [{ ...EMPTY_FRAME, special: true, right: true }, EMPTY_FRAME]);
+    expect(off.s.fighters[0]!.grounded).toBe(false);
+    const r = run(off.s, 40, [Q, EMPTY_FRAME]); // drops into the gap
+    expect(r.events.filter((e) => e.type === "PIT_FALL")).toHaveLength(1);
+    expect(r.s.fighters[0]!.action).toBeNull();
+    const rest = run(r.s, TOTAL, [Q, EMPTY_FRAME]);
+    expect(rest.events.filter((e) => e.type === "LASER_FIRE")).toHaveLength(0);
+    expect(rest.events.filter((e) => e.type === "LASER_CHARGE")).toHaveLength(0);
+    expect(rest.s.fighters[0]!.laserCooldown).toBeGreaterThan(0);
   });
   it("a punch landing during charge cancels the laser, no LASER_FIRE, cooldown not refunded", () => {
     let s = fighting(60);
