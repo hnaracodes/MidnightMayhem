@@ -273,7 +273,7 @@ class AmbiencePreviewScene extends Phaser.Scene {
       const fill = this.effects.fillFor(i);
       drawShadow(this.shadow, f.x, WORLD.ROOF_Y, Math.max(0, WORLD.ROOF_Y - f.y));
       this.sprites[i].update(f, joints, {
-        rimColor: rim.color, rimSide: rim.side, gloom: rim.gloom, flash: fill.fillOverride, flashAlpha: fill.fillAlpha,
+        rimColor: rim.color, rimSide: rim.side, gloom: rim.gloom, lightDir: rim.dir ?? null, flash: fill.fillOverride, flashAlpha: fill.fillAlpha,
         squash: this.effects.squashFor(i), itemVisible: !this.itemFx.materialising(i), blinkMs: time,
       });
       this.hands[i] = f.action?.kind === "laser" ? laserHands(joints) : this.sprites[i].hand();

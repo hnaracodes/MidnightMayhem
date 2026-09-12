@@ -143,8 +143,8 @@ class StagePreviewScene extends Phaser.Scene {
     this.shadow.clear();
     drawShadow(this.shadow, f.x, WORLD.ROOF_Y, 0);
     this.sprite.update(f, joints, {
-      rimColor: this.rimNow.color, rimSide: this.rimNow.side, gloom: this.rimNow.gloom,
-      squash: 1, itemVisible: true, blinkMs: this.time.now,
+      rimColor: this.rimNow.color, rimSide: this.rimNow.side, gloom: this.rimNow.gloom, lightDir: this.rimNow.dir ?? null,
+      flatLimbs: !this.high, squash: 1, itemVisible: true, blinkMs: this.time.now,
     });
   }
 }

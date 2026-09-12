@@ -212,3 +212,20 @@ describe("12.02 rule 10: contact shadow pool", () => {
     expect(g.ellipses[0]!.w).toBeGreaterThan(45);
   });
 });
+
+import { lightDirFor } from "../src/game/stage/lighting";
+describe("13.02 rule 3: light direction", () => {
+  it("points toward a single lamp, cancels between two equal lamps, and is null out of reach", () => {
+    const lamp = pool({ x: 400, y: 380 });
+    const d = lightDirFor([lamp], 300, 380)!;
+    expect(d.x).toBeGreaterThan(0.99);
+    expect(Math.abs(d.y)).toBeLessThan(0.01);
+    const above = lightDirFor([pool({ x: 300, y: 300 })], 300, 380)!;
+    expect(above.y).toBeLessThan(-0.99);
+    expect(lightDirFor([pool({ x: 200, rx: 300 }), pool({ x: 600, rx: 300 })], 400, WORLD.ROOF_Y)).toBeNull();
+    expect(lightDirFor([lamp], 900, 380)).toBeNull();
+    const choice = rimFor([lamp], 0.35, 300, 380);
+    expect(choice.dir!.x).toBeGreaterThan(0.99);
+    expect(rimFor([lamp], 0.35, 300, 380, true).dir!.x).toBeGreaterThan(0.99);
+  });
+});

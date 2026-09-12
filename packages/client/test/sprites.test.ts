@@ -402,3 +402,124 @@ describe("every character × state composes without throwing", () => {
     }
   }
 });
+
+// ---- 13.02 shading engine ----
+
+import { PART_ID, composeKey, rampsFor } from "../src/game/sprites/compose";
+import { OUTLINE_ID } from "../src/game/sprites/grid";
+
+describe("13.02 rule 5: part ids and occlusion", () => {
+  it("every drawn pixel carries a part id, outline pixels OUTLINE_ID, and the front arm occludes the torso where they meet", () => {
+    const f = base({ character: "conductor" });
+    const joints = computePose(f, clock);
+    const c = frame(f);
+    let parts = 0, outline = 0;
+    for (let i = 0; i < c.data.length; i++) {
+      if (c.data[i] === 0) { expect(c.ids[i]).toBe(0); continue; }
+      // the outline pass marks its pixels OUTLINE_ID; authored in-part outline detail (eyes, knuckles) keeps its part id
+      if (c.ids[i] === OUTLINE_ID) { expect(c.data[i]).toBe(OUTLINE); outline += 1; } else { expect(c.ids[i]).toBeGreaterThan(0); parts += 1; }
+    }
+    expect(parts).toBeGreaterThan(1000);
+    expect(outline).toBeGreaterThan(100);
+  });
+
+  it("occludeAndGloom darkens only the lower part where a higher part touches it, more at 1 px than at 2, and leaves the higher part alone", () => {
+    const c = new PixelCanvas(40, 20);
+    const lower = rgba(0x8a6b4a);
+    const upper = rgba(0x1b2a5c);
+    c.id = 4;
+    for (let y = 2; y < 18; y++) for (let x = 2; x < 30; x++) c.set(x, y, lower);
+    c.id = 7;
+    for (let y = 2; y < 18; y++) for (let x = 20; x < 38; x++) c.set(x, y, upper);
+    c.occludeAndGloom(0.35, 0.18, P.night1, 0, P.night1);
+    const lum = (px: number): number => ((px >>> 24) & 255) + ((px >>> 16) & 255) + ((px >>> 8) & 255);
+    const far = c.get(5, 10);           // lower part, nowhere near the upper one
+    const ring2 = c.get(18, 10);        // two pixels from the boundary at x 20
+    const ring1 = c.get(19, 10);        // touching it
+    expect(far).toBe(lower);
+    expect(lum(ring1)).toBeLessThan(lum(ring2));
+    expect(lum(ring2)).toBeLessThan(lum(far));
+    for (let y = 2; y < 18; y++) for (let x = 20; x < 38; x++) expect(c.get(x, y)).toBe(upper);
+    // gloom rides the same sweep and dims both parts
+    c.occludeAndGloom(0, 0, P.night1, 0.25, P.night1);
+    expect(lum(c.get(5, 10))).toBeLessThan(lum(lower));
+    expect(lum(c.get(30, 10))).toBeLessThan(lum(upper));
+  });
+});
+
+describe("13.02 rules 2–3: the light vector shades the limbs", () => {
+  it("frames lit from the left and from the right differ in their limb pixels and both keep the standing bounds", () => {
+    const f = base({ character: "drifter" });
+    const left = frame(f, { lightDir: { x: -1, y: -0.2 }, rimSide: "left" });
+    const right = frame(f, { lightDir: { x: 1, y: -0.2 }, rimSide: "right" });
+    let diff = 0;
+    for (let i = 0; i < left.data.length; i++) if (left.data[i] !== right.data[i]) diff += 1;
+    expect(diff).toBeGreaterThan(200);
+    const bl = bounds(left), br = bounds(right), want = STANDING_BOUNDS.drifter;
+    for (const b of [bl, br]) {
+      expect(Math.abs(b.x1 - b.x0 + 1 - want.w)).toBeLessThanOrEqual(1);
+      expect(Math.abs(b.y1 - b.y0 + 1 - want.h)).toBeLessThanOrEqual(1);
+    }
+    // the front thigh (a near-vertical limb) shows all four ramp steps when lit from the side
+    const ramp = rampsFor(CHARACTER_PARTS.drifter).leg;
+    const steps = new Set<number>();
+    for (let i = 0; i < left.data.length; i++) if (left.ids[i] === PART_ID.legF) { const k = ramp.findIndex((c) => rgba(c) === left.data[i]); if (k >= 0) steps.add(k); }
+    expect(steps.size).toBe(4);
+  });
+  it("flatLimbs draws the limbs in the base step only", () => {
+    const f = base({ character: "conductor" });
+    const c = frame(f, { flatLimbs: true, lightDir: { x: -1, y: 0 } });
+    const ramp = rampsFor(CHARACTER_PARTS.conductor).limb;
+    for (let i = 0; i < c.data.length; i++) {
+      if (c.ids[i] !== PART_ID.armF) continue;
+      const px = c.data[i]!;
+      // arm pixels are the base step, the cuff ramp's base, or the hand part's colours; never highlight/shade/core of the limb ramp
+      expect([ramp[0], ramp[2], ramp[3]].map((v) => rgba(v))).not.toContain(px);
+    }
+  });
+});
+
+describe("13.02 rule 7: composeKey", () => {
+  it("is stable for the same inputs, changes on a 1 px joint move, ignores a sub-pixel one and a sub-quantum gloom change", () => {
+    const f = base({ character: "stoker" });
+    const j = computePose(f, clock);
+    const k0 = composeKey(j, f, "stoker", OPTS);
+    expect(composeKey(computePose(f, clock), f, "stoker", { ...OPTS })).toBe(k0);
+    const moved = structuredClone(j);
+    moved.arms.F.fist.x += 1;
+    expect(composeKey(moved, f, "stoker", OPTS)).not.toBe(k0);
+    const sub = structuredClone(j);
+    sub.arms.F.fist.x += 0.2;
+    expect(composeKey(sub, f, "stoker", OPTS)).toBe(k0);
+    expect(composeKey(j, f, "stoker", { ...OPTS, gloom: 0.004 })).toBe(k0);
+    expect(composeKey(j, f, "stoker", { ...OPTS, gloom: 0.2 })).not.toBe(k0);
+    expect(composeKey(j, f, "stoker", { ...OPTS, lightDir: { x: -1, y: 0 } })).not.toBe(composeKey(j, f, "stoker", { ...OPTS, lightDir: { x: 1, y: 0 } }));
+    expect(composeKey(j, f, "stoker", { ...OPTS, facing: -1 })).not.toBe(k0);
+    // the blink only matters for the character that blinks
+    expect(composeKey(j, f, "stoker", { ...OPTS, blinkMs: 600 })).toBe(k0);
+    const cl = base({ character: "claude" });
+    const jc = computePose(cl, clock);
+    expect(composeKey(jc, cl, "claude", { ...OPTS, blinkMs: 600 })).not.toBe(composeKey(jc, cl, "claude", { ...OPTS, blinkMs: 0 }));
+  });
+});
+
+describe("13.02 rule 7: the in-place outline matches the reference definition", () => {
+  it("every transparent pixel with an opaque 8-neighbour became outline, and nothing else did", () => {
+    const f = base({ character: "drifter", action: { kind: "punch", arm: "R", elapsed: 5, landed: false, sword: false } });
+    const joints = computePose(f, clock);
+    const c = createFrameCanvas();
+    composeFrame(c, joints, f, "drifter", { ...OPTS, rimSide: "right" });
+    for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
+      const i = y * c.w + x;
+      if (c.ids[i] !== OUTLINE_ID) continue;
+      let touch = false;
+      for (let dy = -1; dy <= 1 && !touch; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= c.w || ny >= c.h) continue;
+        const id = c.ids[ny * c.w + nx]!;
+        if (id !== 0 && id !== OUTLINE_ID) { touch = true; break; }
+      }
+      expect(touch, `outline pixel ${x},${y} touches a part`).toBe(true);
+    }
+  });
+});

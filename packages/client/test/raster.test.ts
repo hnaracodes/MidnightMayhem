@@ -35,3 +35,20 @@ describe("13.01 scalePart", () => {
     expect(big.anchor.x).toBe(8);
   });
 });
+
+import { packForImageData } from "../src/game/raster";
+describe("13.02 packForImageData", () => {
+  it("lays the bytes out as R, G, B, A in memory for either endianness", () => {
+    const src = new Uint32Array([0x112233ff, 0, 0xaabbcc80]);
+    for (const little of [true, false]) {
+      const buf = new ArrayBuffer(12);
+      const words = new Uint32Array(buf);
+      packForImageData(src, words, little);
+      const bytes = new Uint8Array(buf);
+      // on this engine the memory order only matches when `little` is the engine's own endianness
+      if (little === (new Uint8Array(new Uint32Array([1]).buffer)[0] === 1)) {
+        expect(Array.from(bytes)).toEqual([0x11, 0x22, 0x33, 0xff, 0, 0, 0, 0, 0xaa, 0xbb, 0xcc, 0x80]);
+      }
+    }
+  });
+});

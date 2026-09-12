@@ -1,12 +1,16 @@
 /**
- * Pose (Joints) + FighterState -> one pixel frame of a paper-doll fighter (11.01).
+ * Pose (Joints) + FighterState -> one pixel frame of a paper-doll fighter (11.01, 13.01, 13.02).
  * Pure: no Phaser, no DOM. Authored facing right in sprite space, mirrored as a whole for facing left, then
- * outlined and lit in screen space (rim on the moon side, dither on the dark side).
+ * outlined and lit in screen space (rim on the lit side, dither on the dark side).
  *
  * Sprite space (13.01): 1 sprite px = 1 world px, so the 105 px body (13.00) is 105 rows of art. The nominal
  * standing frame is FRAME_W × FRAME_H with the feet at ANCHOR; the raster the fighter is drawn into is larger
  * (CANVAS) so punches, the sword and the KO sprawl do not clip, and it addresses pixels in frame coordinates
  * through the PixelCanvas origin offset. Effects and backgrounds keep their own 2 px grid (`pixel.ts`).
+ *
+ * 13.02: limbs are tapered capsules shaded as cylinders from a light vector (`shade.ts`); every part records an
+ * id so overlaps darken the part behind; `composeKey` names everything a frame depends on so the Phaser side can
+ * skip re-rasterising a fighter that has not changed.
  */
 import type { CharacterId, FighterState, ItemId } from "@midnight/shared";
 import { P } from "../palette";
@@ -17,6 +21,7 @@ import { CONDUCTOR_PARTS } from "./parts/conductor";
 import { DRIFTER_PARTS } from "./parts/drifter";
 import { ITEM_PARTS } from "./parts/items";
 import { STOKER_PARTS } from "./parts/stoker";
+import { jointCrease, rampFrom, taperedLimb, type LightDir, type Ramp } from "./shade";
 
 export const SPRITE_SCALE = 1;
 export const FRAME_W = 80;
@@ -70,6 +75,11 @@ export interface CharacterParts {
   legColor: number;
   /** Optional cuff colour: a short band at the wrist end of each forearm (wrist wraps, brass cuffs). */
   cuff?: number;
+  /** 13.02 rule 6: authored four-step ramps; when absent they are generated from the colours above. */
+  limbRamp?: Ramp;
+  limbShadeRamp?: Ramp;
+  legRamp?: Ramp;
+  legShadeRamp?: Ramp;
 }
 
 export const CHARACTER_PARTS: Record<CharacterId, CharacterParts> = {
@@ -92,6 +102,13 @@ export interface ComposeOpts {
   rimSide: "left" | "right" | "both";
   /** 12.02: 0..0.25 mix of every fill toward night1 (gloom); outline and rim untouched. */
   gloom: number;
+  /**
+   * 13.02 rule 3: unit vector toward the net light in screen space (y down), from `Lighting.rimFor().dir`.
+   * Null or absent falls back to a direction derived from `rimSide`.
+   */
+  lightDir?: LightDir | null | undefined;
+  /** 13.02 rule 7: the `low` tier draws base-only limbs with no dither or crease. */
+  flatLimbs?: boolean | undefined;
   flash?: number | undefined;
   flashAlpha?: number | undefined;
   alpha: number;
@@ -100,11 +117,8 @@ export interface ComposeOpts {
   blinkMs?: number | undefined;
 }
 
-/** Thickness of the rasterised limbs in sprite px (13.01: world px at the 105 px body; 13.02 tapers and shades them). */
-const THIGH_W = 8;
-const SHIN_W = 6;
-const UPPER_W = 8;
-const FORE_W = 6;
+/** 13.02 rule 1: limb end widths in sprite px (hip → knee → ankle, shoulder → elbow → wrist). */
+export const LIMB_W = { hip: 9, knee: 7, ankle: 5, shoulder: 8, elbow: 6, wrist: 5 } as const;
 /** The ankle sits this many sprite px above the sole ((RIG.footW / 2 + 3) · BODY_SCALE ≈ 4.9 world px). */
 const ANKLE_LIFT = 4;
 /** Length of the cuff band at the wrist end of the forearm, sprite px. */
@@ -121,6 +135,18 @@ const SHADE_ALPHA = 0.45;
 /** 12.02: fighters never drop below 75 % brightness (FIGHTER_MIN_BRIGHTNESS in stage/lighting.ts). */
 const MAX_GLOOM = 0.25;
 const DEFAULT_FLASH_ALPHA = 0.7;
+/** 13.02 rule 5: occlusion weights toward night1 for a higher part in the 8-neighbourhood and in the 5×5 ring. */
+const OCCLUDE_NEAR = 0.35;
+const OCCLUDE_FAR = 0.18;
+/** 13.02 rule 3: the light a rim side stands in for when no vector reaches the composer. */
+const SIDE_LIGHT: Record<ComposeOpts["rimSide"], LightDir> = {
+  left: { x: -0.8, y: -0.6 },
+  right: { x: 0.8, y: -0.6 },
+  both: { x: 0, y: -1 },
+};
+
+/** 13.02 rule 5: draw order back to front; a higher id is in front and occludes a lower one where they touch. */
+export const PART_ID = { pack: 1, legB: 2, armB: 3, torso: 4, head: 5, legF: 6, armF: 7, item: 8 } as const;
 
 /** World joint -> frame px in the authored (facing-right) space, relative to the feet anchor, rounded. */
 export function jointToSprite(joint: Pt, f: FighterState): { x: number; y: number } {
@@ -149,14 +175,42 @@ export function isBlinkOn(blinkMs: number): boolean {
   return Math.floor(blinkMs / BLINK_MS) % 2 === 1;
 }
 
+interface Ramps { limb: Ramp; limbShade: Ramp; leg: Ramp; legShade: Ramp; cuff: Ramp | null }
+const rampCache = new WeakMap<CharacterParts, Ramps>();
+/** The four limb ramps of a character, authored or generated once (rule 6). */
+export function rampsFor(parts: CharacterParts): Ramps {
+  let r = rampCache.get(parts);
+  if (!r) {
+    r = {
+      limb: parts.limbRamp ?? rampFrom(parts.limbColor),
+      limbShade: parts.limbShadeRamp ?? rampFrom(parts.limbShade),
+      leg: parts.legRamp ?? rampFrom(parts.legColor),
+      legShade: parts.legShadeRamp ?? rampFrom(darken(parts.legColor, 0.72)),
+      cuff: parts.cuff === undefined ? null : rampFrom(parts.cuff),
+    };
+    rampCache.set(parts, r);
+  }
+  return r;
+}
+
+/** Rule 3: the light in authored space — the scene's vector (flipped for facing left) or the rim side's stand-in. */
+export function authoredLight(opts: Pick<ComposeOpts, "lightDir" | "rimSide" | "facing">): LightDir {
+  const d = opts.lightDir;
+  const screen = d && Math.hypot(d.x, d.y) > 1e-3 ? d : SIDE_LIGHT[opts.rimSide];
+  const m = Math.hypot(screen.x, screen.y) || 1;
+  return { x: (opts.facing * screen.x) / m, y: screen.y / m };
+}
+
 export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterState, characterId: CharacterId, opts: ComposeOpts): void {
   const parts = CHARACTER_PARTS[characterId];
+  const ramps = rampsFor(parts);
   const J = (p: Pt): { x: number; y: number } => jointToSprite(p, f);
   const state = joints.state;
   const item = opts.itemVisible ? f.item : null;
   const holding = item !== null && HAND_ITEMS.has(item.kind);
   const hand = handPart(parts, state, holding);
-  const legShade = darken(parts.legColor, 0.72);
+  const light = authoredLight(opts);
+  const flat = opts.flatLimbs === true;
 
   canvas.clear();
 
@@ -166,39 +220,46 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
 
   // backpack: on the back, behind everything, hanging off the back shoulder
   if (item && item.kind === "shield") {
+    canvas.id = PART_ID.pack;
     const sh = J(joints.arms.B.shoulder);
     canvas.blit(ITEM_SPRITES.shield, sh.x - 4, sh.y + 4, false);
   }
 
-  const drawLeg = (leg: Joints["legs"]["F"], color: number): void => {
+  const drawLeg = (leg: Joints["legs"]["F"], ramp: Ramp, id: number): void => {
+    canvas.id = id;
     const h = J(leg.hip);
     const k = J(leg.knee);
     const foot = J(leg.foot);
     const ankle = { x: foot.x, y: foot.y - ANKLE_LIFT };
-    canvas.line(h.x, h.y, k.x, k.y, THIGH_W, color);
-    canvas.line(k.x, k.y, ankle.x, ankle.y, SHIN_W, color);
+    taperedLimb(canvas, h, k, LIMB_W.hip, LIMB_W.knee, ramp, light, flat);
+    taperedLimb(canvas, k, ankle, LIMB_W.knee, LIMB_W.ankle, ramp, light, flat);
+    if (!flat) jointCrease(canvas, k, h, ankle, LIMB_W.knee / 2, ramp);
     canvas.blit(parts.foot, foot.x, foot.y, false);
   };
-  const drawArm = (arm: Joints["arms"]["F"], color: number): void => {
+  const drawArm = (arm: Joints["arms"]["F"], ramp: Ramp, id: number): void => {
+    canvas.id = id;
     const s = J(arm.shoulder);
     const e = J(arm.elbow);
     const w = J(arm.wrist);
     const fist = J(arm.fist);
-    canvas.line(s.x, s.y, e.x, e.y, UPPER_W, color);
-    canvas.line(e.x, e.y, w.x, w.y, FORE_W, color);
-    if (parts.cuff !== undefined) {
+    taperedLimb(canvas, s, e, LIMB_W.shoulder, LIMB_W.elbow, ramp, light, flat);
+    taperedLimb(canvas, e, w, LIMB_W.elbow, LIMB_W.wrist, ramp, light, flat);
+    if (!flat) jointCrease(canvas, e, s, w, LIMB_W.elbow / 2, ramp);
+    if (ramps.cuff) {
       const len = Math.hypot(w.x - e.x, w.y - e.y) || 1;
       const ux = (w.x - e.x) / len;
       const uy = (w.y - e.y) / len;
-      canvas.line(Math.round(w.x - ux * CUFF_LEN), Math.round(w.y - uy * CUFF_LEN), w.x, w.y, FORE_W, parts.cuff);
+      const from = { x: w.x - ux * CUFF_LEN, y: w.y - uy * CUFF_LEN };
+      taperedLimb(canvas, from, w, LIMB_W.wrist + 1, LIMB_W.wrist, ramps.cuff, light, flat);
     }
     canvas.blit(hand, fist.x, fist.y, false);
   };
 
-  drawLeg(joints.legs.B, legShade);
-  drawArm(joints.arms.B, parts.limbShade);
+  drawLeg(joints.legs.B, ramps.legShade, PART_ID.legB);
+  drawArm(joints.arms.B, ramps.limbShade, PART_ID.armB);
 
   // torso on the hip -> neck segment, upright when the lean is small, sheared or rotated in 15° steps otherwise
+  canvas.id = PART_ID.torso;
   let torso = parts.torso;
   if (state === "block" && parts.torsoBlock) torso = parts.torsoBlock;
   else if (parts.torsoBlink && isBlinkOn(opts.blinkMs ?? 0)) torso = parts.torsoBlink;
@@ -208,12 +269,14 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
   else if (Math.abs(lean) <= LEAN_SHEAR_MAX) canvas.blitSheared(torso, hip.x, hip.y, false, Math.tan((lean * Math.PI) / 180));
   else canvas.blitRotated(torso, hip.x, hip.y, false, lean);
 
+  canvas.id = PART_ID.head;
   canvas.blit(state === "ko" ? parts.headKo : parts.head, head.x, head.y, false);
 
-  drawLeg(joints.legs.F, parts.legColor);
-  drawArm(joints.arms.F, parts.limbColor);
+  drawLeg(joints.legs.F, ramps.leg, PART_ID.legF);
+  drawArm(joints.arms.F, ramps.limb, PART_ID.armF);
 
   if (item && holding) {
+    canvas.id = PART_ID.item;
     const fist = J(joints.arms.F.fist);
     canvas.blit(ITEM_SPRITES[item.kind], fist.x, fist.y, false);
   }
@@ -222,12 +285,34 @@ export function composeFrame(canvas: PixelCanvas, joints: Joints, f: FighterStat
 
   // nothing sinks into the roof: the fill stops one row above the sole so the outline lands on it (KO sprawl)
   canvas.clearBelow(ANCHOR.y - 1);
-  // 12.02: gloom mixes the fills before the outline and rim passes so those stay crisp
-  if (opts.gloom > 0) canvas.mixAll(SHADE, Math.min(opts.gloom, MAX_GLOOM), P.outline);
+  // 13.02 rule 5 + 12.02 rule 8: occlusion and gloom mix the fills in one sweep before the outline pass so outline
+  // pixels (including in-part detail) and the rim stay crisp
+  canvas.occludeAndGloom(OCCLUDE_NEAR, OCCLUDE_FAR, SHADE, Math.min(Math.max(opts.gloom, 0), MAX_GLOOM), SHADE, P.outline);
   canvas.outline(P.outline);
   canvas.rim(opts.rimColor, opts.rimSide, P.outline);
   if (opts.rimSide !== "both") canvas.edgeDither(2, SHADE, SHADE_ALPHA, opts.rimSide === "right" ? "left" : "right", P.outline);
 
-  if (opts.flash !== undefined) canvas.mixAll(opts.flash, opts.flashAlpha ?? DEFAULT_FLASH_ALPHA);
-  canvas.scaleAlpha(opts.alpha);
+  canvas.finishColor(opts.flash, opts.flashAlpha ?? DEFAULT_FLASH_ALPHA, opts.alpha);
+}
+
+/**
+ * 13.02 rule 7: everything a frame depends on, quantised to what the raster can show (joints to sprite px, the
+ * light to 1/16, gloom to 1/64, alphas to 1/64, the blink to on/off). Two equal keys mean `composeFrame` would
+ * produce the same pixels, so the caller can skip it.
+ */
+export function composeKey(joints: Joints, f: FighterState, characterId: CharacterId, opts: ComposeOpts): string {
+  const q = (p: Pt): string => { const s = jointToSprite(p, f); return `${s.x},${s.y}`; };
+  const arm = (a: Joints["arms"]["F"]): string => `${q(a.shoulder)};${q(a.elbow)};${q(a.wrist)};${q(a.fist)}`;
+  const leg = (l: Joints["legs"]["F"]): string => `${q(l.hip)};${q(l.knee)};${q(l.foot)}`;
+  const light = authoredLight(opts);
+  const item = opts.itemVisible && f.item ? f.item.kind : "-";
+  const blink = CHARACTER_PARTS[characterId].torsoBlink ? (isBlinkOn(opts.blinkMs ?? 0) ? 1 : 0) : 0;
+  return [
+    characterId, joints.state, opts.facing, Math.round(joints.lean),
+    q(joints.hip), q(joints.neck), q(joints.head),
+    arm(joints.arms.F), arm(joints.arms.B), leg(joints.legs.F), leg(joints.legs.B),
+    item, opts.rimColor, opts.rimSide, Math.round(light.x * 16), Math.round(light.y * 16),
+    Math.round(Math.min(Math.max(opts.gloom, 0), MAX_GLOOM) * 64), opts.flatLimbs ? 1 : 0,
+    opts.flash ?? "-", Math.round((opts.flashAlpha ?? DEFAULT_FLASH_ALPHA) * 64), Math.round(opts.alpha * 64), blink,
+  ].join("|");
 }

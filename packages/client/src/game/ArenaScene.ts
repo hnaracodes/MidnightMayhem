@@ -264,6 +264,8 @@ export class ArenaScene extends Phaser.Scene {
         rimColor: rim.color,
         rimSide: rim.side,
         gloom: rim.gloom,
+        lightDir: rim.dir ?? null,
+        flatLimbs: this.quality.quality !== "high",
         flash: fill.fillOverride,
         flashAlpha: fill.fillAlpha,
         squash: this.effects.squashFor(i),

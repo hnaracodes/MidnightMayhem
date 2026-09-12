@@ -31,7 +31,37 @@ export interface Light {
 
 export interface LightHandle { readonly id: number }
 export type RimSide = "left" | "right" | "both";
-export interface RimChoice { color: number; side: RimSide; gloom: number }
+export interface RimChoice {
+  color: number;
+  side: RimSide;
+  gloom: number;
+  /** 13.02 rule 3: unit vector toward the net light at the sample point (screen space, y down); null when it cancels or nothing reaches. */
+  dir?: { x: number; y: number } | null;
+}
+/** 13.02: below this net magnitude the light directions cancel (tunnel) and the composer falls back to `side`. */
+export const LIGHT_DIR_MIN = 0.03;
+/** 13.02: cold light (the moon) steers the shading at half the weight of a warm source. */
+const COLD_DIR_WEIGHT = 0.5;
+
+/** 13.02 rule 3: the normalised, falloff-weighted sum of unit vectors toward every light that reaches (x, y). Pure. */
+export function lightDirFor(lights: readonly Resolved[], x: number, y: number): { x: number; y: number } | null {
+  let sx = 0;
+  let sy = 0;
+  for (const l of lights) {
+    const f = falloff(l, x, y);
+    if (f <= 0) continue;
+    const dx = l.x - x;
+    const dy = l.y - y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-6) continue;
+    const wgt = f * (l.cold ? COLD_DIR_WEIGHT : 1);
+    sx += (wgt * dx) / d;
+    sy += (wgt * dy) / d;
+  }
+  const m = Math.hypot(sx, sy);
+  if (m < LIGHT_DIR_MIN) return null;
+  return { x: sx / m, y: sy / m };
+}
 
 /** What `Effects` and `ItemFx` need: transient lights, without owning the rig. */
 export interface LightSink {
@@ -151,7 +181,8 @@ export function gloomFor(level: number, darkAlpha: number): number {
  */
 export function rimFor(lights: readonly Resolved[], darkAlpha: number, x: number, y: number, tunnel = false): RimChoice {
   const gloom = gloomFor(lightLevel(lights, x, y), darkAlpha);
-  if (tunnel) return { color: P.amber1, side: "both", gloom };
+  const dir = lightDirFor(lights, x, y);
+  if (tunnel) return { color: P.amber1, side: "both", gloom, dir };
   let best: Resolved | null = null;
   let bestF = 0;
   let second: Resolved | null = null;
@@ -165,12 +196,12 @@ export function rimFor(lights: readonly Resolved[], darkAlpha: number, x: number
     else if (f > secondF) { second = l; secondF = f; }
   }
   if (!best || bestF < cold || bestF === 0) {
-    return { color: P.glow1, side: x < MOON.x ? "right" : "left", gloom };
+    return { color: P.glow1, side: x < MOON.x ? "right" : "left", gloom, dir };
   }
   const sideOf = (l: Resolved): RimSide => (l.x < x ? "left" : "right");
   const side = sideOf(best);
-  if (second && secondF >= 0.8 * bestF && sideOf(second) !== side) return { color: best.color, side: "both", gloom };
-  return { color: best.color, side, gloom };
+  if (second && secondF >= 0.8 * bestF && sideOf(second) !== side) return { color: best.color, side: "both", gloom, dir };
+  return { color: best.color, side, gloom, dir };
 }
 
 /** Rule 5: a seeded random walk toward a new target every `1 / hz` seconds, eased; frozen at 1 under reduced motion. */
