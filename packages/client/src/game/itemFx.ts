@@ -296,6 +296,8 @@ export class ItemFx {
         this.cut("ring", event.player);
         this.spawnAnchored(event.player, hands, newest, FRAMES.BEAM + FRAMES.BEAM_FADE, DEPTH.BEAM, "beam",
           (g, _t, frame, a) => drawBeam(g, a, frame));
+        const beam = this.timed.at(-1);
+        if (beam?.tag === "beam") this.lights?.glow(beam.g); // 12.03 rule 4: the beam blooms
         this.shake(BEAM_SHAKE_PX, FRAMES.BEAM_SHAKE);
         // 12.02 rule 7: the beam lights the roof along its length and both fighters in it; the palms glow warm
         const shooter = newest.fighters[event.player];

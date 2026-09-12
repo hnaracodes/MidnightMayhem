@@ -1,26 +1,96 @@
 {
-  "viewport": { "width": 960, "height": 540 },
+  "viewport": {
+    "width": 960,
+    "height": 540
+  },
   "steps": [
-    { "page": 0 },
-    { "goto": "http://localhost:5181/dev/hud.html?players=2" },
-    { "wait": 1500 },
-    { "shot": ".shots/ambience-hud-2p.png" },
-    { "goto": "http://localhost:5181/dev/hud.html?players=3" },
-    { "wait": 1500 },
-    { "shot": ".shots/ambience-hud-3p.png" },
-    { "goto": "http://localhost:5181/dev/hud.html?players=4&teams=2v2" },
-    { "wait": 1500 },
-    { "shot": ".shots/ambience-hud-4p.png" },
-    { "goto": "http://localhost:5181/dev/stage.html?car=STANDARD&map=roof" },
-    { "wait": 2500 },
-    { "shot": ".shots/ambience-stage-standard.png" },
-    { "eval": "window.__stage.cost()" },
-    { "goto": "http://localhost:5181/dev/stage.html?car=TUNNEL&map=chaos" },
-    { "wait": 2500 },
-    { "shot": ".shots/ambience-stage-tunnel.png" },
-    { "goto": "http://localhost:5181/dev/stage.html?car=FINAL_CAR&map=platforms" },
-    { "wait": 2500 },
-    { "shot": ".shots/ambience-stage-final.png" },
-    { "eval": "window.__stage.cost()" }
+    {
+      "page": 0
+    },
+    {
+      "goto": "http://localhost:5181/dev/hud.html?players=2"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/ambience-hud-2p.png"
+    },
+    {
+      "goto": "http://localhost:5181/dev/hud.html?players=3"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/ambience-hud-3p.png"
+    },
+    {
+      "goto": "http://localhost:5181/dev/hud.html?players=4&teams=2v2"
+    },
+    {
+      "wait": 1500
+    },
+    {
+      "shot": ".shots/ambience-hud-4p.png"
+    },
+    {
+      "goto": "http://localhost:5181/dev/stage.html?car=STANDARD&map=roof"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "shot": ".shots/ambience-stage-standard.png"
+    },
+    {
+      "eval": "window.__stage.cost()"
+    },
+    {
+      "goto": "http://localhost:5181/dev/stage.html?car=TUNNEL&map=chaos"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "shot": ".shots/ambience-stage-tunnel.png"
+    },
+    {
+      "goto": "http://localhost:5181/dev/stage.html?car=FINAL_CAR&map=platforms"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "shot": ".shots/ambience-stage-final.png"
+    },
+    {
+      "eval": "window.__stage.cost()"
+    },
+    {
+      "goto": "http://localhost:5181/dev/stage.html?car=STANDARD&map=roof&quality=low"
+    },
+    {
+      "wait": 2500
+    },
+    {
+      "shot": ".shots/ambience-stage-standard-low.png"
+    },
+    {
+      "eval": "window.__stage.cost()"
+    },
+    {
+      "goto": "http://localhost:5181/?debug=1"
+    },
+    {
+      "wait": 3500
+    },
+    {
+      "shot": ".shots/ambience-attract.png",
+      "selector": "canvas"
+    },
+    {
+      "eval": "[window.__arena.quality(), window.__arena.particles(), window.__arena.lights(), window.__arena.updateMs()]"
+    }
   ]
 }

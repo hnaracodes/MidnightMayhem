@@ -40,6 +40,8 @@ export interface LightSink {
   removeLight(h: LightHandle): void;
   /** A light that decays linearly to nothing over `frames` render frames, then removes itself. */
   pulse(l: Light, frames: number): void;
+  /** 12.03 rule 4: bloom on one drawn object (the beam), WebGL and the high tier only; a no-op otherwise. */
+  glow(obj: Phaser.GameObjects.GameObject): void;
 }
 
 /** Darkness alpha per car: the open roof is dusky, the last car darker, the tunnel near-black. */
@@ -63,7 +65,13 @@ const RAYS = [
 ] as const;
 const TRANSITION_MS = 400;
 export const DEFAULT_SEED = 0x11a7;
-const DEPTH = { DARK: 0, RAYS: 0.05, CAST: 0.1 } as const;
+const DEPTH = { DARK: 0, RAYS: 0.05, CAST: 0.1, VIGNETTE: 9.5 } as const;
+/** 12.03 rule 4: bloom on the light layers and the beam (never on sprites or HUD), and the baked ambient vignette. */
+const BLOOM = { color: 0xffffff, offset: 1, blur: 1.2, strength: 0.9, steps: 4 } as const;
+export const VIGNETTE_TEXTURE = "ambient_vignette";
+const VIGNETTE = { alpha: 0.55, inner: 0.5, size: 256 } as const;
+/** `Phaser.WEBGL` by value (see BLEND). */
+const WEBGL = 2;
 /** `BLEND.ADD` and `.ERASE` by value, so this module has no runtime Phaser import (tests run in node). */
 const BLEND = { ADD: 1, ERASE: 17 } as const;
 
@@ -193,7 +201,10 @@ export class Lighting implements LightSink {
   private readonly dark: Phaser.GameObjects.RenderTexture;
   private readonly cast: Phaser.GameObjects.RenderTexture;
   private readonly rays: Phaser.GameObjects.Graphics;
+  private readonly vignette: Phaser.GameObjects.Image;
   private readonly rng: Lcg;
+  private high = false;
+  private readonly glowing = new Set<Phaser.GameObjects.GameObject>();
   private readonly flickers = new Map<string, FlickerState>();
   private readonly transients = new Map<number, Transient>();
   private readonly tweenState = { darkAlpha: DARK_ALPHA.STANDARD };
@@ -216,6 +227,46 @@ export class Lighting implements LightSink {
     this.cast = scene.add.renderTexture(0, 0, WORLD.WIDTH, WORLD.HEIGHT).setOrigin(0, 0).setDepth(DEPTH.CAST)
       .setBlendMode(BLEND.ADD);
     this.rays = scene.add.graphics().setDepth(DEPTH.RAYS).setBlendMode(BLEND.ADD);
+    // rule 4: ambient vignette — a baked radial mask in void0 under the HUD, so text and bars stay crisp
+    makeTexture(scene, VIGNETTE_TEXTURE, (g) => {
+      // a grid of cells whose alpha rises with the distance from the centre (0 inside `inner`, 1 at the corners);
+      // the Image is scaled up ~4× with linear filtering, so 4 px cells read as a smooth gradient
+      const cell = 4;
+      const c = VIGNETTE.size / 2;
+      const half = Math.SQRT2 * c;
+      for (let y = 0; y < VIGNETTE.size; y += cell) {
+        for (let x = 0; x < VIGNETTE.size; x += cell) {
+          const d = Math.hypot(x + cell / 2 - c, y + cell / 2 - c) / half;
+          const t = Math.max(0, (d - VIGNETTE.inner) / (1 - VIGNETTE.inner));
+          if (t <= 0) continue;
+          g.fillStyle(P.white, t * t);
+          g.fillRect(x, y, cell, cell);
+        }
+      }
+    }, VIGNETTE.size, VIGNETTE.size);
+    this.vignette = scene.add.image(0, 0, VIGNETTE_TEXTURE).setOrigin(0, 0).setDisplaySize(WORLD.WIDTH, WORLD.HEIGHT)
+      .setTint(P.void0).setAlpha(VIGNETTE.alpha).setDepth(DEPTH.VIGNETTE);
+  }
+
+  /** 12.03 rule 5: the high tier blooms the cast and the rays; low removes every bloom this rig added. */
+  setQuality(high: boolean): void {
+    this.high = high;
+    for (const obj of [this.cast, this.rays]) this.applyGlow(obj);
+    for (const obj of this.glowing) this.applyGlow(obj);
+  }
+
+  glow(obj: Phaser.GameObjects.GameObject): void {
+    this.glowing.add(obj);
+    obj.once("destroy", () => this.glowing.delete(obj));
+    this.applyGlow(obj);
+  }
+
+  private applyGlow(obj: Phaser.GameObjects.GameObject): void {
+    const fx = (obj as unknown as { postFX?: { addBloom?: (...a: number[]) => unknown; clear?: () => void } }).postFX;
+    if (!fx || typeof fx.addBloom !== "function" || typeof fx.clear !== "function") return;
+    if ((this.scene.renderer as unknown as { type: number }).type !== WEBGL) return;
+    fx.clear();
+    if (this.high) fx.addBloom(BLOOM.color, BLOOM.offset, BLOOM.offset, BLOOM.blur, BLOOM.strength, BLOOM.steps);
   }
 
   /** Rule 1: darkness tweens to the car's alpha over 400 ms (immediately with `{ immediate: true }`); sources swap. */
@@ -336,6 +387,7 @@ export class Lighting implements LightSink {
     this.dark.destroy();
     this.cast.destroy();
     this.rays.destroy();
+    this.vignette.destroy();
     this.transients.clear();
   }
 }

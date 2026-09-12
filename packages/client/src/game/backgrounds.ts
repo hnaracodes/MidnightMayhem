@@ -40,6 +40,8 @@ const TEXTURE_SIZE = {
   bg_tunnel_wall: [1920, 440],
   bg_track_trail: [1920, 60],
   bg_roof_lamps:  [1920, 60],
+  bg_haze:        [64, 120],
+  bg_foreground:  [1920, 540],
 } as const;
 
 type TextureKey = keyof typeof TEXTURE_SIZE;
@@ -77,7 +79,7 @@ const FLASH_ALPHA = 0.3;
  */
 export const DEPTH = {
   sky: -20, stars: -19, twinkle: -18, moon: -17, cloudsFar: -16, cloudsNear: -15,
-  dark: -14, tunnel: -13, roofLamps: -12.2, roof: -12, glow: -11, body: -10, track: -9.7, railing: -8, lamp: -7, tint: -1, flash: 50,
+  dark: -14, hazeFar: -15.5, hazeNear: -12.6, tunnel: -13, roofLamps: -12.2, roof: -12, foreground: 0.3, glow: -11, body: -10, track: -9.7, railing: -8, lamp: -7, tint: -1, flash: 50,
 } as const;
 const TILE_DEPTH: Record<ParallaxKey, number> = {
   bg_sky: DEPTH.sky, bg_stars: DEPTH.stars, bg_moon: DEPTH.moon, bg_clouds_far: DEPTH.cloudsFar,
@@ -361,6 +363,53 @@ const drawRoofLamps: Draw = (g, _w, h) => {
   }
 };
 
+/** 12.03 rule 1: a vertical strip, `haze` fading to transparent downward; stretched across the screen as an Image. */
+const drawHaze: Draw = (g, w, h) => {
+  for (let row = 0; row < h; row++) {
+    const t = 1 - row / h;
+    g.fillStyle(P.haze, t * t);
+    g.fillRect(0, row, w, 1);
+  }
+};
+
+/** 12.03 rule 1 alpha per car for the two haze strips (open / tunnel). */
+export const HAZE_ALPHA = { far: 0.35, near: 0.25 } as const;
+export const FOREGROUND_SPEED = 1.4;
+const FOREGROUND_SEED = 0xf06e;
+/** The fighter band the foreground never crosses (rule 2). */
+const FOREGROUND_BAND = { top: 100, bottom: WORLD.ROOF_Y + 40 } as const;
+
+/**
+ * 12.03 rule 2: near-camera silhouettes in `void0` — catenary cable sags across the top and pole stubs / a railing
+ * edge along the bottom — seeded, transparent through the fighter band, scrolled faster than the roof.
+ */
+const drawForeground: Draw = (g, w, h) => {
+  const rng = new Lcg(FOREGROUND_SEED);
+  g.fillStyle(P.void0, 1);
+  // cables: three sagging spans per 480 px, 3 px thick, hanging 12–30 px into the top band
+  const span = 480;
+  for (let x0 = 0; x0 < w; x0 += span) {
+    const sag = rng.range(12, 30);
+    const y0 = rng.range(6, 22);
+    for (let x = 0; x <= span; x += 3) {
+      const t = x / span;
+      const y = y0 + sag * 4 * t * (1 - t);
+      if (y + 3 < FOREGROUND_BAND.top) g.fillRect(x0 + x, Math.round(y), 3, 3);
+    }
+    // a hanger at the span's start
+    g.fillRect(x0, 0, 3, Math.round(y0));
+  }
+  // bottom: a railing rail along the very bottom with posts every 160 px, and pole stubs
+  const railY = h - 14;
+  g.fillRect(0, railY, w, 4);
+  for (let x = 0; x < w; x += 160) {
+    const post = rng.range(20, 36);
+    const y = h - post;
+    if (y > FOREGROUND_BAND.bottom) g.fillRect(x, y, 6, post);
+    else g.fillRect(x, FOREGROUND_BAND.bottom + 1, 6, h - FOREGROUND_BAND.bottom - 1);
+  }
+};
+
 const drawTrackTrail: Draw = (g, w, h) => {
   // Rows above TRACK_TOP stay transparent so the carriage windows show; the ballast bed starts under them.
   g.fillStyle(P.outline, 1);
@@ -394,6 +443,8 @@ const GENERATORS: Record<TextureKey, Draw> = {
   bg_tunnel_wall: drawTunnelWall,
   bg_track_trail: drawTrackTrail,
   bg_roof_lamps: drawRoofLamps,
+  bg_haze: drawHaze,
+  bg_foreground: drawForeground,
 };
 
 /** Creates every stage texture once from the seeded generators. Safe to call again; existing keys are kept. */
@@ -421,6 +472,11 @@ export interface Layers {
   glow: Phaser.GameObjects.TileSprite;
   /** 12.02 roof lamp fixtures at `ROOF_LAMPS`; scrolls with the roof. */
   lamps: Phaser.GameObjects.TileSprite;
+  /** 12.03 haze strips between the far bands (behind the near clouds) and between the clouds and the roof. */
+  hazeFar: Phaser.GameObjects.Image;
+  hazeNear: Phaser.GameObjects.Image;
+  /** 12.03 near-camera silhouettes, scrolled at `FOREGROUND_SPEED` × roof speed. */
+  foreground: Phaser.GameObjects.TileSprite;
   railing: Phaser.GameObjects.Graphics;
   lamp: Phaser.GameObjects.Graphics;
   /** Current roof and body scroll speed in px/s (240, or 180 in the final car). Rigs use it as wind speed. */
@@ -515,6 +571,11 @@ export function createBackgrounds(scene: Phaser.Scene, map: MapId = "roof"): Lay
     .setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.track);
   const lamps = scene.add.tileSprite(0, WORLD.ROOF_Y - ROOF_LAMP_H, W, ROOF_LAMP_H, "bg_roof_lamps")
     .setOrigin(0, 0).setDepth(DEPTH.roofLamps);
+  const [hazeW, hazeH] = TEXTURE_SIZE.bg_haze;
+  const hazeFar = scene.add.image(0, 150, "bg_haze").setOrigin(0, 0).setDisplaySize(W, hazeH * 1.5).setAlpha(HAZE_ALPHA.far).setDepth(DEPTH.hazeFar);
+  const hazeNear = scene.add.image(0, WORLD.ROOF_Y - hazeH, "bg_haze").setOrigin(0, 0).setDisplaySize(W, hazeH).setAlpha(HAZE_ALPHA.near).setDepth(DEPTH.hazeNear);
+  void hazeW;
+  const foreground = scene.add.tileSprite(0, 0, W, H, "bg_foreground").setOrigin(0, 0).setDepth(DEPTH.foreground);
 
   const railing = scene.add.graphics().setDepth(DEPTH.railing).setAlpha(0).setVisible(false);
   drawRailing(railing);
@@ -523,7 +584,7 @@ export function createBackgrounds(scene: Phaser.Scene, map: MapId = "roof"): Lay
 
   const tint = scene.add.rectangle(0, 0, W, H, P.danger, 1).setOrigin(0, 0).setAlpha(0).setDepth(DEPTH.tint);
 
-  const base = { tiles, tunnel, track, dark, tint, moon, glow, lamps, railing, lamp, roofSpeed: STANDARD_ROOF_SPEED };
+  const base = { tiles, tunnel, track, dark, tint, moon, glow, lamps, hazeFar, hazeNear, foreground, railing, lamp, roofSpeed: STANDARD_ROOF_SPEED };
   const mapLayer = createMapLayer(scene, base);
   mapLayer.setMap(map);
   const layers = { ...base, map: mapLayer } as Layers;
@@ -557,6 +618,7 @@ export function scrollBackgrounds(layers: Layers, dtSec: number): void {
   });
   layers.glow.tilePositionX += layers.roofSpeed * dt;
   layers.lamps.tilePositionX += layers.roofSpeed * dt;
+  layers.foreground.tilePositionX += layers.roofSpeed * FOREGROUND_SPEED * dt;
   layers.tunnel.tilePositionX += TUNNEL_SPEED * dt;
   layers.track.tilePositionX += TRACK_SPEED * dt;
   const ex = extras.get(layers);
@@ -578,7 +640,7 @@ export function applyTrainCar(scene: Phaser.Scene, layers: Layers, car: TrainCar
 
   const targets: object[] = [
     ...layers.tiles, layers.tunnel, layers.track, layers.dark, layers.tint, layers.moon, layers.glow,
-    layers.railing, layers.lamp, layers,
+    layers.hazeFar, layers.hazeNear, layers.railing, layers.lamp, layers,
   ];
   if (twinkle) targets.push(twinkle);
   scene.tweens.killTweensOf(targets);
@@ -608,6 +670,8 @@ export function applyTrainCar(scene: Phaser.Scene, layers: Layers, car: TrainCar
     fade(tile, sky * TILE_ALPHA[row.key]);
   });
   fade(layers.moon, sky);
+  fade(layers.hazeFar, sky * HAZE_ALPHA.far);
+  fade(layers.hazeNear, sky * HAZE_ALPHA.near);
   if (twinkle) fade(twinkle, sky);
   fade(layers.dark, tunnel ? DARK_ALPHA_TUNNEL : 0);
   fade(layers.tunnel, tunnel ? 1 : 0);

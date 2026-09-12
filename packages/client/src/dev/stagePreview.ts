@@ -12,6 +12,8 @@ import { drawShadow } from "../game/rig/draw";
 import { computePose } from "../game/rig/pose";
 import { SpriteFighter } from "../game/sprites/SpriteFighter";
 import { Lighting, type LightHandle, type RimChoice } from "../game/stage/lighting";
+import { Particulate } from "../game/stage/particulate";
+import { qualityFromQuery, resolveQuality } from "../game/stage/quality";
 
 declare global {
   interface Window {
@@ -49,6 +51,8 @@ const startCar = CAR_IDS.find((c) => c === query.get("car")) ?? "STANDARD";
 class StagePreviewScene extends Phaser.Scene {
   private layers!: Layers;
   private lighting!: Lighting;
+  private particulate!: Particulate;
+  private high = true;
   private sprite!: SpriteFighter;
   private shadow!: Phaser.GameObjects.Graphics;
   private fighter: FighterState = { ...createMatch().fighters[0]!, x: WALK.x0, vx: 3, facing: 1 };
@@ -65,6 +69,9 @@ class StagePreviewScene extends Phaser.Scene {
   create(): void {
     this.layers = createBackgrounds(this, startMap);
     this.lighting = new Lighting(this);
+    this.particulate = new Particulate(this);
+    this.high = resolveQuality(qualityFromQuery(location.search), this.renderer.type === Phaser.WEBGL) === "high";
+    this.lighting.setQuality(this.high);
     if (startCar !== "STANDARD") {
       applyTrainCar(this, this.layers, startCar);
       this.lighting.setCar(startCar, { immediate: true });
@@ -110,12 +117,13 @@ class StagePreviewScene extends Phaser.Scene {
     const start = performance.now();
     const dt = delta / 1000;
     scrollBackgrounds(this.layers, dt);
-    this.lighting.update(dt, { roof: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0, tunnel: this.layers.tunnel.tilePositionX }, { reducedMotion: false, rays: true });
+    this.lighting.update(dt, { roof: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0, tunnel: this.layers.tunnel.tilePositionX }, { reducedMotion: false, rays: this.high });
+    this.particulate.update(dt, { reducedMotion: false, enabled: this.high, roofSpeed: this.layers.roofSpeed });
     this.stepStandIn(dt);
     this.costMs += (performance.now() - start - this.costMs) * 0.05;
     if (++this.frames % 30 === 0) {
       const el = document.getElementById("cost");
-      if (el) el.textContent = `scrollBackgrounds + Motion.update + Lighting.update: ${this.costMs.toFixed(3)} ms/frame (budget 1 ms)  lights ${this.lighting.lights().length}  rim ${this.rimNow.side} gloom ${this.rimNow.gloom.toFixed(2)}`;
+      if (el) el.textContent = `scrollBackgrounds + Motion.update + Lighting.update: ${this.costMs.toFixed(3)} ms/frame (budget 1 ms)  lights ${this.lighting.lights().length}  q ${this.high ? "high" : "low"}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  rim ${this.rimNow.side} gloom ${this.rimNow.gloom.toFixed(2)}`;
     }
   }
 

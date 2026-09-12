@@ -57,13 +57,16 @@ export class Particulate {
    0.3 × roof speed, dying over 2–4 s). One `Graphics` each, redrawn per frame, depth 0.4 (motes) and 3.9 (embers,
    in front of fighters, behind item FX). Spawn is deterministic from the seed; a dead particle is recycled, never
    allocated; `live()` never exceeds the caps. `enabled: false` or `reducedMotion` clears both and draws nothing.
-4. Post-FX: in `ArenaScene.create`, when `this.renderer.type === Phaser.WEBGL`, `cameras.main.postFX.addBloom(color
-   0xffffff, offsetX 1, offsetY 1, blurStrength 1, strength 0.35, steps 4)` and `addVignette(0.5, 0.5, 0.92, 0.28)`.
-   Bloom threshold is not adjustable in Phaser's built-in, so strength stays low (0.35) so sprites and HUD text stay
-   crisp while the lamps, the cast and the beam bleed. The `Effects` danger vignette keeps its `danger` tint and 2 Hz
-   pulse and reads distinctly against the neutral post-FX vignette. On Canvas both are skipped without error.
+4. Bloom and vignette: Phaser's camera bloom has no threshold and softens every sprite and glyph, so bloom is
+   per object instead — `Lighting.setQuality(true)` adds `postFX.addBloom(0xffffff, 1, 1, 1.2, 0.9, 4)` to the
+   light cast and the god-rays, and `LightSink.glow(obj)` adds the same to the beam Graphics from `ItemFx`;
+   WebGL and the high tier only, removed on `low`, a no-op on Canvas. The ambient vignette is not post-FX: a baked
+   radial `void0` mask (`ambient_vignette`, clear inside 50 % of the half-diagonal, alpha 0.55 at the corners) as an
+   Image at depth 9.5, under the HUD (10) so text and bars stay crisp, on both tiers and on Canvas. The `Effects`
+   danger vignette keeps its `danger` tint and 2 Hz pulse and reads distinctly against it.
 5. Quality: `session.quality` from `?quality=`; `resolveQuality("auto", webgl)`; `high` = everything, `low` = no
-   post-FX, no god-rays (`Lighting.update` `rays: false`), no particulate, haze and foreground kept, light rig kept.
+   bloom, no god-rays (`Lighting.update` `rays: false`), no particulate; haze, foreground, vignette and the light
+   rig kept.
    `qualityStep` counts frames with `updateMs > FRAME_BUDGET_MS`; at `OVER_BUDGET_FRAMES` it drops to `low` once
    (`locked`) and `ArenaScene` logs `console.info("[ambience] quality → low ...")` exactly once. A tier never goes
    back up during a session.
@@ -73,7 +76,7 @@ export class Particulate {
 ## Invariants
 - No `Math.random`, no `Date`: particles come from the seeded `Lcg`; both laptops draw the same motes.
 - Live particles never exceed `MAX_MOTES + MAX_EMBERS`; no per-frame allocation after the pool is built.
-- Fighters, HUD text, hazards and projectiles are never blurred below legibility: bloom strength ≤ 0.35.
+- Fighters, HUD text, hazards and projectiles are never bloomed: bloom lives only on the light layers and the beam.
 - `update()` with four fighters, four fires, a beam and a flash stays ≤ 4 ms on `high` on the headless driver or
   the tier downgrades and says so.
 

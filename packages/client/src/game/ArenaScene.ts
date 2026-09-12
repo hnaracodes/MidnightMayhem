@@ -25,6 +25,8 @@ import { computePose, type Clock } from "./rig/pose";
 import { session } from "./session";
 import { SpriteFighter } from "./sprites/SpriteFighter";
 import { Lighting } from "./stage/lighting";
+import { Particulate } from "./stage/particulate";
+import { initialQualityState, qualityStep, resolveQuality, type Quality, type QualityState } from "./stage/quality";
 
 /**
  * Fighter depths run RIG0 + rank · RIG_STEP for the rank in the back-to-front draw order (four fighters fit
@@ -38,6 +40,7 @@ const BUDGET_EMA = 0.05;
 const ATTRACT_MAX_STEPS = 5;
 /** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
 const CHEST_ABOVE_FEET = 60;
+const FRAME_BUDGET_LABEL = "6 ms";
 
 /** Dev hook: the headless driver reads the measured update cost and the current hint through it. */
 declare global {
@@ -52,6 +55,9 @@ declare global {
       attract: () => boolean;
       /** 12.02: live light count (static instances + transients). */
       lights: () => number;
+      /** 12.03: live particle counts and the resolved quality tier. */
+      particles: () => { motes: number; embers: number };
+      quality: () => Quality;
     };
   }
 }
@@ -73,6 +79,8 @@ export class ArenaScene extends Phaser.Scene {
   private effects!: Effects;
   private itemFx!: ItemFx;
   private lighting!: Lighting;
+  private particulate!: Particulate;
+  private quality: QualityState = initialQualityState("high");
   private dazzle!: Phaser.GameObjects.Rectangle;
 
   private readonly clock = new RenderClock();
@@ -101,6 +109,8 @@ export class ArenaScene extends Phaser.Scene {
     this.debug = this.add.graphics().setDepth(DEPTH.DEBUG);
     this.hud = new Hud(this);
     this.lighting = new Lighting(this);
+    this.particulate = new Particulate(this);
+    this.applyQuality(resolveQuality(session.quality, this.renderer.type === Phaser.WEBGL), true);
     this.effects = new Effects(this, this.lighting);
     this.itemFx = new ItemFx(this, this.lighting);
     this.dazzle = this.add.rectangle(0, 0, WORLD.WIDTH, WORLD.HEIGHT, P.white, 1)
@@ -121,6 +131,8 @@ export class ArenaScene extends Phaser.Scene {
       fighters: () => this.views.length,
       attract: () => this.attract !== null,
       lights: () => this.lighting.lights().length,
+      particles: () => this.particulate.live(),
+      quality: () => this.quality.quality,
     };
   }
 
@@ -128,12 +140,26 @@ export class ArenaScene extends Phaser.Scene {
     const start = performance.now();
     this.frame(start, delta);
     this.updateMs += (performance.now() - start - this.updateMs) * BUDGET_EMA;
+    const step = qualityStep(this.quality, this.updateMs);
+    this.quality = step.state;
+    if (step.changed) {
+      console.info(`[ambience] quality → low: update ${this.updateMs.toFixed(2)} ms over ${FRAME_BUDGET_LABEL} for ~2 s; bloom, god-rays and particulate off`);
+      this.applyQuality("low", false);
+    }
+  }
+
+  /** 12.03 rule 5: `high` blooms the light layers and the beam (WebGL only); god-rays and particulate read the tier every frame. */
+  private applyQuality(quality: Quality, initial: boolean): void {
+    if (initial) this.quality = initialQualityState(quality);
+    this.lighting.setQuality(quality === "high");
   }
 
   private frame(now: number, delta: number): void {
     const dt = delta / 1000;
     scrollBackgrounds(this.layers, session.reducedMotion ? 0 : dt);
-    this.lighting.update(dt, this.tileOffsets(), { reducedMotion: session.reducedMotion, rays: true });
+    const high = this.quality.quality === "high";
+    this.lighting.update(dt, this.tileOffsets(), { reducedMotion: session.reducedMotion, rays: high });
+    this.particulate.update(dt, { reducedMotion: session.reducedMotion, enabled: high, roofSpeed: this.layers.roofSpeed });
 
     const renderMs = this.clock.advance(now, this.effects.timeScale());
     const sampled = session.buffer.sample(renderMs);
@@ -355,7 +381,7 @@ export class ArenaScene extends Phaser.Scene {
     const rtt = session.rtt === null ? "n/a" : `${session.rtt.toFixed(1)} ms`;
     const mode = attracting ? "ATTRACT" : state.phase;
     this.debugText!.setText(
-      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  ${mode}  ${state.config.map}/${state.config.mode}`,
+      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  q ${this.quality.quality}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  ${mode}  ${state.config.map}/${state.config.mode}`,
     );
   }
 }

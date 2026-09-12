@@ -47,10 +47,12 @@ function stubScene() {
     add: {
       renderTexture: () => { const o = new FakeObject(); objects.push(o); return o; },
       graphics: () => { const o = new FakeObject(); objects.push(o); return o; },
+      image: () => { const o = new FakeObject(); objects.push(o); return o; },
     },
     make: { graphics: () => { const g = new FakeObject(); (g as unknown as { generateTexture: (k: string) => void }).generateTexture = (k) => { textures.add(k); }; return g; } },
     textures: { exists: (k: string) => textures.has(k) },
     tweens: { add: (cfg: { targets: object; darkAlpha?: number }) => { tweens.push(cfg); return {}; }, killTweensOf: () => undefined },
+    renderer: { type: 2 },
   };
   return { scene: scene as unknown as Phaser.Scene, objects, tweens, textures };
 }
