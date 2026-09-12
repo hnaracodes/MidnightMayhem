@@ -79,8 +79,10 @@ function drawRack(g: Phaser.GameObjects.Graphics, x0: number, x1: number, y: num
   // Underlight on the roof beneath the rack.
   g.fillStyle(P.amber1, 0.2);
   g.fillRect(x0, WORLD.ROOF_Y, w, RACK.underlight);
-  g.fillStyle(P.amber1, 0.08);
-  g.fillRect(x0 - 8, WORLD.ROOF_Y, w + 16, RACK.underlight * 2);
+  g.fillStyle(P.amber1, 0.12);
+  g.fillRect(x0 - 6, WORLD.ROOF_Y + RACK.underlight, w + 12, RACK.underlight);
+  g.fillStyle(P.amber1, 0.06);
+  g.fillRect(x0 - 12, WORLD.ROOF_Y + RACK.underlight * 2, w + 24, RACK.underlight);
   // Legs with cross-bracing down to the roof.
   const legTop = y + RACK.slab;
   const legH = WORLD.ROOF_Y - legTop;

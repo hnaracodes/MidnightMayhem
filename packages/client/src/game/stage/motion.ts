@@ -43,7 +43,7 @@ const MD = {
 } as const;
 
 interface Spark { x: number; y: number; vx: number; vy: number; life: number }
-interface Puff { x: number; y: number; age: number; tunnel: boolean }
+interface Puff { x: number; y: number; age: number; tunnel: boolean; scale: number; speed: number }
 
 type Draw = (g: Phaser.GameObjects.Graphics, w: number, h: number) => void;
 
@@ -171,8 +171,11 @@ export class Motion {
 
   liveParticles(): number { return this.sparks.length + this.puffs.length; }
 
-  /** Force a strike now (preview only); still consumes the LCG the same way a timed strike does. */
-  strike(): void { this.lightning(); }
+  /** Force a strike now (preview only), held for `frames` updates; consumes the LCG like a timed strike. */
+  strike(frames: number = LIGHTNING.frames): void {
+    this.lightning();
+    this.flashFrames = frames;
+  }
 
   update(dtSec: number, roofSpeed: number, car: TrainCar): void {
     const dt = Math.min(Math.max(dtSec, 0), 0.1);
@@ -217,25 +220,31 @@ export class Motion {
     this.puffTimer -= dt;
     if (this.puffTimer <= 0) {
       this.puffTimer += SMOKE.every;
-      this.puffs.push({ x: SMOKE.x, y: SMOKE.y + this.rng.range(-6, 6), age: 0, tunnel: car === "TUNNEL" });
+      this.puffs.push({
+        x: SMOKE.x, y: SMOKE.y + this.rng.range(-8, 8), age: 0, tunnel: car === "TUNNEL",
+        scale: this.rng.range(0.8, 1.25), speed: this.rng.range(0.85, 1.15),
+      });
       this.events.push({ t: this.t, kind: "puff", x: SMOKE.x });
     }
     this.smoke.clear();
     this.puffs = this.puffs.filter((p) => {
       p.age += dt;
       if (p.age >= SMOKE.life) return false;
-      p.x -= SMOKE.drift * roofSpeed * dt;
+      p.x -= SMOKE.drift * roofSpeed * p.speed * dt;
       p.y -= SMOKE.rise * dt;
       return p.x > -SMOKE.r1;
     });
     for (const p of this.puffs) {
       const k = p.age / SMOKE.life;
-      const r = (SMOKE.r0 + (SMOKE.r1 - SMOKE.r0) * k) * (p.tunnel ? 0.7 : 1);
+      const r = (SMOKE.r0 + (SMOKE.r1 - SMOKE.r0) * k) * p.scale * (p.tunnel ? 0.7 : 1);
       const a = SMOKE.alpha * (1 - k) * (p.tunnel ? 0.6 : 1);
-      this.smoke.fillStyle(p.tunnel ? P.night2 : P.steel2, a);
+      const color = p.tunnel ? P.night2 : P.steel2;
+      // Three soft blobs per puff, stretched along the drift so neighbouring puffs join into one plume.
+      this.smoke.fillStyle(color, a * 0.7);
       this.smoke.fillCircle(p.x, p.y, r);
-      this.smoke.fillStyle(p.tunnel ? P.night2 : P.steel2, a * 0.5);
-      this.smoke.fillCircle(p.x + r * 0.5, p.y - r * 0.35, r * 0.7);
+      this.smoke.fillCircle(p.x + 18 + r * 0.5, p.y + r * 0.2, r * 0.8);
+      this.smoke.fillStyle(color, a * 0.4);
+      this.smoke.fillCircle(p.x + 36 + r * 0.3, p.y - r * 0.3, r * 0.7);
     }
 
     // 5. Bob and joint clack.
@@ -303,7 +312,8 @@ export class Motion {
     if (roof) roof.setY(WORLD.ROOF_Y + offset);
     if (body) body.setY(WORLD.ROOF_Y + offset);
     L.glow.setY(WORLD.ROOF_Y + offset);
-    for (const g of [L.railing, L.lamp, this.rail, this.bogies, this.wheels, this.sparkLayer, L.map.gaps, L.map.platforms]) g.setY(offset);
+    this.rail.setY(BAND_TOP + offset);
+    for (const g of [L.railing, L.lamp, this.bogies, this.wheels, this.sparkLayer, L.map.gaps, L.map.platforms]) g.setY(offset);
     for (const s of L.map.slices) s.setY(480 + offset);
   }
 
