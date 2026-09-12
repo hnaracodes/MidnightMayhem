@@ -5,15 +5,17 @@
  *
  * Local space: origin at the feet, +x toward facing, +y down. Angles in degrees, 0 = straight down,
  * 90 = forward (toward facing), 180 = up. Authored facing right; facing left flips every x offset.
+ * 13.00: local space is the 150 px author body; `computePose` multiplies every offset by `BODY_SCALE` on the
+ * way to world, so the drawn fighter is 105 px and the sim's scaled hitboxes still hug it.
  */
 import { ARSENAL, BALANCE, THROW, WORLD, type FighterState } from "@midnight/shared";
-import { CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
+import { BODY_SCALE, CHARACTER_RIG, RIG, type CharacterRig } from "./characters";
 
 export interface Pt { x: number; y: number }
 export interface Arm { shoulder: Pt; elbow: Pt; wrist: Pt; fist: Pt }
 export interface Leg { hip: Pt; knee: Pt; foot: Pt }
 
-export type RigState = "idle" | "walk" | "jump" | "punch" | "chop" | "sweep" | "laser" | "throw" | "block" | "hit" | "ko" | "offbounds" | "win";
+export type RigState = "idle" | "walk" | "jump" | "punch" | "chop" | "sweep" | "laser" | "throw" | "block" | "hit" | "slip" | "ko" | "offbounds" | "win";
 
 export interface Clock {
   /** Render time in ms; drives the idle bob, block shudder and win bob. */
@@ -211,6 +213,7 @@ interface LocalPose {
 
 export function rigState(f: FighterState, koActive: boolean): RigState {
   if (koActive) return "ko";
+  if (f.slipped > 0) return "slip";
   if (f.hitstun > 0) return "hit";
   if (f.action?.kind === "laser") return "laser";
   if (f.action?.kind === "punch") return "punch";
@@ -555,6 +558,38 @@ function koPose(rig: CharacterRig, frames: number): LocalPose {
   };
 }
 
+/** How far into the floor pose a slip is: falls over SLIP_FALL frames, lies, gets up over the last SLIP_RISE. */
+export function slipStage(slipped: number): { stage: "fall" | "down" | "rise"; t: number } {
+  const elapsed = ARSENAL.SLIP_STUN - slipped;
+  if (elapsed < SLIP_FALL) return { stage: "fall", t: elapsed / SLIP_FALL };
+  if (slipped > SLIP_RISE) return { stage: "down", t: 1 };
+  return { stage: "rise", t: 1 - slipped / SLIP_RISE };
+}
+const SLIP_FALL = 12;
+const SLIP_RISE = 15;
+
+function lerpPose(a: LocalPose, b: LocalPose, t: number): LocalPose {
+  return {
+    alpha: lerp(a.alpha, b.alpha, t),
+    t: {
+      hip: lerpPt(a.t.hip, b.t.hip, t), neck: lerpPt(a.t.neck, b.t.neck, t), head: lerpPt(a.t.head, b.t.head, t),
+      shoulder: lerpPt(a.t.shoulder, b.t.shoulder, t), lean: lerp(a.t.lean, b.t.lean, t),
+    },
+    arms: { F: lerpArm(a.arms.F, b.arms.F, t), B: lerpArm(a.arms.B, b.arms.B, t) },
+    legs: { F: lerpLeg(a.legs.F, b.legs.F, t), B: lerpLeg(a.legs.B, b.legs.B, t) },
+    punchingArm: null,
+  };
+}
+
+/** Owner 2026-09-12: a banana slip puts the fighter flat on the floor (the KO sprawl) for SLIP_STUN, then up again. */
+function slipPose(rig: CharacterRig, f: FighterState): LocalPose {
+  const { stage, t } = slipStage(f.slipped);
+  const down = koPose(rig, 30);
+  if (stage === "fall") return koPose(rig, 30 * t);
+  if (stage === "down") return down;
+  return lerpPose(down, standing(rig), ease(t));
+}
+
 function offboundsPose(rig: CharacterRig): LocalPose {
   const p = standing(rig, 0, { F: 8, B: -4 }, rig.torsoLean + 25, 6);
   const g = guardTargets(rig, p.t.shoulder);
@@ -572,6 +607,18 @@ function winPose(rig: CharacterRig, ms: number): LocalPose {
   return p;
 }
 
+/**
+ * 9.10: a laser or a throw can be charged and fired on the move, so the stance keeps its own arms, torso and head
+ * and borrows the legs of whatever the body is doing — the walk cycle while walking, the air pose while airborne.
+ * The feet land exactly where locomotion puts them and the legs are re-solved from the action's hip, so a planted
+ * fighter comes back untouched and every stationary stance is what 12.04 authored.
+ */
+function withLocomotion(p: LocalPose, rig: CharacterRig, f: FighterState): LocalPose {
+  const loco = !f.grounded ? jumpPose(rig, f) : f.vx !== 0 ? walkPose(rig, f) : null;
+  if (!loco) return p;
+  return { ...p, legs: { F: legTo(p.t.hip, loco.legs.F.foot), B: legTo(p.t.hip, loco.legs.B.foot) } };
+}
+
 export function computePose(f: FighterState, clock: Clock): Joints {
   const rig = CHARACTER_RIG[f.character];
   const state: RigState = clock.win ? "win" : rigState(f, f.hp <= 0);
@@ -579,11 +626,12 @@ export function computePose(f: FighterState, clock: Clock): Joints {
   switch (state) {
     case "ko": p = koPose(rig, clock.koFrames); break;
     case "hit": p = hitPose(rig, f.hitstun); break;
+    case "slip": p = slipPose(rig, f); break;
     case "punch": p = punchPose(rig, f); break;
-    case "chop": p = chopPose(rig, f); break;
-    case "sweep": p = sweepPose(rig, f); break;
-    case "laser": p = laserPose(rig, f, clock.renderMs); break;
-    case "throw": p = throwPose(rig, f); break;
+    case "chop": p = withLocomotion(chopPose(rig, f), rig, f); break;
+    case "sweep": p = withLocomotion(sweepPose(rig, f), rig, f); break;
+    case "laser": p = withLocomotion(laserPose(rig, f, clock.renderMs), rig, f); break;
+    case "throw": p = withLocomotion(throwPose(rig, f), rig, f); break;
     case "jump": p = jumpPose(rig, f); break;
     case "block": p = blockPose(rig, clock.renderMs, f.item?.kind === "shield"); break;
     case "offbounds": p = offboundsPose(rig); break;
@@ -591,7 +639,7 @@ export function computePose(f: FighterState, clock: Clock): Joints {
     case "win": p = winPose(rig, clock.renderMs); break;
     default: p = applyBeat(idlePose(rig, clock.renderMs), clock.beat);
   }
-  const W = (l: Pt): Pt => ({ x: f.x + f.facing * l.x, y: f.y + l.y });
+  const W = (l: Pt): Pt => ({ x: f.x + f.facing * l.x * BODY_SCALE, y: f.y + l.y * BODY_SCALE });
   const WA = (a: Arm): Arm => ({ shoulder: W(a.shoulder), elbow: W(a.elbow), wrist: W(a.wrist), fist: W(a.fist) });
   const WL = (l: Leg): Leg => ({ hip: W(l.hip), knee: W(l.knee), foot: W(l.foot) });
   const hip = W(p.t.hip);
@@ -600,7 +648,7 @@ export function computePose(f: FighterState, clock: Clock): Joints {
   if (!f.grounded && f.jumpTicks >= BALANCE.JUMP_IFRAME_START && f.jumpTicks <= BALANCE.JUMP_IFRAME_END) {
     const len = Math.hypot(f.vx, f.vy);
     const back = len > 1e-6 ? { x: -f.vx / len, y: -f.vy / len } : { x: 0, y: 1 };
-    ghosts.push(add(hip, scale(back, 6)), add(hip, scale(back, 12)));
+    ghosts.push(add(hip, scale(back, 6 * BODY_SCALE)), add(hip, scale(back, 12 * BODY_SCALE)));
   }
 
   return {

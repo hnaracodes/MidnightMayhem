@@ -5,7 +5,7 @@
  * No drawing logic lives here.
  */
 import Phaser from "phaser";
-import { MAP_IDS, WORLD, createMatch, type FighterState, type MapId, type TrainCar } from "@midnight/shared";
+import { MAPS, MAP_IDS, WORLD, createMatch, type FighterState, type MapId, type TrainCar } from "@midnight/shared";
 import { CSS_P, P } from "../game/palette";
 import { ROOF_INDEX, applyTrainCar, createBackgrounds, scrollBackgrounds, type Layers } from "../game/backgrounds";
 import { drawShadow } from "../game/rig/draw";
@@ -13,6 +13,7 @@ import { computePose } from "../game/rig/pose";
 import { SpriteFighter } from "../game/sprites/SpriteFighter";
 import { Lighting, type LightHandle, type RimChoice } from "../game/stage/lighting";
 import { Particulate } from "../game/stage/particulate";
+import { Props } from "../game/stage/props";
 import { qualityFromQuery, resolveQuality } from "../game/stage/quality";
 
 declare global {
@@ -45,6 +46,7 @@ const MAP_KEYS: Record<string, MapId> = { KeyQ: "roof", KeyW: "gaps", KeyE: "pla
 const CAR_IDS: TrainCar[] = ["STANDARD", "TUNNEL", "FINAL_CAR"];
 
 const query = new URLSearchParams(window.location.search);
+const DEBUG = query.get("debug") === "1";
 const startMap = MAP_IDS.find((m) => m === query.get("map")) ?? "roof";
 const startCar = CAR_IDS.find((c) => c === query.get("car")) ?? "STANDARD";
 
@@ -52,11 +54,14 @@ class StagePreviewScene extends Phaser.Scene {
   private layers!: Layers;
   private lighting!: Lighting;
   private particulate!: Particulate;
+  private props!: Props;
   private high = true;
   private sprite!: SpriteFighter;
   private shadow!: Phaser.GameObjects.Graphics;
+  private debug: Phaser.GameObjects.Graphics | null = null;
   private fighter: FighterState = { ...createMatch().fighters[0]!, x: WALK.x0, vx: 3, facing: 1 };
   private walking = true;
+  private car: TrainCar = startCar;
   private fireLight: LightHandle | null = null;
   private rimNow: RimChoice = { color: P.amber1, side: "right", gloom: 0 };
   private costMs = 0;
@@ -70,6 +75,8 @@ class StagePreviewScene extends Phaser.Scene {
     this.layers = createBackgrounds(this, startMap);
     this.lighting = new Lighting(this);
     this.particulate = new Particulate(this);
+    this.props = new Props(this, this.lighting);
+    this.props.setMap(this.layers.map.spans);
     this.high = resolveQuality(qualityFromQuery(location.search), this.renderer.type === Phaser.WEBGL) === "high";
     this.lighting.setQuality(this.high);
     if (startCar !== "STANDARD") {
@@ -78,9 +85,10 @@ class StagePreviewScene extends Phaser.Scene {
     }
     this.shadow = this.add.graphics().setDepth(1);
     this.sprite = new SpriteFighter(this, 0, 2);
+    if (DEBUG) { this.debug = this.add.graphics().setDepth(9); this.drawCollision(startMap); }
     window.__stage = {
-      setCar: (car) => { applyTrainCar(this, this.layers, car); this.lighting.setCar(car); },
-      setMap: (map) => this.layers.map.setMap(map),
+      setCar: (car) => { this.car = car; applyTrainCar(this, this.layers, car); this.lighting.setCar(car); },
+      setMap: (map) => { this.layers.map.setMap(map); this.props.setMap(this.layers.map.spans); this.drawCollision(map); },
       scroll: (sec) => {
         // Advance in render-sized steps so the clamp inside scrollBackgrounds never trims a long jump.
         for (let left = sec; left > 0; left -= 1 / 60) scrollBackgrounds(this.layers, Math.min(left, 1 / 60));
@@ -94,12 +102,24 @@ class StagePreviewScene extends Phaser.Scene {
     };
     this.input.keyboard?.on("keydown", (event: KeyboardEvent) => {
       const car = CARS[event.code];
-      if (car) { applyTrainCar(this, this.layers, car); this.lighting.setCar(car); }
+      if (car) { this.car = car; applyTrainCar(this, this.layers, car); this.lighting.setCar(car); }
       const map = MAP_KEYS[event.code];
-      if (map) this.layers.map.setMap(map);
+      if (map) { this.layers.map.setMap(map); this.props.setMap(this.layers.map.spans); this.drawCollision(map); }
       if (event.code === "KeyL") this.layers.motion.strike();
       if (event.code === "KeyF") this.setFire(this.fireLight === null);
     });
+  }
+
+  /** 13.05 acceptance: the sim's platform lines and ground segment ends (`?debug=1`), as ArenaScene draws them. */
+  private drawCollision(map: MapId): void {
+    const g = this.debug;
+    if (!g) return;
+    g.clear();
+    for (const plat of MAPS[map].platforms) g.lineStyle(1, P.steel2, 1).lineBetween(plat.x0, plat.y, plat.x1, plat.y);
+    for (const seg of MAPS[map].ground) {
+      g.lineStyle(1, P.danger, 1).lineBetween(seg.x0, WORLD.ROOF_Y, seg.x0, WORLD.ROOF_Y + 60);
+      g.lineBetween(seg.x1, WORLD.ROOF_Y, seg.x1, WORLD.ROOF_Y + 60);
+    }
   }
 
   /** A molotov-sized fire light on the roof (rule 7), without the sim hazard. */
@@ -119,11 +139,17 @@ class StagePreviewScene extends Phaser.Scene {
     scrollBackgrounds(this.layers, dt);
     this.lighting.update(dt, { roof: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0, tunnel: this.layers.tunnel.tilePositionX }, { reducedMotion: false, rays: this.high });
     this.particulate.update(dt, { reducedMotion: false, enabled: this.high, roofSpeed: this.layers.roofSpeed });
+    const motion = this.layers.motion;
+    this.props.update(dt, {
+      reducedMotion: false, quality: this.high ? "high" : "low", roofOffset: this.layers.tiles[ROOF_INDEX]?.tilePositionX ?? 0,
+      bob: motion.bobOffset, clack: motion.lastClack, tunnel: this.car === "TUNNEL",
+    });
+    this.props.bob(motion.bobOffset);
     this.stepStandIn(dt);
     this.costMs += (performance.now() - start - this.costMs) * 0.05;
     if (++this.frames % 30 === 0) {
       const el = document.getElementById("cost");
-      if (el) el.textContent = `scrollBackgrounds + Motion.update + Lighting.update: ${this.costMs.toFixed(3)} ms/frame (budget 1 ms)  lights ${this.lighting.lights().length}  q ${this.high ? "high" : "low"}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  rim ${this.rimNow.side} gloom ${this.rimNow.gloom.toFixed(2)}`;
+      if (el) el.textContent = `scrollBackgrounds + Motion.update + Lighting.update: ${this.costMs.toFixed(3)} ms/frame (budget 1 ms)  lights ${this.lighting.lights().length}  q ${this.high ? "high" : "low"}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  props ${this.props.live()}  rim ${this.rimNow.side} gloom ${this.rimNow.gloom.toFixed(2)}`;
     }
   }
 
@@ -139,12 +165,12 @@ class StagePreviewScene extends Phaser.Scene {
       this.fighter = f;
     }
     const joints = computePose(f, { renderMs: this.time.now, koFrames: 0, landFrames: 0 });
-    this.rimNow = this.lighting.rimFor(f.x, f.y - 60);
+    this.rimNow = this.lighting.rimFor(f.x, f.y - 42);
     this.shadow.clear();
     drawShadow(this.shadow, f.x, WORLD.ROOF_Y, 0);
     this.sprite.update(f, joints, {
-      rimColor: this.rimNow.color, rimSide: this.rimNow.side, gloom: this.rimNow.gloom,
-      squash: 1, itemVisible: true, blinkMs: this.time.now,
+      rimColor: this.rimNow.color, rimSide: this.rimNow.side, gloom: this.rimNow.gloom, lightDir: this.rimNow.dir ?? null,
+      flatLimbs: !this.high, squash: 1, itemVisible: true, blinkMs: this.time.now,
     });
   }
 }

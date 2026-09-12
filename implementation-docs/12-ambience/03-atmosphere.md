@@ -66,7 +66,8 @@ export class Particulate {
    danger vignette keeps its `danger` tint and 2 Hz pulse and reads distinctly against it.
 5. Quality: `session.quality` from `?quality=`; `resolveQuality("auto", webgl)`; `high` = everything, `low` = no
    bloom, no god-rays (`Lighting.update` `rays: false`), no particulate; haze, foreground, vignette and the light
-   rig kept.
+   rig kept. *13.02 / 13.06:* `low` also draws the fighters' limbs flat (`flatLimbs`, no cylinder shading, dither or
+   crease) and thins the ambient props to the lamp flicker and the vent flap.
    `qualityStep` counts frames with `updateMs > FRAME_BUDGET_MS`; at `OVER_BUDGET_FRAMES` it drops to `low` once
    (`locked`) and `ArenaScene` logs `console.info("[ambience] quality → low ...")` exactly once. A tier never goes
    back up during a session.

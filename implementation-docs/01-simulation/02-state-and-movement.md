@@ -27,14 +27,15 @@ Create: `packages/shared/src/sim/types.ts`, `sim/create.ts`, `sim/fighter.ts`, `
 `step.ts`: `step(prev, inputs): StepResult`, `fightTick(state, inputs, events): void` (03 and 04 extend this).
 
 ## Behaviour
-1. `createMatch`: tick 0, `COUNTDOWN` with `phaseTicks = 180`, round 1, `STANDARD`, fighters at x = 280 / 680, y = 430, facing 1 / -1, hp 40, grounded, `prev = EMPTY_FRAME`.
+1. `createMatch`: tick 0, `COUNTDOWN` with `phaseTicks = 180`, round 1, `STANDARD`, fighters at x = 280 / 680, y = 430, facing 1 / -1, hp 50 (owner retune 2026-09-12; was 40), grounded, `prev = EMPTY_FRAME`.
 2. `step` deep-clones `prev` (`structuredClone`), never mutates its argument, and always stores the inputs as each fighter's `prev` at the end, in every phase.
 3. Movement only in `FIGHTING`. `vx = (right ? +3 : 0) + (left ? -3 : 0)`; both held cancel.
 4. Walking is disabled while grounded and punching or blocking (`vx = 0`). In the air the punch does not stop horizontal motion.
-5. Jump: rising edge of `jump` while grounded, not punching, not blocking → `vy = -9.1`, `grounded = false`, `jumpTicks = 0`, emit `JUMP`. Holding jump does not re-jump on landing.
+   (**9.10**: the punch and the block are the only actions that do this; a laser or a throw charge leaves walking alone.)
+5. Jump: rising edge of `jump` while grounded, not punching, not blocking → `vy = -9.1`, `grounded = false`, `jumpTicks = 0`, emit `JUMP`. Holding jump does not re-jump on landing. (**9.10**: charging a laser or a throw does not block the jump.)
 6. Physics per tick: `x += vx`; if airborne `vy += 8/30`, `y += vy`, `jumpTicks++`; landing when `y >= 430` → `y = 430`, `vy = 0`, `grounded = true`, `jumpTicks = 0`. Apex is ~151 px (the drawn 150 px character height) at tick 34; airborne 68 ticks.
 7. Clamp `x` to `[0, 960]` after physics.
-8. Facing: after physics each tick, a fighter not currently punching faces the opponent (`x` comparison; ties keep current facing).
+8. Facing: after physics each tick, a fighter whose aim is not committed faces the opponent (`x` comparison; ties keep current facing). (**9.10**: committed means a punch, a laser from its first beam tick, a throw from its release; a charge still tracks — see `aimLocked`.)
 9. Hitstun: while `hitstun > 0` the fighter ignores all input, `vx = knockbackVx`, and `hitstun--`; when it reaches 0, `knockbackVx = 0`.
 10. Blocking: `blocking = input.block && grounded && action === null`. Evaluated every tick, so releasing the key or leaving the ground ends it.
 11. `resetForRound` restores both fighters to `createFighter` values but keeps each fighter's `prev` so held keys do not re-edge at round start.

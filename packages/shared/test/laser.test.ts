@@ -38,7 +38,7 @@ describe("laser phases and hitbox", () => {
     expect(laserHitbox(f)).toBeNull();
     f.action = { kind: "laser", elapsed: LASER_CHARGE, hit: [] };
     expect(BAND_H).toBe(WORLD.HURTBOX_H / 2); // half the sprite height
-    expect(LASER_BAND_TOP - BAND_H / 2).toBe(WORLD.HURTBOX_H / 2); // centred on the sprite's middle
+    expect(Math.abs(LASER_BAND_TOP - BAND_H / 2 - WORLD.HURTBOX_H / 2)).toBeLessThanOrEqual(0.5); // centred on the sprite's middle, whole px
     expect(laserHitbox(f)).toEqual({ x: 280, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: LASER_SPEED, h: BAND_H }); // first beam tick
     f.action.elapsed = LASER_CHARGE + 1;
     expect(laserHitbox(f)).toEqual({ x: 280, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: 2 * LASER_SPEED, h: BAND_H });
@@ -245,7 +245,8 @@ describe("rule 6 (9.10): the charge does not lock the attacker; a hit cancels th
     expect(rest.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
   });
   it("a beam fired just after take-off is still low enough to land", () => {
-    let s = fighting(300);
+    // 13.00: the band is 49 px, so the front must reach a target before the attacker has risen that far (150 px away: beam tick 2)
+    let s = fighting(150);
     s = run(s, 1, [Q, EMPTY_FRAME]).s;
     s = run(s, LASER_CHARGE - 3, [Q, EMPTY_FRAME]).s;
     const QJ: InputFrame = { ...EMPTY_FRAME, special: true, jump: true };

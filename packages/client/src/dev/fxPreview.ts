@@ -34,8 +34,8 @@ declare global {
 }
 
 const TRAIL_FRAMES = 3;
-const SHOULDER_ABOVE_FEET = 115;
-const FIST_ABOVE_FEET = 100;
+const SHOULDER_ABOVE_FEET = 80; // 13.00: 115 × 0.7
+const FIST_ABOVE_FEET = 70;
 
 class FxPreviewScene extends Phaser.Scene {
   private readonly state: MatchState = createMatch();

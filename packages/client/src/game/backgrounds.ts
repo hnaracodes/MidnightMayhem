@@ -8,6 +8,8 @@
 import Phaser from "phaser";
 import { WORLD, type MapId, type TrainCar } from "@midnight/shared";
 import { P } from "./palette";
+import { PIXEL } from "./pixel";
+import { PixelCanvas, mix as mixRgb, rgba } from "./sprites/grid";
 import { Motion } from "./stage/motion";
 import { createMapLayer, type MapLayer } from "./stage/mapDraw";
 
@@ -166,6 +168,9 @@ export function makeTexture(scene: Phaser.Scene, key: TextureKey | string, draw:
   g.generateTexture(key, w, h);
   g.destroy();
 }
+
+export { makePixelTexture, type PixelDraw } from "./pixelTexture";
+import { makePixelTexture, type PixelDraw } from "./pixelTexture";
 
 /** Draw a horizontally wrapping shape: the callback is invoked at x, x - w and x + w so edges tile seamlessly. */
 function wrapped(w: number, x: number, draw: (x: number) => void): void {
@@ -431,6 +436,208 @@ const drawTrackTrail: Draw = (g, w, h) => {
   g.fillRect(0, nearY, w, 3);
 };
 
+// ---------------------------------------------------------------------------------------------------------------
+// 13.04 — pixel-art generators (art px = world px / PIXEL). Every x goes through `wrap`, so the tiles are seamless.
+// ---------------------------------------------------------------------------------------------------------------
+
+const ART_SEED = 0xa47;
+/** 2×2 Bayer threshold at a pixel, 0.125 .. 0.875. */
+const bayer = (x: number, y: number): number => [0.125, 0.625, 0.875, 0.375][(x & 1) + 2 * (y & 1)]!;
+
+/** Pixel painter over a `PixelCanvas` that wraps x into the tile and dithers between two colours by a weight. */
+class Painter {
+  constructor(private readonly c: PixelCanvas, readonly w: number, readonly h: number) {}
+  wrap(x: number): number { return ((Math.round(x) % this.w) + this.w) % this.w; }
+  px(x: number, y: number, color: number): void {
+    if (y < 0 || y >= this.h) return;
+    this.c.set(this.wrap(x), Math.round(y), rgba(color));
+  }
+  /** Paints `b` where the dither says so (weight 0..1 of `b`), else `a`. */
+  dither(x: number, y: number, a: number, b: number, t: number): void {
+    this.px(x, y, t > bayer(this.wrap(x), y) ? b : a);
+  }
+  rect(x0: number, y0: number, w: number, h: number, color: number): void {
+    for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) this.px(x, y, color);
+  }
+  get(x: number, y: number): number { return this.c.get(this.wrap(x), y); }
+}
+
+/** Only art rows 0–14 of the roof show above the body layer (ROOF_LIP), so every feature lives in that band. */
+const ROOF_ART = {
+  seamEvery: 120, rivetEvery: 30, ridgeY: 6, visible: ROOF_LIP / PIXEL, tarPatches: 8, rustStreaks: 16,
+} as const;
+const BODY_ART = {
+  top: ROOF_LIP / PIXEL, bottom: (110 - WHEEL_BAND) / PIXEL, seamEvery: 120, winEvery: WINDOW.every / PIXEL,
+  winX: WINDOW.startX / PIXEL, winW: WINDOW.w / PIXEL, glassTop: 18, glassBottom: 31, rivetRows: [18, 31],
+} as const;
+
+/** 3 × 5 stencil digits for the car numbers (rows top to bottom, 1 = ink). */
+const STENCIL: Record<string, readonly string[]> = {
+  "0": ["111", "101", "101", "101", "111"], "1": ["010", "110", "010", "010", "111"], "2": ["111", "001", "111", "100", "111"],
+  "3": ["111", "001", "111", "001", "111"], "4": ["101", "101", "111", "001", "001"], "5": ["111", "100", "111", "001", "111"],
+  "6": ["111", "100", "111", "101", "111"], "7": ["111", "001", "010", "010", "010"], "8": ["111", "101", "111", "101", "111"],
+  "9": ["111", "101", "111", "001", "111"],
+};
+
+/** 13.04 rule 1: the carriage roof. */
+const drawRoofPx: PixelDraw = (c, w, h) => {
+  const p = new Painter(c, w, h);
+  const rng = new Lcg(ART_SEED);
+  const base = P.steel1;
+  const dark = P.steel0;
+  const lit = P.steel2;
+  const grime = mixRgb(P.steel0, P.void0, 0.35);
+  // base plate with a dithered fall-off toward the gutter (rows past `visible` sit under the body layer)
+  for (let y = 0; y < h; y++) {
+    const t = Math.max(0, (y - 11) / (ROOF_ART.visible - 11)) * 0.5 + Math.max(0, (y - ROOF_ART.visible) / (h - ROOF_ART.visible)) * 0.5;
+    for (let x = 0; x < w; x++) p.dither(x, y, base, dark, Math.min(0.85, t));
+  }
+  // moonlit lip and the raised ridge
+  p.rect(0, 0, w, 1, lit);
+  for (let x = 0; x < w; x++) p.dither(x, 1, base, lit, 0.35);
+  p.rect(0, ROOF_ART.ridgeY, w, 1, lit);
+  for (let x = 0; x < w; x++) p.dither(x, ROOF_ART.ridgeY + 1, base, lit, 0.3);
+  p.rect(0, ROOF_ART.ridgeY + 3, w, 1, dark);
+  for (let x = 0; x < w; x++) p.dither(x, ROOF_ART.ridgeY + 4, base, dark, 0.5);
+  // rivet pairs under the lip and under the ridge
+  for (let x = 0; x < w; x += ROOF_ART.rivetEvery) {
+    for (const rx of [x + 12, x + 16]) {
+      p.px(rx, 3, lit); p.px(rx + 1, 3, base); p.px(rx, 4, dark); p.px(rx + 1, 4, dark);
+      p.px(rx, 11, lit); p.px(rx + 1, 11, base); p.px(rx, 12, dark); p.px(rx + 1, 12, dark);
+    }
+  }
+  // panel seams: a dark double line with a rivet column, and pooled grime at the foot
+  for (let sx = 0; sx < w; sx += ROOF_ART.seamEvery) {
+    // the rolled lip (rows 0–1) runs unbroken over the seams
+    p.rect(sx, 2, 1, h - 2, dark);
+    p.rect(sx + 1, 2, 1, h - 2, P.outline);
+    for (let y = 3; y < h; y += 4) { p.px(sx - 1, y, lit); p.px(sx + 2, y, lit); p.px(sx - 1, y + 1, dark); p.px(sx + 2, y + 1, dark); }
+    // pooled grime where the panel joint meets the gutter (the visible band's last rows)
+    for (let y = 11; y < ROOF_ART.visible; y++) {
+      const t = (y - 10) / (ROOF_ART.visible - 10);
+      for (let dx = -6; dx <= 7; dx++) {
+        if (dx === 0 || dx === 1) continue; // the seam lines stay crisp
+        p.dither(sx + dx, y, p.get(sx + dx, y) >>> 8, grime, 0.7 * t * (1 - Math.abs(dx) / 8));
+      }
+    }
+  }
+  // tar patches
+  for (let i = 0; i < ROOF_ART.tarPatches; i++) {
+    const cx = rng.range(0, w);
+    const cy = rng.range(2.5, 4.5) + (rng.next() < 0.5 ? 0 : 9); // between lip and ridge, or under the ridge
+    const rx = rng.range(5, 12);
+    const ry = rng.range(1, 1.6);
+    for (let y = Math.floor(cy - ry); y <= cy + ry; y++) {
+      for (let x = Math.floor(cx - rx); x <= cx + rx; x++) {
+        const d = Math.hypot((x - cx) / rx, (y - cy) / ry);
+        if (d > 1) continue;
+        p.dither(x, y, grime, P.void0, d < 0.7 ? 0.6 : 0.2);
+      }
+    }
+  }
+  // rust streaks trailing screen-left from a rivet or seam, with the airflow
+  const rust = mixRgb(P.amber2, P.steel1, 0.35);
+  for (let i = 0; i < ROOF_ART.rustStreaks; i++) {
+    const x0 = Math.floor(rng.range(0, w));
+    const y0 = rng.next() < 0.5 ? 4 : 12; // from a rivet row
+    const len = Math.floor(rng.range(8, 30));
+    for (let k = 0; k < len; k++) {
+      const t = 1 - k / len;
+      p.dither(x0 - k, y0, p.get(x0 - k, y0) >>> 8, rust, 0.75 * t);
+      if (k % 3 === 0) p.dither(x0 - k, y0 + 1, p.get(x0 - k, y0 + 1) >>> 8, rust, 0.35 * t);
+    }
+  }
+};
+
+/** 13.04 rule 2: the carriage body under the roof lip. */
+const drawBodyPx: PixelDraw = (c, w, h) => {
+  const p = new Painter(c, w, h);
+  const rng = new Lcg(ART_SEED ^ 0x5eed);
+  const top = BODY_ART.top;
+  const bottom = BODY_ART.bottom; // exclusive
+  const body = lerpColor(P.steel0, P.void0, 0.25);
+  const bodyDark = lerpColor(P.steel0, P.void0, 0.55);
+  const glass = lerpColor(P.amber1, P.amber2, 0.15);
+  const glassLit = lerpColor(glass, P.moon, 0.25);
+  const bone = lerpColor(P.bone, P.steel2, 0.35);
+  void h;
+  // body plate, darker toward the sill
+  for (let y = top; y < bottom; y++) {
+    const t = ((y - top) / (bottom - top)) * 0.7;
+    for (let x = 0; x < w; x++) p.dither(x, y, body, bodyDark, t);
+  }
+  // gutter highlight and dark edge under the roof lip; dark sill edge at the bottom
+  p.rect(0, top, w, 1, P.steel2);
+  p.rect(0, top + 1, w, 1, P.outline);
+  p.rect(0, bottom - 1, w, 1, P.outline);
+  // horizontal rivet rows
+  for (const ry of BODY_ART.rivetRows) for (let x = 3; x < w; x += 6) { p.px(x, ry, P.steel2); p.px(x, ry + 1, P.outline); }
+  // seams with rivet columns, a ladder every other seam, a vent and a stencilled number per panel
+  let panel = 0;
+  for (let sx = 0; sx < w; sx += BODY_ART.seamEvery, panel++) {
+    // the gutter (rows top, top + 1) runs unbroken over the seams
+    p.rect(sx, top + 2, 2, bottom - top - 2, P.outline);
+    for (let y = top + 3; y < bottom - 1; y += 3) { p.px(sx - 1, y, P.steel2); p.px(sx + 2, y, P.steel2); }
+    if (panel % 2 === 0) {
+      const lx = sx + 5;
+      p.rect(lx, top + 2, 1, bottom - top - 3, P.steel2);
+      p.rect(lx + 4, top + 2, 1, bottom - top - 3, P.steel2);
+      for (let y = top + 3; y < bottom - 1; y += 3) { p.rect(lx + 1, y, 3, 1, P.steel1); p.px(lx + 2, y + 1, P.outline); }
+    }
+    // louvred vent
+    const vx = sx + 100;
+    p.rect(vx - 1, 17, 8, 5, P.outline);
+    for (let k = 0; k < 3; k++) { p.rect(vx, 18 + k * 2 - 1, 6, 1, P.steel1); }
+    // stencilled car number
+    const digits = `${(panel * 7 + 3) % 10}${(panel * 3 + 1) % 10}`;
+    let dx = sx + 40;
+    for (const ch of digits) {
+      const rows = STENCIL[ch]!;
+      rows.forEach((row, ry) => { for (let cx = 0; cx < 3; cx++) if (row[cx] === "1") p.px(dx + cx, 25 + ry, bone); });
+      dx += 4;
+    }
+  }
+  // windows: frame, glass, reflection, mullion, sill, weathering under the sill
+  for (let x = BODY_ART.winX; x < w; x += BODY_ART.winEvery) {
+    const g0 = BODY_ART.glassTop;
+    const g1 = BODY_ART.glassBottom;
+    p.rect(x - 1, g0 - 1, BODY_ART.winW + 2, g1 - g0 + 3, P.outline);
+    for (let y = g0; y <= g1; y++) {
+      for (let gx = x; gx < x + BODY_ART.winW; gx++) {
+        const diag = (gx - x) + (y - g0) * 2;
+        const reflect = y - g0 < 5 && diag % 7 < 3 ? 0.8 : y - g0 < 3 ? 0.35 : 0;
+        p.dither(gx, y, glass, glassLit, reflect);
+      }
+    }
+    p.rect(x + BODY_ART.winW / 2 - 1, g0, 1, g1 - g0 + 1, P.outline);
+    p.rect(x - 2, g1 + 2, BODY_ART.winW + 4, 1, P.steel2);
+    const streaks = 2 + Math.floor(rng.range(0, 2));
+    for (let s = 0; s < streaks; s++) {
+      const wx = Math.floor(x + rng.range(2, BODY_ART.winW - 2));
+      const len = Math.floor(rng.range(3, bottom - g1 - 3));
+      for (let k = 0; k < len; k++) p.dither(wx, g1 + 3 + k, p.get(wx, g1 + 3 + k) >>> 8, bodyDark, 0.7 * (1 - k / len));
+    }
+  }
+};
+
+const PIXEL_GENERATORS: Partial<Record<TextureKey, PixelDraw>> = {
+  bg_train_roof: drawRoofPx,
+  bg_train_body: drawBodyPx,
+};
+
+/** 13.04: the pixel raster of a ported layer at art resolution, for tests and tooling. Pure. */
+export function renderPixelArt(key: "bg_train_roof" | "bg_train_body"): PixelCanvas {
+  const [tw, th] = TEXTURE_SIZE[key];
+  const w = Math.ceil(tw / PIXEL);
+  const h = Math.ceil(th / PIXEL);
+  const c = new PixelCanvas(w, h);
+  PIXEL_GENERATORS[key]!(c, w, h);
+  return c;
+}
+
+/** 13.04 rule 4: milliseconds the last `generateTextures` took (0 without `performance`). */
+export let TEXTURE_BOOT_MS = 0;
+
 const GENERATORS: Record<TextureKey, Draw> = {
   bg_sky: drawSky,
   bg_stars: drawStars,
@@ -449,7 +656,20 @@ const GENERATORS: Record<TextureKey, Draw> = {
 
 /** Creates every stage texture once from the seeded generators. Safe to call again; existing keys are kept. */
 export function generateTextures(scene: Phaser.Scene): void {
-  for (const key of Object.keys(GENERATORS) as TextureKey[]) makeTexture(scene, key, GENERATORS[key]);
+  const perf = typeof performance !== "undefined" ? performance : null;
+  const t0 = perf ? perf.now() : 0;
+  let made = 0;
+  for (const key of Object.keys(GENERATORS) as TextureKey[]) {
+    if (scene.textures.exists(key)) continue;
+    made += 1;
+    const px = PIXEL_GENERATORS[key];
+    if (px) makePixelTexture(scene, key, px, TEXTURE_SIZE[key][0], TEXTURE_SIZE[key][1]);
+    else makeTexture(scene, key, GENERATORS[key]);
+  }
+  if (perf && made > 0) {
+    TEXTURE_BOOT_MS = perf.now() - t0;
+    if (typeof console !== "undefined") console.info(`[art] stage textures: ${made} generated in ${TEXTURE_BOOT_MS.toFixed(1)} ms (roof and body as pixel rasters)`);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -607,17 +827,22 @@ function placeTwinkle(layers: Layers, dots: Extras["dots"]): void {
   }
 }
 
-/** Advances every scrolling layer screen-left. Call once per render frame with the frame delta in seconds. */
+/**
+ * Advances every scrolling layer screen-left. Call once per render frame with the frame delta in seconds.
+ *
+ * 13.07 (owner, 2026-09-12): the fighters stand on the train, so the car itself — roof, body, window glow and lamp
+ * fixtures — no longer slides under their feet; it only bobs. Everything that is *not* the car moves: sky, stars,
+ * clouds, telegraph poles, tunnel wall, foreground silhouettes, the rail ballast under the wheels, the track seen
+ * through a gap and the final car's track trail. `roofSpeed` stays the train's speed for those layers, the wind,
+ * the particles and the sparks.
+ */
 export function scrollBackgrounds(layers: Layers, dtSec: number): void {
   const dt = Math.min(Math.max(dtSec, 0), 0.1);
   layers.tiles.forEach((tile, i) => {
     const row = TILE_ROWS[i];
-    if (!row) return;
-    const speed = i === ROOF_INDEX || i === BODY_INDEX ? layers.roofSpeed : row.speed;
-    if (speed !== 0) tile.tilePositionX += speed * dt;
+    if (!row || i === ROOF_INDEX || i === BODY_INDEX) return; // the car stands still
+    if (row.speed !== 0) tile.tilePositionX += row.speed * dt;
   });
-  layers.glow.tilePositionX += layers.roofSpeed * dt;
-  layers.lamps.tilePositionX += layers.roofSpeed * dt;
   layers.foreground.tilePositionX += layers.roofSpeed * FOREGROUND_SPEED * dt;
   layers.tunnel.tilePositionX += TUNNEL_SPEED * dt;
   layers.track.tilePositionX += TRACK_SPEED * dt;

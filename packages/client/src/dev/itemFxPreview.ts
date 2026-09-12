@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import {
-  ARSENAL, BALANCE, ITEMS, ITEM_IDS, WORLD, createMatch,
+  ARSENAL, BALANCE, ITEMS, ITEM_IDS, WORLD, createMatch, peelStartVx,
   type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile, type SimEvent,
 } from "@midnight/shared";
 import { ItemFx, type HandPoint } from "../game/itemFx";
@@ -48,8 +48,8 @@ const EFFECTS: Effect[] = [
 ];
 
 const LOCAL: PlayerIndex = 0;
-const HAND_ABOVE_FEET = 100;
-const HAND_FORWARD = 30;
+const HAND_ABOVE_FEET = 70; // 13.00: 100 × 0.7
+const HAND_FORWARD = 21;
 const DEPTH = { STAGE: 0, RIG: 2, LABEL: 10, DAZZLE: 12 } as const;
 
 class ItemFxPreviewScene extends Phaser.Scene {
@@ -169,10 +169,17 @@ class ItemFxPreviewScene extends Phaser.Scene {
     }
     for (let k = s.projectiles.length - 1; k >= 0; k -= 1) {
       const p = s.projectiles[k]!;
-      p.x += p.vx;
-      p.y += p.vy;
-      p.vy += BALANCE.GRAVITY;
-      if (p.y >= WORLD.ROOF_Y || p.x < 0 || p.x > WORLD.WIDTH) {
+      if (p.slide !== undefined) {
+        // the sliding peel, as the sim does it: linear slow-down along the floor, then the hazard
+        p.x += peelStartVx() * (1 - p.slide / ARSENAL.PEEL_SLIDE_TICKS) * Math.sign(p.vx);
+        p.slide += 1;
+      } else {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += BALANCE.GRAVITY;
+      }
+      const settled = p.slide !== undefined ? p.slide >= ARSENAL.PEEL_SLIDE_TICKS : p.y >= WORLD.ROOF_Y;
+      if (settled || p.x < 0 || p.x > WORLD.WIDTH) {
         s.projectiles.splice(k, 1);
         const kind = p.kind === "molotov" ? "fire" : "peel";
         const hazard: Hazard = {
@@ -248,7 +255,9 @@ class ItemFxPreviewScene extends Phaser.Scene {
         const hand = this.hand(0);
         const vx = name === "molotov" ? ARSENAL.MOLOTOV_VX : ARSENAL.BANANA_VX;
         const vy = name === "molotov" ? ARSENAL.MOLOTOV_VY : ARSENAL.BANANA_VY;
-        const p: Projectile = { id: s.nextId++, kind: name, owner: 0, x: hand.x, y: hand.y, vx: me.facing * vx, vy };
+        const p: Projectile = name === "banana"
+          ? { id: s.nextId++, kind: name, owner: 0, x: me.x + me.facing * 20, y: me.y, vx: me.facing * peelStartVx(), vy: 0, slide: 0 }
+          : { id: s.nextId++, kind: name, owner: 0, x: hand.x, y: hand.y, vx: me.facing * vx, vy };
         s.projectiles.push(p);
         this.pending.push({ type: "PROJECTILE_SPAWN", id: p.id, kind: name, owner: 0 });
         break;

@@ -256,7 +256,7 @@ class AmbiencePreviewScene extends Phaser.Scene {
     for (let k = 0; k < ticks; k += 1) this.tick();
 
     const s = this.state;
-    const hands = (i: PlayerIndex): HandPoint => this.hands[i] ?? { x: s.fighters[i]!.x + 20, y: s.fighters[i]!.y - 90 };
+    const hands = (i: PlayerIndex): HandPoint => this.hands[i] ?? { x: s.fighters[i]!.x + 14, y: s.fighters[i]!.y - 63 };
     const events = this.pending.splice(0);
     this.effects.consume(events, s);
     this.itemFx.consume(events, s, hands);
@@ -269,11 +269,11 @@ class AmbiencePreviewScene extends Phaser.Scene {
         beat: this.effects.flashBeat(i) > 0 ? { kind: "flash", frames: this.effects.flashBeat(i) } : undefined,
       };
       const joints: Joints = computePose(f, clock);
-      const rim = this.lighting.rimFor(f.x, f.y - 60);
+      const rim = this.lighting.rimFor(f.x, f.y - 42);
       const fill = this.effects.fillFor(i);
       drawShadow(this.shadow, f.x, WORLD.ROOF_Y, Math.max(0, WORLD.ROOF_Y - f.y));
       this.sprites[i].update(f, joints, {
-        rimColor: rim.color, rimSide: rim.side, gloom: rim.gloom, flash: fill.fillOverride, flashAlpha: fill.fillAlpha,
+        rimColor: rim.color, rimSide: rim.side, gloom: rim.gloom, lightDir: rim.dir ?? null, flash: fill.fillOverride, flashAlpha: fill.fillAlpha,
         squash: this.effects.squashFor(i), itemVisible: !this.itemFx.materialising(i), blinkMs: time,
       });
       this.hands[i] = f.action?.kind === "laser" ? laserHands(joints) : this.sprites[i].hand();

@@ -110,4 +110,5 @@ export const CHOP_WINDOW_MS = 250; // window for the chop drop
 export const CHOP_EXT = 0.6; // arm must be extended past this (over arm length) as the chop lands
 export const SWEEP_TRAVEL = 0.8; // horizontal wrist travel across the shoulder midline, in S
 export const SWEEP_WINDOW_MS = 250; // window for the sweep travel
+export const SLASH_GESTURES_ENABLED = false; // owner 2026-09-12: the sword is used with the punch thrust; chop / sweep gestures stay behind this flag
 export const SLASH_EXCLUSIVE_MS = 300; // a slash suppresses that arm's punch for this long

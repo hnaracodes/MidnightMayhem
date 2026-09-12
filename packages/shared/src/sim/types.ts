@@ -50,6 +50,8 @@ export interface FighterState {
   blockTicks: number;
   /** Ticks of flashbang whiteout left. */
   dazzle: number;
+  /** Ticks left lying on the floor after a banana slip (drawn fallen); hitstun runs alongside. */
+  slipped: number;
   /** Ticks left in a pit fall. */
   pitTicks: number;
   /** Index into MAPS[map].platforms when standing on one. */
@@ -58,7 +60,8 @@ export interface FighterState {
   invuln: number;
 }
 
-export interface Projectile { id: number; kind: "molotov" | "banana"; owner: PlayerIndex; x: number; y: number; vx: number; vy: number }
+/** `slide` counts the ticks a banana has been sliding along the floor (no gravity); undefined for a molotov's arc. */
+export interface Projectile { id: number; kind: "molotov" | "banana"; owner: PlayerIndex; x: number; y: number; vx: number; vy: number; slide?: number }
 export interface Hazard { id: number; kind: "fire" | "peel"; owner: PlayerIndex; x: number; y: number; w: number; ticks: number; age: number }
 
 export interface MatchState {

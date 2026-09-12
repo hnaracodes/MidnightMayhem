@@ -250,8 +250,8 @@ describe("rule 5 (platforms): one-way from below", () => {
   });
 });
 
-describe("rule 6 (platforms): a perch is not safe", () => {
-  it("a grounded opponent's punch clips the shins of a fighter standing on the platform", () => {
+describe("rule 6 (platforms): a perch is out of a grounded punch's reach (13.00)", () => {
+  it("a grounded opponent's punch below a fighter standing on the platform misses: the 84 px hitbox top stops under his 330 feet", () => {
     const s0 = fightingOn("platforms");
     const p0 = s0.fighters[0]!;
     p0.x = 280; p0.y = 330; p0.grounded = true; p0.onPlatform = 0;
@@ -260,9 +260,8 @@ describe("rule 6 (platforms): a perch is not safe", () => {
     expect(f0(settled).y).toBe(330);
     expect(settled.fighters[1]!.facing).toBe(1);
     const { events } = run(settled, 10, EMPTY_FRAME, PUNCH);
-    const hits = ofType(events, "HIT");
-    expect(hits).toHaveLength(1);
-    expect(hits[0]).toMatchObject({ attacker: 1, target: 0, blocked: false });
+    expect(ofType(events, "PUNCH")).toHaveLength(1);
+    expect(ofType(events, "HIT")).toHaveLength(0); // was a shin hit at the 150 px body (hitbox 310–370 vs feet 330)
   });
 });
 

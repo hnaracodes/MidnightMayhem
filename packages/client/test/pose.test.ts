@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ARSENAL, BALANCE, WORLD, createMatch, punchHitbox, type FighterState } from "@midnight/shared";
-import { computePose, rigState, slashStage, type Clock, type Joints } from "../src/game/rig/pose";
-import { RIG } from "../src/game/rig/characters";
+import { computePose, rigState, slashStage, slipStage, type Clock, type Joints } from "../src/game/rig/pose";
+import { BODY_SCALE, RIG } from "../src/game/rig/characters";
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
 
@@ -81,6 +81,10 @@ describe("feet planted while grounded", () => {
     ["hit", { hitstun: 8 }, clock],
     ["offbounds", { x: 0 }, clock],
     ["win", {}, { ...clock, win: true }],
+    // 9.10: a laser or a throw can be charged on the move, and the borrowed walk legs stay on the ground
+    ["laser charge walking", { vx: 3, x: 123, action: { kind: "laser", elapsed: 90, hit: [] } }, clock],
+    ["laser beam walking", { vx: -3, x: 200, action: { kind: "laser", elapsed: ARSENAL.LASER_CHARGE + 2, hit: [] } }, clock],
+    ["throw windup walking", { vx: 3, x: 77, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 20, elapsed: 0, released: false } }, clock],
   ];
   for (const [name, over, c] of cases) {
     for (const facing of [1, -1] as const) {
@@ -109,8 +113,8 @@ describe("ghosts", () => {
       expect(j.ghosts[0]!.y).toBeGreaterThan(j.hip.y);
       const d0 = Math.hypot(j.ghosts[0]!.x - j.hip.x, j.ghosts[0]!.y - j.hip.y);
       const d1 = Math.hypot(j.ghosts[1]!.x - j.hip.x, j.ghosts[1]!.y - j.hip.y);
-      expect(d0).toBeCloseTo(6, 6);
-      expect(d1).toBeCloseTo(12, 6);
+      expect(d0).toBeCloseTo(6 * BODY_SCALE, 6);
+      expect(d1).toBeCloseTo(12 * BODY_SCALE, 6);
     }
   });
   it("empty after the window and when grounded", () => {
@@ -137,7 +141,7 @@ describe("skeleton sanity", () => {
     const c = computePose(f, { ...clock, koFrames: 90 });
     expect(a.state).toBe("ko");
     expect(b.hip.y).toBeGreaterThan(a.hip.y);
-    expect(b.hip.y).toBeCloseTo(f.y - 20, 6);
+    expect(b.hip.y).toBeCloseTo(f.y - 20 * BODY_SCALE, 6);
     expect(c.hip).toEqual(b.hip);
   });
   it("world x mirrors with facing", () => {
@@ -151,13 +155,13 @@ describe("skeleton sanity", () => {
   });
 });
 
-describe("4.01 rule 2: rest hip at (0, -66) for both characters", () => {
+describe("4.01 rule 2: rest hip at (0, -66) author px (× BODY_SCALE in world, 13.00) for both characters", () => {
   for (const index of [0, 1] as const) {
-    it(`character ${index} idle hip sits 66 px above the feet`, () => {
+    it(`character ${index} idle hip sits 66 · BODY_SCALE px above the feet`, () => {
       const f = fighter({}, index);
       const j = computePose(f, clock); // renderMs 0: no bob
       expect(j.hip.x).toBeCloseTo(f.x, 6);
-      expect(j.hip.y).toBeCloseTo(f.y - 66, 6);
+      expect(j.hip.y).toBeCloseTo(f.y - 66 * BODY_SCALE, 6);
       // the legs still reach the ground: knees bend rather than the hip dropping
       for (const y of feetOf(j)) expect(y).toBeCloseTo(f.y, 6);
     });
@@ -168,7 +172,7 @@ describe("4.01 rule 5: walk legs swing ±28° with phase x / 40", () => {
   const swing = (x: number) => {
     const j = computePose(fighter({ vx: 3, x }), clock);
     const leg = j.legs.F;
-    const ankle = { x: leg.foot.x, y: leg.foot.y - 7 };
+    const ankle = { x: leg.foot.x, y: leg.foot.y - 7 * BODY_SCALE };
     return (Math.atan2(ankle.x - leg.hip.x, leg.hip.y - ankle.y) * 180) / Math.PI;
   };
   it("front leg reaches about +28° at the forward extreme and -28° at the back", () => {
@@ -179,8 +183,8 @@ describe("4.01 rule 5: walk legs swing ±28° with phase x / 40", () => {
     for (let x = 0; x < 80; x += 4) {
       const j = computePose(fighter({ vx: 3, x }), clock);
       for (const leg of [j.legs.F, j.legs.B]) {
-        const ankle = { x: leg.foot.x, y: leg.foot.y - 7 };
-        expect(Math.hypot(ankle.x - leg.hip.x, ankle.y - leg.hip.y)).toBeLessThanOrEqual(RIG.thigh + RIG.shin + 2.5);
+        const ankle = { x: leg.foot.x, y: leg.foot.y - 7 * BODY_SCALE };
+        expect(Math.hypot(ankle.x - leg.hip.x, ankle.y - leg.hip.y)).toBeLessThanOrEqual((RIG.thigh + RIG.shin + 2.5) * BODY_SCALE);
       }
     }
   });
@@ -213,12 +217,12 @@ describe("design/02 block: both fists in front of the face", () => {
       const j = computePose(f, { ...clock, renderMs: 10 });
       expect(j.state).toBe("block");
       for (const arm of [j.arms.F, j.arms.B]) {
-        expect(Math.abs(arm.fist.y - j.head.y)).toBeLessThan(10);
+        expect(Math.abs(arm.fist.y - j.head.y)).toBeLessThan(10 * BODY_SCALE);
         expect(Math.abs(arm.elbow.x - arm.fist.x)).toBeLessThan(0.01);
         expect(arm.elbow.y).toBeGreaterThan(arm.fist.y);
-        expect((arm.fist.x - j.hip.x) * f.facing).toBeGreaterThan(8);
+        expect((arm.fist.x - j.hip.x) * f.facing).toBeGreaterThan(8 * BODY_SCALE);
       }
-      expect(Math.abs(j.arms.F.fist.x - j.arms.B.fist.x)).toBeGreaterThan(10);
+      expect(Math.abs(j.arms.F.fist.x - j.arms.B.fist.x)).toBeGreaterThan(10 * BODY_SCALE);
     });
   }
 });
@@ -250,7 +254,7 @@ describe("12.04 rule 1: the kamehameha", () => {
     expect(at50.arms.F.fist.x).toBeLessThan(at0.arms.F.fist.x);
     expect(at50.arms.B.fist.x).toBeLessThan(at0.arms.B.fist.x);
     expect(at50.arms.F.fist.y).toBeGreaterThan(at0.arms.F.fist.y);
-    expect(dist(at100.arms.F.fist, at100.arms.B.fist)).toBeLessThan(8);
+    expect(dist(at100.arms.F.fist, at100.arms.B.fist)).toBeLessThan(8 * BODY_SCALE);
     expect(at100.arms.F.fist.x).toBeLessThan(at100.hip.x); // behind the hip (facing right)
     expect(at100.arms.F.fist.y).toBeGreaterThan(at100.arms.F.shoulder.y); // below the shoulder
     for (const j of [at50, at100]) {
@@ -272,7 +276,7 @@ describe("12.04 rule 1: the kamehameha", () => {
       const bandTop = WORLD.ROOF_Y - ARSENAL.LASER_BAND_TOP;
       const bandBottom = WORLD.ROOF_Y - ARSENAL.LASER_BAND_BOTTOM;
       for (const arm of [j.arms.F, j.arms.B]) {
-        expect(arm.fist.x).toBeGreaterThan(arm.shoulder.x + 40);
+        expect(arm.fist.x).toBeGreaterThan(arm.shoulder.x + 40 * BODY_SCALE);
         expect(arm.fist.y).toBeGreaterThan(bandTop);
         expect(arm.fist.y).toBeLessThan(bandBottom);
       }
@@ -307,7 +311,7 @@ describe("12.04 rule 2: throws", () => {
     expect(full.arms.F.fist.x).toBeLessThan(full.arms.F.shoulder.x);
     expect(full.arms.F.fist.y).toBeLessThan(full.arms.F.shoulder.y);
     const rel = throwing({ phase: "release", charge: THROW.CHARGE_MAX, elapsed: 2 });
-    expect(rel.arms.F.fist.x).toBeGreaterThan(rel.arms.F.shoulder.x + 40);
+    expect(rel.arms.F.fist.x).toBeGreaterThan(rel.arms.F.shoulder.x + 40 * BODY_SCALE);
     expect(throwStage({ phase: "release", charge: 10, elapsed: 2 }).stage).toBe("release");
     expect(throwStage({ phase: "release", charge: 10, elapsed: THROW.RELEASE_TICKS }).stage).toBe("recover");
     const end = throwing({ phase: "release", charge: 10, elapsed: THROW.RELEASE_TICKS + THROW.RECOVERY });
@@ -323,10 +327,10 @@ describe("12.04 rules 3–6: punch overshoot, jump weight, brace, flash beat", (
     const mid = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: s + BALANCE.PUNCH_RECOVERY / 2, landed: false, sword: false } }), clock);
     const end = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: s + BALANCE.PUNCH_RECOVERY, landed: false, sword: false } }), clock);
     const arm = mid.punchingArm!;
-    expect(mid.arms[arm].fist.x).toBeGreaterThan(guard.arms[arm].fist.x - 20);
+    expect(mid.arms[arm].fist.x).toBeGreaterThan(guard.arms[arm].fist.x - 20 * BODY_SCALE);
     expect(Math.abs(end.arms[arm].fist.x - guard.arms[arm].fist.x)).toBeLessThan(1);
     const wind = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: BALANCE.PUNCH_STARTUP - 1, landed: false, sword: false } }), clock);
-    expect(wind.arms[wind.punchingArm!].fist.x).toBeLessThan(guard.arms[wind.punchingArm!].fist.x - 6);
+    expect(wind.arms[wind.punchingArm!].fist.x).toBeLessThan(guard.arms[wind.punchingArm!].fist.x - 6 * BODY_SCALE);
   });
   it("takeoff crouches the hip and the apex stretches the torso", () => {
     const takeoff = computePose(fighter({ grounded: false, vy: -9, jumpTicks: 0 }), clock);
@@ -345,6 +349,54 @@ describe("12.04 rules 3–6: punch overshoot, jump weight, brace, flash beat", (
     expect(beat.arms.F.fist.y).toBeLessThan(beat.head.y);
     const noBeat = computePose(fighter(), { ...clock, beat: { kind: "flash", frames: 0 } });
     expect(noBeat.arms.F.fist.y).toBe(guard.arms.F.fist.y);
+  });
+});
+
+describe("9.10: laser and throw stances on the move", () => {
+  const LASER_MID = Math.floor(ARSENAL.LASER_CHARGE / 2);
+  // `computePose` returns world coordinates, so every comparison holds `x` still and varies only the motion.
+  const laserAt = (over: Partial<FighterState>): Joints =>
+    computePose(fighter({ action: { kind: "laser", elapsed: LASER_MID, hit: [] }, x: 123, ...over }), clock);
+
+  it("keeps the cupped arms and the coiled torso while the legs walk", () => {
+    const still = laserAt({});
+    const walking = laserAt({ vx: 3 });
+    expect(walking.state).toBe("laser");
+    // arms, torso and head are the action's, untouched
+    expect(walking.arms.F.fist).toEqual(still.arms.F.fist);
+    expect(walking.arms.B.fist).toEqual(still.arms.B.fist);
+    expect(laserHands(walking)).toEqual(laserHands(still));
+    expect(walking.lean).toBe(still.lean);
+    expect(walking.head).toEqual(still.head);
+    // the legs are not: both feet are exactly where the walk cycle puts them, and still on the ground
+    const walkOnly = computePose(fighter({ x: 123, vx: 3, action: null }), clock);
+    expect(walkOnly.state).toBe("walk");
+    expect(walking.legs.F.foot).toEqual(walkOnly.legs.F.foot);
+    expect(walking.legs.B.foot).toEqual(walkOnly.legs.B.foot);
+    expect(walking.legs.F.foot.x).not.toBe(still.legs.F.foot.x);
+    for (const leg of [walking.legs.F, walking.legs.B]) expect(leg.foot.y).toBeCloseTo(WORLD.ROOF_Y, 6);
+    // and they still hang off the action's hip
+    for (const leg of [walking.legs.F, walking.legs.B]) expect(leg.hip).toEqual(walking.hip);
+  });
+
+  it("lifts the feet off the ground when the laser is charged in the air", () => {
+    const air = laserAt({ grounded: false, vy: -6, y: WORLD.ROOF_Y - 80 });
+    expect(air.state).toBe("laser");
+    expect(laserHands(air).y).toBeLessThan(laserHands(laserAt({})).y); // the whole body is 80 px up
+    for (const leg of [air.legs.F, air.legs.B]) expect(leg.foot.y).toBeLessThan(air.hip.y + (RIG.thigh + RIG.shin) * BODY_SCALE);
+    expect(air.legs.F.foot.y).toBeLessThan(WORLD.ROOF_Y - 80); // tucked, not planted on the roof line
+  });
+
+  it("a walked throw keeps its wind-up arm and swaps only the legs", () => {
+    const t = fighter({ x: 91, action: { kind: "throw", item: "molotov", arm: "R", phase: "charge", charge: 20, elapsed: 0, released: false } });
+    const stillThrow = computePose(t, clock);
+    const walkingThrow = computePose({ ...t, vx: 3 }, clock);
+    expect(walkingThrow.state).toBe("throw");
+    expect(walkingThrow.arms.F.fist).toEqual(stillThrow.arms.F.fist);
+    expect(walkingThrow.arms.B.fist).toEqual(stillThrow.arms.B.fist);
+    expect(walkingThrow.lean).toBe(stillThrow.lean);
+    expect(walkingThrow.legs.F.foot.x).not.toBe(stillThrow.legs.F.foot.x);
+    for (const leg of [walkingThrow.legs.F, walkingThrow.legs.B]) expect(leg.foot.y).toBeCloseTo(WORLD.ROOF_Y, 6);
   });
 });
 
@@ -368,10 +420,10 @@ describe("9.10 slash poses", () => {
 
   it("chop: the front fist goes overhead in startup, then drops below the shoulder through the active frames", () => {
     const wound = computePose(chop(ARSENAL.CHOP_STARTUP - 1), clock);
-    expect(wound.arms.F.fist.y).toBeLessThan(wound.arms.F.shoulder.y - 20);
+    expect(wound.arms.F.fist.y).toBeLessThan(wound.arms.F.shoulder.y - 20 * BODY_SCALE);
     const struck = computePose(chop(ARSENAL.CHOP_STARTUP + ARSENAL.CHOP_ACTIVE - 1), clock);
-    expect(struck.arms.F.fist.y).toBeGreaterThan(wound.arms.F.fist.y + 40);
-    expect(struck.arms.F.fist.x).toBeGreaterThan(struck.hip.x + 30);
+    expect(struck.arms.F.fist.y).toBeGreaterThan(wound.arms.F.fist.y + 40 * BODY_SCALE);
+    expect(struck.arms.F.fist.x).toBeGreaterThan(struck.hip.x + 30 * BODY_SCALE);
     expect(struck.punchingArm).toBe("F");
     expect(struck.state).toBe("chop");
   });
@@ -380,8 +432,8 @@ describe("9.10 slash poses", () => {
     const back = computePose(sweep(ARSENAL.SWEEP_STARTUP - 1), clock);
     expect(back.arms.F.fist.x).toBeLessThan(back.hip.x);
     const front = computePose(sweep(ARSENAL.SWEEP_STARTUP + ARSENAL.SWEEP_ACTIVE - 1), clock);
-    expect(front.arms.F.fist.x).toBeGreaterThan(front.hip.x + 30);
-    expect(Math.abs(front.arms.F.fist.y - front.arms.F.shoulder.y)).toBeLessThan(30);
+    expect(front.arms.F.fist.x).toBeGreaterThan(front.hip.x + 30 * BODY_SCALE);
+    expect(Math.abs(front.arms.F.fist.y - front.arms.F.shoulder.y)).toBeLessThan(30 * BODY_SCALE);
     expect(front.state).toBe("sweep");
   });
 
@@ -400,5 +452,25 @@ describe("9.10 slash poses", () => {
     const plain = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: e, landed: false, sword: false } }), clock);
     const armed = computePose(fighter({ action: { kind: "punch", arm: "R", elapsed: e, landed: false, sword: true } }), clock);
     expect(armed.arms.F.fist).toEqual(plain.arms.F.fist);
+  });
+});
+
+describe("slip pose (owner 2026-09-12)", () => {
+  it("rigState is slip while slipped > 0, ahead of hit", () => {
+    const f = fighter({ hitstun: 90, slipped: 90 });
+    expect(rigState(f, false)).toBe("slip");
+    expect(rigState({ ...f, slipped: 0 }, false)).toBe("hit");
+  });
+  it("falls, lies flat, then rises over the last frames", () => {
+    expect(slipStage(ARSENAL.SLIP_STUN)).toEqual({ stage: "fall", t: 0 });
+    expect(slipStage(ARSENAL.SLIP_STUN - 45).stage).toBe("down");
+    expect(slipStage(1).stage).toBe("rise");
+    expect(slipStage(1).t).toBeGreaterThan(0.9);
+  });
+  it("the head is far lower while down than when standing, and back up once the slip ends", () => {
+    const down = computePose(fighter({ hitstun: 45, slipped: 45 }), clock);
+    const up = computePose(fighter(), clock);
+    expect(down.state).toBe("slip");
+    expect(down.head.y).toBeGreaterThan(up.head.y + 40);
   });
 });

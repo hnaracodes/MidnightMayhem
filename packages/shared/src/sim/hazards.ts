@@ -48,6 +48,7 @@ function slip(s: MatchState, h: Hazard, events: SimEvent[]): boolean {
     if (f.vx === 0 || f.hitstun !== 0 || !standingOn(s, i, h, rect)) continue;
     if (i === h.owner && h.age <= ARSENAL.PEEL_OWNER_IMMUNE) continue;
     f.hitstun = ARSENAL.SLIP_STUN;
+    f.slipped = ARSENAL.SLIP_STUN;
     f.knockbackVx = 0;
     f.vx = 0;
     f.action = null;

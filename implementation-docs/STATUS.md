@@ -13,8 +13,9 @@ first, then this, then your feature file.
 | `gate-5-code` | Phase 5 vision code, MediaPipe wired, harness page | client tests; camera checklist not run |
 | (untagged) | Phase 4 design (rig, stage, HUD, effects, arena), Phase 6 integration, polish | 219 client + 125 shared/server tests, owner keyboard match |
 | (untagged) | 8.01 contracts, every phase 9–11 lane (9.01–9.06, 10.01–10.03, 11.01–11.05) merged and wired | 165 shared + 38 server + 721 client tests, typecheck, `pnpm build`, headless 2p / 3p / 4p play-throughs |
+| (untagged) | Phase 12 ambience (12.01–12.06) via PR #1, 9.07 YOLO as the default detector, 9.10 mobile actions, health 50 | 187 shared + 40 server + 837 client tests, typecheck |
 
-`main` builds, `pnpm test` (924 tests) and `pnpm typecheck` are green. **The expansion is playable end to end on the
+`main` builds, `pnpm test` (1064 tests) and `pnpm typecheck` are green. **The expansion is playable end to end on the
 keyboard**: pixel sprites for four characters, the moving train with gaps and cargo racks, landing page with the
 attract-mode roof, lobby with route board and seat customisation, two-to-four-player HUD, laser, five items, item FX,
 synthesised sound, timed and deathmatch modes, 2v2 teams, result screen naming the team.
@@ -73,10 +74,24 @@ Integration notes carried over from the 13-lane merge:
 
 ## What is next
 
-1. **Review** — parallel reviewers per area against the feature files (`09-arsenal`, `10-arenas`, `11-look`),
-   fixes, final verification. Candidates seen during integration: `rig/pose.ts` could grow real throw and laser
-   poses (11.05 adapts them through `posedFighter`); `KeyboardInputSource` could latch edges until sampled.
-2. **9.07** is built on `feat/yolo` (benchmark verdict above); merge it, then the human gates below.
+1. **Review** — parallel reviewers per area against the feature files (`09-arsenal`, `10-arenas`, `11-look`,
+   `12-ambience`), fixes, final verification. Candidates seen during integration: `KeyboardInputSource` could latch
+   edges until sampled. (12.04 gave `rig/pose.ts` the real throw and laser poses, so `posedFighter` is the identity.)
+2. **9.09** laser gesture hardening is specified and unbuilt: `09-arsenal/09-laser-gesture-hardening.md`. Worth
+   doing before the camera gates, since the current laser gate still overlaps block and punch.
+3. The human gates below.
+
+### What 9.10 landed (commits `sim:` / `client:`)
+
+Only a punch or a block pins a grounded fighter. The laser and the charged throw are charged, fired and recovered
+while walking or jumping, the laser starts in mid-air, and `updateFacing` tracks through a charge and commits at
+the beam or the release (`aimLocked`). `actionLocksMovement` in `sim/fighter.ts` is the single gate, so any action
+added later is mobile unless it opts in. On the client, `withLocomotion` in `rig/pose.ts` gives the laser and throw
+stances the walk cycle's or the air pose's legs while keeping the action's arms and torso. Spec:
+`09-arsenal/10-mobile-actions.md`; decision row 49. Verified in the real app by `tools/e2e/mobile-actions.json`:
+the fighter charges from x 280 to 450 on the ground, jumps to y 322 still charging, the beam lands for 20, then a
+molotov is charged and thrown while walking the other way. Zero page errors. Health is 50 (`BALANCE.MAX_HP`, owner retune), which is a
+fraction change everywhere on the client — the HUD bars already scaled off `MAX_HP`.
 
 ## Running the game today
 
@@ -85,7 +100,8 @@ pnpm dev:server            # terminal 1, http://localhost:8080
 pnpm dev:client            # terminal 2, https://localhost:5173 (accept the certificate warning)
 ```
 Or the demo build: `pnpm build` then `pnpm --filter @midnight/server start` serves `packages/client/dist` on one port.
-Keys: A/D walk, W jump, S block, F/G punch, Q laser, 1–5 hold an item (molotov, sword, shield, banana, flash),
+Keys: A/D walk, W jump, S block, F/G punch, Q laser (all of these work *while* a laser or throw charges),
+1–5 hold an item (molotov, sword, shield, banana, flash),
 V camera preview, M mute. `?debug=1` shows boxes, tick, RTT, map/mode; `?rig=vector` draws the old rig;
 `?input=keyboard|vision` as before.
 
@@ -115,3 +131,18 @@ pose), HUD restyle, menus and wipes. Presentation only — no change under `pack
 Merge into `main` after the owner reviews `.shots/before/*` against `.shots/after/*` and approves the proposed
 `DECISIONS_CHANGED.md` row in the branch's final summary. New dev pages: `dev/ambience.html`; new switches:
 `?quality=high|low`.
+
+## In flight: Phase 13 art (`feat/artstyle-rework`)
+
+The art overhaul (`docs/superpowers/specs/2026-09-12-art-overhaul.md`, specs in `implementation-docs/13-art/`)
+lives on `feat/artstyle-rework`, which carries Phase 12 and `main` up to a715f6b (9.10 chop/sweep, use-only
+throwables, retro chrome). Owner decisions taken during the lane: fighters at **70 %** (105 px) as a true shrink
+through sim and pose (13.00: hurtbox 50 × 98, punch 7/49/84/42, chop 7/63/119/98, sweep 7/105/77/49, laser band
+74/25, throw release 70 px); **`SPRITE_SCALE = 1`** with `PIXEL = 2` decoupled for effects and backgrounds (13.01);
+the **car stands still** and only the world scrolls (13.07). Landed: shading engine (13.02), Drifter and Conductor
+art (13.03), roof and body pixel rasters (13.04), rack and gap pixel art (13.05), ambient props (13.06). Deferred by
+owner scope: Stoker / Claude / item art, secondary motion, Claude's screen light, the remaining sky/track layers,
+reactive props (see `13-art/07`). A rack perch is now out of a grounded punch's reach (10.01 rule 6 annotated).
+Merge into `main` after the owner reviews `sprites.html` and `.shots/art/*` and approves the proposed
+`DECISIONS_CHANGED.md` rows in the branch summary. Headless loop: Vite on 5181 and the server on 8081 with
+`MM_HTTP=1` (restart the server after merging protocol changes).

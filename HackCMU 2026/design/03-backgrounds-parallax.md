@@ -21,6 +21,11 @@ Scroll direction is **screen-left** for every layer (the train moves right). Lay
 and tile width so seams line up. Generate every tile at exactly the width in the table so wrapping is seamless by
 construction.
 
+> **13.07 (owner, 2026-09-12):** the car the fighters stand on — layers 5 and 6, the window glow strip and the
+> roof lamp fixtures — no longer scrolls; it only bobs. The 240 / 180 "roof speed" is still the train's speed for
+> the poles, tunnel wall, foreground silhouettes, rail ballast, gap track slices, final-car track trail, wind,
+> sparks and particles. Implementation: `scrollBackgrounds` in `packages/client/src/game/backgrounds.ts`.
+
 ```ts
 export const PARALLAX = [
   { key: "bg_sky",         speed: 0,   y: 0,   tile: false },

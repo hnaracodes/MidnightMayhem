@@ -128,6 +128,9 @@ export class Motion {
   private clackAge = Infinity;
   private lightningTimer: number;
   private flashFrames = 0;
+  /** 13.06: this frame's bob offset in px and whether the joint clack fired this frame (props phase-lock to them). */
+  bobOffset = 0;
+  lastClack = false;
   private sparks: Spark[] = [];
   private puffs: Puff[] = [];
 
@@ -249,9 +252,11 @@ export class Motion {
 
     // 5. Bob and joint clack.
     this.clackTimer -= dt;
+    this.lastClack = false;
     if (this.clackTimer <= 0) {
       this.clackTimer += BOB.clackEvery;
       this.clackAge = 0;
+      this.lastClack = true;
       this.events.push({ t: this.t, kind: "clack", x: 0 });
     }
     let jolt = 0;
@@ -306,6 +311,7 @@ export class Motion {
   }
 
   private applyBob(offset: number): void {
+    this.bobOffset = offset;
     const L = this.layers;
     const roof = L.tiles[ROOF_INDEX];
     const body = L.tiles[BODY_INDEX];
@@ -313,8 +319,8 @@ export class Motion {
     if (body) body.setY(WORLD.ROOF_Y + offset);
     L.glow.setY(WORLD.ROOF_Y + offset);
     this.rail.setY(BAND_TOP + offset);
-    for (const g of [L.railing, L.lamp, this.bogies, this.wheels, this.sparkLayer, L.map.gaps, L.map.platforms]) g.setY(offset);
-    for (const s of L.map.slices) s.setY(480 + offset);
+    for (const g of [L.railing, L.lamp, this.bogies, this.wheels, this.sparkLayer]) g.setY(offset);
+    L.map.bob(offset); // 13.05: mask, glow, track slices and the pixel-art images
   }
 
   private lightning(): void {

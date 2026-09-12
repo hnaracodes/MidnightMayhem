@@ -8,7 +8,8 @@ export const WORLD = {
   WIDTH: 960, HEIGHT: 540, ROOF_Y: 430,
   SOFT_EDGE_L: 72, SOFT_EDGE_R: 888,
   PLAYER_START_X: [280, 680] as const,
-  HURTBOX_W: 72, HURTBOX_H: 140,
+  // 13.00: the drawn body is 70 % of the 150 px author rig (105 px); the hurtbox follows (was 72 × 140).
+  HURTBOX_W: 50, HURTBOX_H: 98,
 } as const;
 
 export const BALANCE = {
@@ -18,14 +19,15 @@ export const BALANCE = {
   PUNCH_STARTUP: 4,
   PUNCH_ACTIVE: 3,
   PUNCH_RECOVERY: 8,
-  PUNCH_GAP: 10,          // hitbox starts this far in front of the fighter centre
-  PUNCH_REACH: 70,        // hitbox width
-  PUNCH_HITBOX_TOP: 120,  // hitbox top, measured up from the feet
-  PUNCH_HITBOX_H: 60,
+  // 13.00: punch geometry at 70 % of the 150 px body (was 10 / 70 / 120 / 60)
+  PUNCH_GAP: 7,           // hitbox starts this far in front of the fighter centre
+  PUNCH_REACH: 49,        // hitbox width
+  PUNCH_HITBOX_TOP: 84,   // hitbox top, measured up from the feet
+  PUNCH_HITBOX_H: 42,
   HITSTUN_TICKS: 12,
   KNOCKBACK_PX: 144,      // total displacement over the hitstun
   WALK_SPEED: 3,          // px per tick (180 px/s)
-  JUMP_VELOCITY: -9.1,    // px per tick, negative is up; apex ~151 px (the drawn 150 px character height) at tick 34, airborne 68 ticks
+  JUMP_VELOCITY: -9.1,    // px per tick, negative is up; apex ~151 px (~1.4 × the 105 px drawn body since 13.00) at tick 34, airborne 68 ticks
   GRAVITY: 8 / 30,        // px per tick^2, shared with projectiles so throw arcs are unchanged
   JUMP_IFRAME_START: 3,   // inclusive, ticks since takeoff
   JUMP_IFRAME_END: 10,    // inclusive
@@ -50,7 +52,7 @@ export type ItemId = (typeof ITEM_IDS)[number];
 /** `ttl` (ticks) makes an item timed: unlimited uses, breaks when the clock runs out (9.10). */
 export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; cocoLabel: string }> = {
   molotov: { uses: 2, label: "Molotov", cocoLabel: "bottle" },
-  sword: { uses: 0, ttl: 600, label: "Racket sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
+  sword: { uses: 0, ttl: 600, label: "Sword", cocoLabel: "tennis racket" }, // 9.10: 10 s, unlimited swings
   shield: { uses: 3, label: "Backpack shield", cocoLabel: "backpack" },
   banana: { uses: 1, label: "Banana peel", cocoLabel: "banana" },
   flash: { uses: 1, label: "Phone flash", cocoLabel: "cell phone" },
@@ -58,21 +60,25 @@ export const ITEMS: Record<ItemId, { uses: number; ttl?: number; label: string; 
 export const DEFAULT_LOADOUT: Loadout = ["molotov", "shield"];
 
 export const ARSENAL = {
-  PARRY_WINDOW: 10, PARRY_STUN: 24,
+  // Owner 2026-09-12 (decision 52): a punch with the sword reaches SWORD_REACH for SWORD_DAMAGE (the pre-9.10 rule is back).
+  SWORD_REACH: 91, SWORD_DAMAGE: 10, PARRY_WINDOW: 10, PARRY_STUN: 24, // 13.00: 130 × 0.7 at the 105 px body
   // 9.10 sword slashes. Chop: slow, tall, guard-crushing (a blocking target takes half). Sweep: fast, wide, shoves.
-  CHOP_STARTUP: 8, CHOP_ACTIVE: 4, CHOP_RECOVERY: 14, CHOP_DAMAGE: 18, CHOP_GAP: 10, CHOP_REACH: 90,
-  CHOP_HITBOX_TOP: 170, CHOP_HITBOX_H: 140, CHOP_GUARD_FRACTION: 0.5,
-  SWEEP_STARTUP: 5, SWEEP_ACTIVE: 5, SWEEP_RECOVERY: 10, SWEEP_DAMAGE: 8, SWEEP_GAP: 10, SWEEP_REACH: 150,
-  SWEEP_HITBOX_TOP: 110, SWEEP_HITBOX_H: 70, SWEEP_PUSH: 2,
+  // 13.00: gap / reach / hitbox top / hitbox height are 70 % of the 150 px body (were 10/90/170/140 and 10/150/110/70).
+  CHOP_STARTUP: 8, CHOP_ACTIVE: 4, CHOP_RECOVERY: 14, CHOP_DAMAGE: 18, CHOP_GAP: 7, CHOP_REACH: 63,
+  CHOP_HITBOX_TOP: 119, CHOP_HITBOX_H: 98, CHOP_GUARD_FRACTION: 0.5,
+  SWEEP_STARTUP: 5, SWEEP_ACTIVE: 5, SWEEP_RECOVERY: 10, SWEEP_DAMAGE: 8, SWEEP_GAP: 7, SWEEP_REACH: 105,
+  SWEEP_HITBOX_TOP: 77, SWEEP_HITBOX_H: 49, SWEEP_PUSH: 2,
   THROW_STARTUP: 6, THROW_RECOVERY: 12,
   MOLOTOV_VX: 2, MOLOTOV_VY: -3, BANANA_VX: 5, BANANA_VY: -4, // molotov: low ~41-tick lob landing 70–130 px out (9.02 rule 2)
   FIRE_W: 120, FIRE_TICKS: 240, FIRE_DAMAGE: 2, FIRE_EVERY: 20,
-  PEEL_W: 40, PEEL_TICKS: 900, PEEL_OWNER_IMMUNE: 30, SLIP_STUN: 36,
+  // Owner 2026-09-12: the peel slides along the floor PEEL_SLIDE_PX over PEEL_SLIDE_TICKS (linear slow-down) and a
+  // slip puts the fighter on the floor for SLIP_STUN (1.5 s).
+  PEEL_W: 40, PEEL_TICKS: 900, PEEL_OWNER_IMMUNE: 30, SLIP_STUN: 90, PEEL_SLIDE_PX: 300, PEEL_SLIDE_TICKS: 40,
   FLASH_AT: 4, DAZZLE_TICKS: 120,
   LASER_CHARGE: 180, LASER_ACTIVE: 16, LASER_RECOVERY: 20, LASER_COOLDOWN: 720, // charge 3 s; active long enough for the front to cross the world
   LASER_SPEED: 60,        // px per tick the beam front travels (960 px in 16 ticks)
   LASER_DAMAGE: 20, LASER_CHIP: 4,
-  LASER_BAND_TOP: 105, LASER_BAND_BOTTOM: 35, // 70 px band (half the 140 px hurtbox) centred on the sprite's middle, feet − 70
+  LASER_BAND_TOP: 74, LASER_BAND_BOTTOM: 25, // 49 px band (half the 98 px hurtbox) centred on the sprite's middle, feet − 49 (13.00; was 105 / 35)
 } as const;
 
 /**

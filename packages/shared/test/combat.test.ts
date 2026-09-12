@@ -10,15 +10,15 @@ const TOTAL = BALANCE.PUNCH_STARTUP + BALANCE.PUNCH_ACTIVE + BALANCE.PUNCH_RECOV
 describe("boxes", () => {
   it("hurtbox anchored bottom-centre", () => {
     const f = createMatch().fighters[0]!;
-    expect(hurtbox(f)).toEqual({ x: 244, y: WORLD.ROOF_Y - 140, w: 72, h: 140 });
+    expect(hurtbox(f)).toEqual({ x: 255, y: WORLD.ROOF_Y - 98, w: 50, h: 98 });
   });
   it("punch hitbox only on active ticks, both facings", () => {
     const f = createMatch().fighters[0]!;
     expect(punchHitbox(f)).toBeNull();
     f.action = { kind: "punch", arm: "L", elapsed: BALANCE.PUNCH_STARTUP, landed: false, sword: false };
-    expect(punchHitbox(f)).toEqual({ x: 290, y: WORLD.ROOF_Y - 120, w: 70, h: 60 });
+    expect(punchHitbox(f)).toEqual({ x: 287, y: WORLD.ROOF_Y - 84, w: 49, h: 42 });
     f.facing = -1;
-    expect(punchHitbox(f)).toEqual({ x: 200, y: WORLD.ROOF_Y - 120, w: 70, h: 60 });
+    expect(punchHitbox(f)).toEqual({ x: 224, y: WORLD.ROOF_Y - 84, w: 49, h: 42 });
     f.action.elapsed = BALANCE.PUNCH_STARTUP - 1;
     expect(punchHitbox(f)).toBeNull();
   });

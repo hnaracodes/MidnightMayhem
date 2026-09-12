@@ -13,9 +13,9 @@ function isThrowable(kind: string): kind is Throwable {
   return kind === "molotov" || kind === "banana";
 }
 
-/** Release height above the ground, and how far in front of the feet the hand lets go. */
-export const THROW_RELEASE_H = 100;
-const HAND_X = 20;
+/** Release height above the ground, and how far in front of the feet the hand lets go (13.00: 70 % of 100 / 20). */
+export const THROW_RELEASE_H = 70;
+const HAND_X = 14;
 /** A charge released before this many ticks is a tap or a camera pulse: it throws at VISION_CHARGE. */
 const TAP_TICKS = 3;
 
@@ -34,6 +34,11 @@ export function throwVelocity(range: number): { vx: number; vy: number } {
   const r = Math.max(0, range);
   const u = r * tan * Math.sqrt(g / (2 * (r * tan + THROW_RELEASE_H)));
   return { vx: u / tan, vy: -(u + g / 2) };
+}
+
+/** Pure: the peel's first-tick speed so a linear slow-down to 0 over PEEL_SLIDE_TICKS covers PEEL_SLIDE_PX. */
+export function peelStartVx(): number {
+  return (2 * ARSENAL.PEEL_SLIDE_PX) / (ARSENAL.PEEL_SLIDE_TICKS + 1);
 }
 
 /** Pure: linear MIN_RANGE → MAX_RANGE over charge 0 → CHARGE_MAX (clamped). */
@@ -87,10 +92,14 @@ export function releaseThrows(s: MatchState, events: SimEvent[]): void {
     const f = s.fighters[i]!;
     const a = f.action;
     if (!a || a.kind !== "throw" || a.phase !== "release" || a.elapsed !== THROW.RELEASE_TICKS || a.released) continue;
-    const { vx, vy } = throwVelocity(chargeToRange(a.charge));
-    const p: Projectile = {
-      id: s.nextId++, kind: a.item, owner: i, x: f.x + f.facing * HAND_X, y: f.y - THROW_RELEASE_H, vx: f.facing * vx, vy,
-    };
+    const p: Projectile = a.item === "banana"
+      // Owner 2026-09-12: the peel leaves at foot level and slides (see advanceProjectiles); vx is the start speed
+      // of a linear slow-down that covers PEEL_SLIDE_PX in PEEL_SLIDE_TICKS.
+      ? { id: s.nextId++, kind: "banana", owner: i, x: f.x + f.facing * HAND_X, y: f.y, vx: f.facing * peelStartVx(), vy: 0, slide: 0 }
+      : (() => {
+          const { vx, vy } = throwVelocity(chargeToRange(a.charge));
+          return { id: s.nextId++, kind: a.item, owner: i, x: f.x + f.facing * HAND_X, y: f.y - THROW_RELEASE_H, vx: f.facing * vx, vy };
+        })();
     s.projectiles.push(p);
     a.released = true;
     events.push({ type: "PROJECTILE_SPAWN", id: p.id, kind: p.kind, owner: i });
@@ -107,6 +116,24 @@ export function advanceProjectiles(s: MatchState, events: SimEvent[]): void {
   releaseThrows(s, events);
   const kept: Projectile[] = [];
   for (const p of s.projectiles) {
+    if (p.slide !== undefined) {
+      // A sliding peel: constant deceleration along the floor; a gap under it swallows it; it settles as the hazard.
+      const t = p.slide + 1;
+      const step = peelStartVx() * (1 - p.slide / ARSENAL.PEEL_SLIDE_TICKS) * Math.sign(p.vx);
+      p.x += step;
+      p.slide = t;
+      if (p.x < 0 || p.x > WORLD.WIDTH) continue;
+      const floor = groundYAt(s.config.map, p.x, p.y);
+      if (floor >= PIT.Y) continue;
+      p.y = floor;
+      if (t >= ARSENAL.PEEL_SLIDE_TICKS) {
+        const x = Math.min(Math.max(p.x, ARSENAL.PEEL_W / 2), WORLD.WIDTH - ARSENAL.PEEL_W / 2);
+        spawnHazard(s, "peel", p.owner, x, groundYAt(s.config.map, x, p.y), events);
+        continue;
+      }
+      kept.push(p);
+      continue;
+    }
     const prevY = p.y;
     p.vy += BALANCE.GRAVITY;
     p.x += p.vx;

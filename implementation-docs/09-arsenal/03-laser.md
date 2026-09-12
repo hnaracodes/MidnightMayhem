@@ -22,7 +22,7 @@ Owns nothing else.
 - `laserReach(k): number` — how far the front has travelled on 0-based beam tick `k`: `LASER_SPEED · (k + 1)`.
 - `laserHitbox(f): Rect | null` — while `laserPhase === "beam"`: from `f.x` toward the world edge in the facing direction,
   `w = min(laserReach(elapsed − LASER_CHARGE), facing === 1 ? WIDTH − f.x : f.x)`, `x = facing === 1 ? f.x : f.x − w`,
-  `y = f.y − LASER_BAND_TOP`, `h = LASER_BAND_TOP − LASER_BAND_BOTTOM` (70 px, half the 140 px hurtbox, centred on the
+  `y = f.y − LASER_BAND_TOP`, `h = LASER_BAND_TOP − LASER_BAND_BOTTOM` (49 px since 13.00, half the 98 px hurtbox — was 70 of 140 — centred on the
   sprite's middle at `feet − 70`). `LASER_SPEED · LASER_ACTIVE ≥ WIDTH`, so the front always reaches the far edge.
 - `resolveLaser(s, events): void` — for every fighter in the beam phase: on the first beam tick push `LASER_FIRE`; each
   beam tick, for every `opponentsOf` target not yet in `action.hit`, with `canBeHit`, not `isInvulnerable`, whose
@@ -31,7 +31,9 @@ Owns nothing else.
   attacker; push `LASER_HIT { attacker, target, damage, blocked }`.
 - Charging fighter: `controlFighter` already refuses movement/jump/punch while an action exists; being hit cancels the
   action (existing rule "a hit cancels the target's punch") — assert it applies to a laser too, and that the cooldown
-  is **not** refunded.
+  is **not** refunded. **Superseded in part by 9.10**: only the punch pins a fighter now, so the laser charges,
+  fires and recovers while walking or jumping and `startLaser` no longer requires `grounded`. The hit-cancel and
+  the never-refunded cooldown still hold.
 
 ## Behaviour
 1. `special` edge on a ready fighter → `LASER_CHARGE` that tick, `LASER_FIRE` 180 ticks (3 s) later, `laserCooldown` 720.
@@ -41,8 +43,8 @@ Owns nothing else.
 4. Blocking opponent: chip 4, no hitstun. Shield holder: absorbed (0 damage, `SHIELD_ABSORB`).
 5. An opponent near jump apex (feet at `ROOF_Y − 150`) is above the band and takes nothing; an opponent in jump i-frames
    (jumpTicks 3–10) takes nothing.
-6. During charge the attacker cannot walk or jump; a punch landing on him during charge cancels the laser, no
-   `LASER_FIRE` follows, cooldown stays 720.
+6. ~~During charge the attacker cannot walk or jump~~ (**9.10: he can do both, and can start the laser in the
+   air**); a punch landing on him during charge cancels the laser, no `LASER_FIRE` follows, cooldown stays 720.
 7. A second `special` edge while `laserCooldown > 0` does nothing (no event). After 720 ticks it works again.
 8. Three players FFA: one beam hits both opponents (two `LASER_HIT`s) and never the attacker; 2v2: never the teammate.
 9. `special` held continuously does not retrigger (edge only).

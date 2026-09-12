@@ -195,11 +195,12 @@ describe("12.02 rules 1–2: darkness and pools", () => {
 
 describe("12.02 rule 10: contact shadow pool", () => {
   it("widens and fades with height, snapped to the pixel grid", () => {
-    expect(shadowPool(0)).toEqual({ w: 64, alpha: 1 });
-    expect(shadowPool(150).w).toBe(110);
+    // 13.00: 64 → 110 px at the 150 px body became 45 → 77 at 70 %
+    expect(shadowPool(0)).toEqual({ w: 45, alpha: 1 });
+    expect(shadowPool(150).w).toBe(77);
     expect(shadowPool(150).alpha).toBeCloseTo(0.3, 6);
-    expect(shadowPool(75).w).toBeGreaterThan(64);
-    expect(shadowPool(75).w).toBeLessThan(110);
+    expect(shadowPool(75).w).toBeGreaterThan(45);
+    expect(shadowPool(75).w).toBeLessThan(77);
     const g = new FakeObject();
     drawShadow(g as unknown as Phaser.GameObjects.Graphics, 301, WORLD.ROOF_Y, 0);
     expect(g.ellipses.length).toBe(3);
@@ -208,6 +209,40 @@ describe("12.02 rule 10: contact shadow pool", () => {
     g.clear();
     drawShadow(g as unknown as Phaser.GameObjects.Graphics, 301, WORLD.ROOF_Y, 150);
     expect(g.ellipses[0]!.alpha).toBeLessThan(planted);
-    expect(g.ellipses[0]!.w).toBeGreaterThan(64);
+    expect(g.ellipses[0]!.w).toBeGreaterThan(45);
+  });
+});
+
+import { lightDirFor } from "../src/game/stage/lighting";
+describe("13.02 rule 3: light direction", () => {
+  it("points toward a single lamp, cancels between two equal lamps, and is null out of reach", () => {
+    const lamp = pool({ x: 400, y: 380 });
+    const d = lightDirFor([lamp], 300, 380)!;
+    expect(d.x).toBeGreaterThan(0.99);
+    expect(Math.abs(d.y)).toBeLessThan(0.01);
+    const above = lightDirFor([pool({ x: 300, y: 300 })], 300, 380)!;
+    expect(above.y).toBeLessThan(-0.99);
+    expect(lightDirFor([pool({ x: 200, rx: 300 }), pool({ x: 600, rx: 300 })], 400, WORLD.ROOF_Y)).toBeNull();
+    expect(lightDirFor([lamp], 900, 380)).toBeNull();
+    const choice = rimFor([lamp], 0.35, 300, 380);
+    expect(choice.dir!.x).toBeGreaterThan(0.99);
+    expect(rimFor([lamp], 0.35, 300, 380, true).dir!.x).toBeGreaterThan(0.99);
+  });
+});
+
+describe("13.06 setLampGain", () => {
+  it("scales that roof lamp's resolved intensity on the next update and nothing else", () => {
+    const { scene } = stubScene();
+    const rig = new Lighting(scene);
+    const both = { roof: 500, tunnel: 0 }; // both roof lamps on screen (300 − 500 and 1260 − 500)
+    rig.update(DT, both, { reducedMotion: true, rays: true });
+    const before = rig.lights().filter((l) => l.kind === "lamp").map((l) => l.intensity);
+    expect(before).toHaveLength(2);
+    rig.setLampGain(1, 0.2);
+    rig.update(DT, both, { reducedMotion: true, rays: true });
+    const after = rig.lights().filter((l) => l.kind === "lamp").map((l) => l.intensity);
+    expect(after[0]).toBeCloseTo(before[0]!, 9);
+    expect(after[1]).toBeCloseTo(before[1]! * 0.2, 9);
+    expect(rig.lights().find((l) => l.kind === "window")!.intensity).toBe(0.4);
   });
 });

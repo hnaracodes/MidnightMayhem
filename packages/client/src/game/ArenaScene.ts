@@ -27,6 +27,7 @@ import { session } from "./session";
 import { SpriteFighter } from "./sprites/SpriteFighter";
 import { Lighting } from "./stage/lighting";
 import { Particulate } from "./stage/particulate";
+import { Props } from "./stage/props";
 import { initialQualityState, qualityStep, resolveQuality, type Quality, type QualityState } from "./stage/quality";
 
 /**
@@ -51,7 +52,7 @@ export function feedHeldItem(source: unknown, item: ItemId | null): void {
 /** Attract mode steps the sim at most this many ticks per render frame (a hidden tab must not spiral). */
 const ATTRACT_MAX_STEPS = 5;
 /** Where a fighter samples the light rig: chest height, so a low pool on the roof lip does not decide the rim alone. */
-const CHEST_ABOVE_FEET = 60;
+const CHEST_ABOVE_FEET = 42; // 13.00: 60 × 0.7
 const FRAME_BUDGET_LABEL = "6 ms";
 /** 12.04 rule 9: how far into gloom a fallen fighter sinks (the 12.02 floor). */
 const KO_GLOOM = 0.25;
@@ -72,6 +73,8 @@ declare global {
       /** 12.03: live particle counts and the resolved quality tier. */
       particles: () => { motes: number; embers: number };
       quality: () => Quality;
+      /** 13.06: animated ambient props this frame. */
+      props: () => number;
     };
   }
 }
@@ -94,6 +97,7 @@ export class ArenaScene extends Phaser.Scene {
   private itemFx!: ItemFx;
   private lighting!: Lighting;
   private particulate!: Particulate;
+  private props!: Props;
   private quality: QualityState = initialQualityState("high");
   private dazzle!: Phaser.GameObjects.Rectangle;
 
@@ -124,6 +128,8 @@ export class ArenaScene extends Phaser.Scene {
     this.hud = new Hud(this);
     this.lighting = new Lighting(this);
     this.particulate = new Particulate(this);
+    this.props = new Props(this, this.lighting);
+    this.props.setMap(this.layers.map.spans);
     this.applyQuality(resolveQuality(session.quality, this.renderer.type === Phaser.WEBGL), true);
     this.effects = new Effects(this, this.lighting);
     this.itemFx = new ItemFx(this, this.lighting);
@@ -147,6 +153,7 @@ export class ArenaScene extends Phaser.Scene {
       lights: () => this.lighting.lights().length,
       particles: () => this.particulate.live(),
       quality: () => this.quality.quality,
+      props: () => this.props.live(),
     };
   }
 
@@ -174,6 +181,12 @@ export class ArenaScene extends Phaser.Scene {
     const high = this.quality.quality === "high";
     this.lighting.update(dt, this.tileOffsets(), { reducedMotion: session.reducedMotion, rays: high });
     this.particulate.update(dt, { reducedMotion: session.reducedMotion, enabled: high, roofSpeed: this.layers.roofSpeed });
+    const motion = this.layers.motion;
+    this.props.update(dt, {
+      reducedMotion: session.reducedMotion, quality: this.quality.quality, roofOffset: this.tileOffsets().roof,
+      bob: motion.bobOffset, clack: motion.lastClack, tunnel: this.car === "TUNNEL",
+    });
+    this.props.bob(motion.bobOffset);
 
     const renderMs = this.clock.advance(now, this.effects.timeScale());
     const sampled = session.buffer.sample(renderMs);
@@ -205,6 +218,7 @@ export class ArenaScene extends Phaser.Scene {
     if (state.config.map !== this.drawnMap) {
       this.drawnMap = state.config.map;
       this.layers.map.setMap(this.drawnMap);
+      this.props.setMap(this.layers.map.spans);
     }
     if (this.names !== session.playerNames) {
       this.names = session.playerNames;
@@ -276,6 +290,8 @@ export class ArenaScene extends Phaser.Scene {
         rimColor: rim.color,
         rimSide: rim.side,
         gloom: rim.gloom,
+        lightDir: rim.dir ?? null,
+        flatLimbs: this.quality.quality !== "high",
         flash: fill.fillOverride,
         flashAlpha: fill.fillAlpha,
         squash: this.effects.squashFor(i),
@@ -317,7 +333,7 @@ export class ArenaScene extends Phaser.Scene {
     const hand = this.hands[i];
     if (hand) return hand;
     const f = newest.fighters[i];
-    return f ? { x: f.x + f.facing * 20, y: f.y - 90 } : { x: WORLD.WIDTH / 2, y: WORLD.ROOF_Y - 90 };
+    return f ? { x: f.x + f.facing * 14, y: f.y - 63 } : { x: WORLD.WIDTH / 2, y: WORLD.ROOF_Y - 63 };
   }
 
   /** Creates or destroys fighter views so there is exactly one per fighter in the state. */
@@ -404,7 +420,7 @@ export class ArenaScene extends Phaser.Scene {
     const rtt = session.rtt === null ? "n/a" : `${session.rtt.toFixed(1)} ms`;
     const mode = attracting ? "ATTRACT" : state.phase;
     this.debugText!.setText(
-      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  q ${this.quality.quality}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  ${mode}  ${state.config.map}/${state.config.mode}`,
+      `tick ${state.tick}  age ${age} ms  clock -${lag} ms  update ${this.updateMs.toFixed(2)} ms  rtt ${rtt}  lights ${this.lighting.lights().length}  q ${this.quality.quality}  motes ${this.particulate.live().motes} embers ${this.particulate.live().embers}  props ${this.props.live()}  ${mode}  ${state.config.map}/${state.config.mode}`,
     );
   }
 }

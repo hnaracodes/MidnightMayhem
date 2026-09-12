@@ -4,10 +4,13 @@ import { computePose, type Clock } from "../src/game/rig/pose";
 import { P } from "../src/game/palette";
 import { GRID_PALETTE, PixelCanvas, alphaOf, parseGrid, parsePart, rgba, type Part } from "../src/game/sprites/grid";
 import {
-  ANCHOR, CHARACTER_PARTS, FRAME_H, FRAME_W, composeFrame, createFrameCanvas, isBlinkOn, jointToSprite,
+  ANCHOR, CHARACTER_PARTS, FRAME_H, FRAME_W, ITEM_SPRITES, SPRITE_SCALE, composeFrame, createFrameCanvas, isBlinkOn, jointToSprite,
   type ComposeOpts,
 } from "../src/game/sprites/compose";
-import { ITEM_PARTS } from "../src/game/sprites/parts/items";
+import { BODY_SCALE } from "../src/game/rig/characters";
+
+/** 13.01: the 11.01 minimums were authored at 3 world px per art px for a 150 px body; at 1 px and 70 % they are ×2.1. */
+const K = 2.1;
 
 const clock: Clock = { renderMs: 0, koFrames: 0, landFrames: 0 };
 const base = (over: Partial<FighterState> = {}): FighterState => ({ ...createMatch().fighters[0]!, ...over });
@@ -78,17 +81,17 @@ describe("rule 1: every grid parses and every character has every part at the mi
         expect(part.anchor.y).toBeGreaterThanOrEqual(0);
       }
       const size = (p: Part): [number, number] => [parsePart(p).w, parsePart(p).h];
-      expect(size(parts.head)[0]).toBeGreaterThanOrEqual(14);
-      expect(size(parts.head)[1]).toBeGreaterThanOrEqual(14);
-      expect(size(parts.headKo)[0]).toBeGreaterThanOrEqual(14);
-      expect(size(parts.headKo)[1]).toBeGreaterThanOrEqual(14);
+      expect(size(parts.head)[0]).toBeGreaterThanOrEqual(Math.floor(14 * K));
+      expect(size(parts.head)[1]).toBeGreaterThanOrEqual(Math.floor(14 * K));
+      expect(size(parts.headKo)[0]).toBeGreaterThanOrEqual(Math.floor(14 * K));
+      expect(size(parts.headKo)[1]).toBeGreaterThanOrEqual(Math.floor(14 * K));
       expect(colourCount(parts.head)).toBeGreaterThanOrEqual(3);
-      expect(size(parts.torso)[0]).toBeGreaterThanOrEqual(12);
-      expect(size(parts.torso)[1]).toBeGreaterThanOrEqual(18);
-      expect(size(parts.handOpen)).toEqual([5, 5]);
-      expect(size(parts.handFist)).toEqual([5, 5]);
-      expect(size(parts.foot)).toEqual([7, 4]);
-      expect(opaqueCount(parts.head)).toBeGreaterThan(80);
+      expect(size(parts.torso)[0]).toBeGreaterThanOrEqual(Math.floor(12 * K));
+      expect(size(parts.torso)[1]).toBeGreaterThanOrEqual(Math.floor(18 * K));
+      expect(size(parts.handOpen)).toEqual([Math.round(5 * K), Math.round(5 * K)]);
+      expect(size(parts.handFist)).toEqual([Math.round(5 * K), Math.round(5 * K)]);
+      expect(size(parts.foot)).toEqual([Math.round(7 * K), Math.round(4 * K)]);
+      expect(opaqueCount(parts.head)).toBeGreaterThan(80 * K * K);
       expect(parts.headKo.grid).not.toEqual(parts.head.grid);
       for (const v of [parts.limbColor, parts.limbShade, parts.legColor]) expect(v).toBeGreaterThanOrEqual(0);
       for (const [k, v] of Object.entries(parts.extras)) {
@@ -102,27 +105,50 @@ describe("rule 1: every grid parses and every character has every part at the mi
     const c = CHARACTER_PARTS.claude;
     expect(c.torsoBlink).toBeDefined();
     const diff = c.torso.grid.filter((row, i) => row !== c.torsoBlink!.grid[i]);
-    expect(diff).toHaveLength(1);
+    // one authored row, which the 13.01 placeholder resample spreads over two or three
+    expect(diff.length).toBeGreaterThanOrEqual(1);
+    expect(diff.length).toBeLessThanOrEqual(Math.ceil(K));
   });
 
-  it("every item part parses and is 10–14 px on its long side", () => {
+  it("every item sprite parses and is 21–29 px on its long side (10–14 authored × 2.1); the sword blade is longer (owner 2026-09-12)", () => {
     for (const id of ITEM_IDS) {
-      const p = ITEM_PARTS[id];
+      const p = ITEM_SPRITES[id];
       expect(() => parsePart(p)).not.toThrow();
       const { w, h } = parsePart(p);
-      expect(Math.max(w, h), id).toBeGreaterThanOrEqual(10);
-      expect(Math.max(w, h), id).toBeLessThanOrEqual(14);
+      expect(Math.max(w, h), id).toBeGreaterThanOrEqual(Math.floor(10 * K));
+      expect(Math.max(w, h), id).toBeLessThanOrEqual(Math.ceil((id === "sword" ? 18 : 14) * K));
     }
   });
 });
 
-describe("rule 2: the idle frame fills the nominal frame from the feet up", () => {
+/** 13.01 rule 7: the standing world bounds every later lane must keep (width, height, top above the feet). */
+const STANDING_BOUNDS: Record<CharacterId, { w: number; h: number; top: number }> = {
+  drifter: { w: 58, h: 108, top: -107 }, conductor: { w: 41, h: 109, top: -108 }, stoker: { w: 60, h: 108, top: -107 }, claude: { w: 44, h: 109, top: -108 },
+};
+
+describe("13.01 rule 7: standing world bounds are the contract every later art lane keeps (±1 px)", () => {
   for (const id of CHARACTERS) {
-    it(`${id} idle spans ≥ 44 rows, ≤ ${FRAME_W} columns, feet at row ${ANCHOR.y}`, () => {
+    it(`${id} stands ${STANDING_BOUNDS[id].h} px tall and ${STANDING_BOUNDS[id].w} wide with the feet on the anchor row`, () => {
+      const c = frame(base({ character: id }));
+      const b = bounds(c);
+      const want = STANDING_BOUNDS[id];
+      // sprite px are world px at SPRITE_SCALE 1, so these are world bounds
+      expect(Math.abs((b.x1 - b.x0 + 1) * SPRITE_SCALE - want.w)).toBeLessThanOrEqual(1);
+      expect(Math.abs((b.y1 - b.y0 + 1) * SPRITE_SCALE - want.h)).toBeLessThanOrEqual(1);
+      expect(Math.abs((b.y0 - ANCHOR.y) * SPRITE_SCALE - want.top)).toBeLessThanOrEqual(1);
+      expect(b.y1).toBe(ANCHOR.y);
+    });
+  }
+});
+
+describe("rule 2: the idle frame fills the nominal frame from the feet up", () => {
+  const MIN_ROWS = Math.round(150 * BODY_SCALE * 0.88 / SPRITE_SCALE); // 92 of the 105 px body
+  for (const id of CHARACTERS) {
+    it(`${id} idle spans ≥ ${MIN_ROWS} rows, ≤ ${FRAME_W} columns, feet at row ${ANCHOR.y}`, () => {
       const c = frame(base({ character: id }));
       const b = bounds(c);
       expect(b.y1).toBe(ANCHOR.y);
-      expect(b.y1 - b.y0 + 1).toBeGreaterThanOrEqual(44);
+      expect(b.y1 - b.y0 + 1).toBeGreaterThanOrEqual(MIN_ROWS);
       expect(b.y1 - b.y0 + 1).toBeLessThanOrEqual(FRAME_H);
       expect(b.x1 - b.x0 + 1).toBeLessThanOrEqual(FRAME_W);
       expect(b.x0).toBeGreaterThanOrEqual(0);
@@ -178,7 +204,7 @@ describe("rule 4: the silhouette edge is always outline", () => {
             }
           }
         }
-        expect(edge).toBeGreaterThan(40);
+        expect(edge).toBeGreaterThan(40 * K);
       });
     }
   }
@@ -199,8 +225,8 @@ describe("rule 5: the punching hand sits on the fist joint", () => {
         composeFrame(c, joints, f, id, OPTS);
         const hand = CHARACTER_PARTS[id].handFist;
         const centre = centreOfPartAt(c, hand, fist.x, fist.y);
-        expect(Math.abs(centre.x - fist.x)).toBeLessThanOrEqual(2);
-        expect(Math.abs(centre.y - fist.y)).toBeLessThanOrEqual(2);
+        expect(Math.abs(centre.x - fist.x)).toBeLessThanOrEqual(2 * K);
+        expect(Math.abs(centre.y - fist.y)).toBeLessThanOrEqual(2 * K);
       });
     }
   }
@@ -215,7 +241,7 @@ describe("rule 6: items ride the front hand or the back", () => {
       const c = createFrameCanvas();
       composeFrame(c, joints, f, "drifter", OPTS);
       const fist = jointToSprite(joints.arms.F.fist, f);
-      const part = ITEM_PARTS[kind];
+      const part = ITEM_SPRITES[kind];
       const centre = centreOfPartAt(c, part, fist.x, fist.y);
       const { w, h } = parsePart(part);
       // the grip (anchor) is on the fist: the part's centroid lies within its own extent of it
@@ -260,8 +286,8 @@ describe("rule 7: KO head and blink torso", () => {
     expect(ko.data).not.toEqual(alive.data);
     // the ko frame is low and wide: sprawled on the roof
     const b = bounds(ko);
-    expect(b.y1 - b.y0 + 1).toBeLessThan(30);
-    expect(b.x1 - b.x0 + 1).toBeGreaterThan(30);
+    expect(b.y1 - b.y0 + 1).toBeLessThan(30 * K);
+    expect(b.x1 - b.x0 + 1).toBeGreaterThan(30 * K);
   });
 
   it("isBlinkOn toggles every 500 ms", () => {
@@ -279,7 +305,7 @@ describe("rule 7: KO head and blink torso", () => {
     expect(on.data).not.toEqual(off.data);
     let diff = 0;
     for (let i = 0; i < on.data.length; i++) if (on.data[i] !== off.data[i]) diff += 1;
-    expect(diff).toBeLessThanOrEqual(3);
+    expect(diff).toBeLessThanOrEqual(Math.ceil(3 * K * K));
     // other characters ignore the clock
     const d0 = frame(base({ character: "drifter" }), { blinkMs: 0 });
     const d1 = frame(base({ character: "drifter" }), { blinkMs: 600 });
@@ -375,4 +401,125 @@ describe("every character × state composes without throwing", () => {
       }
     }
   }
+});
+
+// ---- 13.02 shading engine ----
+
+import { PART_ID, composeKey, rampsFor } from "../src/game/sprites/compose";
+import { OUTLINE_ID } from "../src/game/sprites/grid";
+
+describe("13.02 rule 5: part ids and occlusion", () => {
+  it("every drawn pixel carries a part id, outline pixels OUTLINE_ID, and the front arm occludes the torso where they meet", () => {
+    const f = base({ character: "conductor" });
+    const joints = computePose(f, clock);
+    const c = frame(f);
+    let parts = 0, outline = 0;
+    for (let i = 0; i < c.data.length; i++) {
+      if (c.data[i] === 0) { expect(c.ids[i]).toBe(0); continue; }
+      // the outline pass marks its pixels OUTLINE_ID; authored in-part outline detail (eyes, knuckles) keeps its part id
+      if (c.ids[i] === OUTLINE_ID) { expect(c.data[i]).toBe(OUTLINE); outline += 1; } else { expect(c.ids[i]).toBeGreaterThan(0); parts += 1; }
+    }
+    expect(parts).toBeGreaterThan(1000);
+    expect(outline).toBeGreaterThan(100);
+  });
+
+  it("occludeAndGloom darkens only the lower part where a higher part touches it, more at 1 px than at 2, and leaves the higher part alone", () => {
+    const c = new PixelCanvas(40, 20);
+    const lower = rgba(0x8a6b4a);
+    const upper = rgba(0x1b2a5c);
+    c.id = 4;
+    for (let y = 2; y < 18; y++) for (let x = 2; x < 30; x++) c.set(x, y, lower);
+    c.id = 7;
+    for (let y = 2; y < 18; y++) for (let x = 20; x < 38; x++) c.set(x, y, upper);
+    c.occludeAndGloom(0.35, 0.18, P.night1, 0, P.night1);
+    const lum = (px: number): number => ((px >>> 24) & 255) + ((px >>> 16) & 255) + ((px >>> 8) & 255);
+    const far = c.get(5, 10);           // lower part, nowhere near the upper one
+    const ring2 = c.get(18, 10);        // two pixels from the boundary at x 20
+    const ring1 = c.get(19, 10);        // touching it
+    expect(far).toBe(lower);
+    expect(lum(ring1)).toBeLessThan(lum(ring2));
+    expect(lum(ring2)).toBeLessThan(lum(far));
+    for (let y = 2; y < 18; y++) for (let x = 20; x < 38; x++) expect(c.get(x, y)).toBe(upper);
+    // gloom rides the same sweep and dims both parts
+    c.occludeAndGloom(0, 0, P.night1, 0.25, P.night1);
+    expect(lum(c.get(5, 10))).toBeLessThan(lum(lower));
+    expect(lum(c.get(30, 10))).toBeLessThan(lum(upper));
+  });
+});
+
+describe("13.02 rules 2–3: the light vector shades the limbs", () => {
+  it("frames lit from the left and from the right differ in their limb pixels and both keep the standing bounds", () => {
+    const f = base({ character: "drifter" });
+    const left = frame(f, { lightDir: { x: -1, y: -0.2 }, rimSide: "left" });
+    const right = frame(f, { lightDir: { x: 1, y: -0.2 }, rimSide: "right" });
+    let diff = 0;
+    for (let i = 0; i < left.data.length; i++) if (left.data[i] !== right.data[i]) diff += 1;
+    expect(diff).toBeGreaterThan(200);
+    const bl = bounds(left), br = bounds(right), want = STANDING_BOUNDS.drifter;
+    for (const b of [bl, br]) {
+      expect(Math.abs(b.x1 - b.x0 + 1 - want.w)).toBeLessThanOrEqual(1);
+      expect(Math.abs(b.y1 - b.y0 + 1 - want.h)).toBeLessThanOrEqual(1);
+    }
+    // the front thigh (a near-vertical limb) shows all four ramp steps when lit from the side
+    const ramp = rampsFor(CHARACTER_PARTS.drifter).leg;
+    const steps = new Set<number>();
+    for (let i = 0; i < left.data.length; i++) if (left.ids[i] === PART_ID.legF) { const k = ramp.findIndex((c) => rgba(c) === left.data[i]); if (k >= 0) steps.add(k); }
+    expect(steps.size).toBe(4);
+  });
+  it("flatLimbs draws the limbs in the base step only", () => {
+    const f = base({ character: "conductor" });
+    const c = frame(f, { flatLimbs: true, lightDir: { x: -1, y: 0 } });
+    const ramp = rampsFor(CHARACTER_PARTS.conductor).limb;
+    for (let i = 0; i < c.data.length; i++) {
+      if (c.ids[i] !== PART_ID.armF) continue;
+      const px = c.data[i]!;
+      // arm pixels are the base step, the cuff ramp's base, or the hand part's colours; never highlight/shade/core of the limb ramp
+      expect([ramp[0], ramp[2], ramp[3]].map((v) => rgba(v))).not.toContain(px);
+    }
+  });
+});
+
+describe("13.02 rule 7: composeKey", () => {
+  it("is stable for the same inputs, changes on a 1 px joint move, ignores a sub-pixel one and a sub-quantum gloom change", () => {
+    const f = base({ character: "stoker" });
+    const j = computePose(f, clock);
+    const k0 = composeKey(j, f, "stoker", OPTS);
+    expect(composeKey(computePose(f, clock), f, "stoker", { ...OPTS })).toBe(k0);
+    const moved = structuredClone(j);
+    moved.arms.F.fist.x += 1;
+    expect(composeKey(moved, f, "stoker", OPTS)).not.toBe(k0);
+    const sub = structuredClone(j);
+    sub.arms.F.fist.x += 0.2;
+    expect(composeKey(sub, f, "stoker", OPTS)).toBe(k0);
+    expect(composeKey(j, f, "stoker", { ...OPTS, gloom: 0.004 })).toBe(k0);
+    expect(composeKey(j, f, "stoker", { ...OPTS, gloom: 0.2 })).not.toBe(k0);
+    expect(composeKey(j, f, "stoker", { ...OPTS, lightDir: { x: -1, y: 0 } })).not.toBe(composeKey(j, f, "stoker", { ...OPTS, lightDir: { x: 1, y: 0 } }));
+    expect(composeKey(j, f, "stoker", { ...OPTS, facing: -1 })).not.toBe(k0);
+    // the blink only matters for the character that blinks
+    expect(composeKey(j, f, "stoker", { ...OPTS, blinkMs: 600 })).toBe(k0);
+    const cl = base({ character: "claude" });
+    const jc = computePose(cl, clock);
+    expect(composeKey(jc, cl, "claude", { ...OPTS, blinkMs: 600 })).not.toBe(composeKey(jc, cl, "claude", { ...OPTS, blinkMs: 0 }));
+  });
+});
+
+describe("13.02 rule 7: the in-place outline matches the reference definition", () => {
+  it("every transparent pixel with an opaque 8-neighbour became outline, and nothing else did", () => {
+    const f = base({ character: "drifter", action: { kind: "punch", arm: "R", elapsed: 5, landed: false, sword: false } });
+    const joints = computePose(f, clock);
+    const c = createFrameCanvas();
+    composeFrame(c, joints, f, "drifter", { ...OPTS, rimSide: "right" });
+    for (let y = 0; y < c.h; y++) for (let x = 0; x < c.w; x++) {
+      const i = y * c.w + x;
+      if (c.ids[i] !== OUTLINE_ID) continue;
+      let touch = false;
+      for (let dy = -1; dy <= 1 && !touch; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= c.w || ny >= c.h) continue;
+        const id = c.ids[ny * c.w + nx]!;
+        if (id !== 0 && id !== OUTLINE_ID) { touch = true; break; }
+      }
+      expect(touch, `outline pixel ${x},${y} touches a part`).toBe(true);
+    }
+  });
 });

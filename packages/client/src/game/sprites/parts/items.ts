@@ -10,7 +10,8 @@ const GLASS = 0x7FA98F;
 const RAG = 0xD8D2C4;
 const SHAFT = 0x2B2F45;
 const FRAME = P.amber2;
-const STRING = P.moon;
+const BLADE = 0xB7C3D9;
+const EDGE = P.moon;
 const GRIP = P.steel2;
 const PACK = 0x6B7A45;
 const PACK_DARK = 0x46522C;
@@ -40,21 +41,19 @@ const molotov: Part = {
 };
 
 /**
- * Tennis racket held like a sabre (9.08 rule 6; the "sword" is a racket because a closed umbrella is undetectable):
- * short grip at the anchor, then the oval head with a 3 x 3 string grid. 13 x 7 px.
+ * A sword (owner 2026-09-12; the real object is still a tennis racket): grip at the anchor, a short amber guard,
+ * then a long straight blade with a bright edge and a point. 18 x 5 px, so it reads longer than the fist reach.
  */
 const sword: Part = {
   grid: [
-    "......FFFFF..",
-    ".....FsssssF.",
-    "....F.s.s.s.F",
-    "GGHHFsssssssF",
-    "....F.s.s.s.F",
-    ".....FsssssF.",
-    "......FFFFF..",
+    "...A..............",
+    "GGGAbbbbbbbbbbbbb.",
+    "GGGAeeeeeeeeeeeeeE",
+    "GGGAbbbbbbbbbbbbb.",
+    "...A..............",
   ],
-  anchor: { x: 1, y: 3 },
-  palette: { F: FRAME, s: STRING, H: SHAFT, G: GRIP, ".": null },
+  anchor: { x: 1, y: 2 },
+  palette: { G: GRIP, A: FRAME, b: BLADE, e: EDGE, E: EDGE, ".": null },
 };
 
 /** Backpack worn on the back: straps on the right edge (the anchor), pack hanging behind. */
