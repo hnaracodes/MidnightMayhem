@@ -179,7 +179,7 @@ function fakeState(cell: Cell, facing: 1 | -1, now: number, frame: number): { f:
       const kind = item === "banana" ? "banana" : "molotov";
       const released = elapsed >= ARSENAL.THROW_STARTUP;
       poseF = { ...base, action: { kind: "punch", arm: "R", elapsed: Math.min(elapsed, punchTotal - 1), landed: false, sword: false } };
-      drawF = { ...base, item: released ? null : { kind, uses: 1 }, action: { kind: "throw", item: kind, arm: "R", elapsed, released } };
+      drawF = { ...base, item: released ? null : { kind, uses: 1 }, action: { kind: "throw", item: kind, arm: "R", phase: "release", charge: 0, elapsed, released } };
       break;
     }
     case "laser": {
