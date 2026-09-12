@@ -6,6 +6,12 @@ interface LobbyHandlers {
   onEnableCamera(): void;
 }
 
+/**
+ * Camera button (Phase 6 rule 1 and 3): `button` offers "Enable camera"; `starting` disables it while the
+ * camera opens; `hidden` omits it (`?input=keyboard`). "Camera on" (disabled) wins whenever `visionAvailable`.
+ */
+export type CameraButton = "button" | "starting" | "hidden";
+
 const NAME_STORAGE_KEY = "midnight-mayhem:name";
 const SUBTITLE = "on the roof of the Midnight Express";
 const CHARACTERS = [
@@ -59,6 +65,7 @@ export class Lobby {
     roomId: string,
     players: [LobbyPlayer | null, LobbyPlayer | null],
     visionAvailable: boolean,
+    cameraButton: CameraButton = "button",
   ): void {
     this.root.replaceChildren();
     this.root.hidden = false;
@@ -72,8 +79,10 @@ export class Lobby {
     roster.className = "roster";
     roster.append(playerRow(0, players[0]), playerRow(1, players[1]));
 
-    const camera = button(visionAvailable ? "Camera on" : "Enable camera");
-    camera.disabled = visionAvailable;
+    const camera = button(
+      visionAvailable ? "Camera on" : cameraButton === "starting" ? "Starting camera…" : "Enable camera",
+    );
+    camera.disabled = visionAvailable || cameraButton === "starting";
     camera.addEventListener("click", () => this.handlers.onEnableCamera());
 
     const ready = button(this.ready ? "Not ready" : "Ready", true);
@@ -87,7 +96,8 @@ export class Lobby {
 
     const actions = document.createElement("div");
     actions.className = "actions";
-    actions.append(camera, ready);
+    if (cameraButton !== "hidden") actions.append(camera);
+    actions.append(ready);
 
     this.root.append(title(), code, roster, actions);
   }

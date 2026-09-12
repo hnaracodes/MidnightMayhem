@@ -11,6 +11,11 @@ export class MergedInputSource implements InputSource {
 
   constructor(private readonly sources: InputSource[]) {}
 
+  /** Adds an already-started source (Phase 6: the camera joins the keyboard mid-session). */
+  add(source: InputSource): void {
+    if (!this.sources.includes(source)) this.sources.push(source);
+  }
+
   async start(): Promise<void> {
     for (const source of this.sources) await source.start();
   }
