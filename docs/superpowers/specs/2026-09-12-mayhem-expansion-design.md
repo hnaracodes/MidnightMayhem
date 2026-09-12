@@ -125,11 +125,12 @@ a 4-slot array. `PROTOCOL_VERSION = 2`.
 ## 4. Simulation rules
 
 ### 4.1 Laser (`09-arsenal/03`)
-`special` edge, grounded, no action, not blocking, `laserCooldown === 0`, hp > 0 → action laser. Charge 30 ticks
-(locked in place; being hit cancels and refunds no cooldown), beam active ticks 30–41 (12 ticks): a hitbox from
-the fighter's x in the facing direction to the world edge, y band `[feet − 130, feet − 70]`. Each living opponent is
+`special` edge, grounded, no action, not blocking, `laserCooldown === 0`, hp > 0 → action laser. Charge 180 ticks (3 s;
+locked in place; being hit cancels and refunds no cooldown), beam active ticks 180–195 (16 ticks): a hitbox from
+the fighter's x in the facing direction whose front advances 60 px per tick until the world edge, y band
+`[feet − 105, feet − 35]` (70 px, half the sprite height, centred on the sprite's middle). Each living opponent is
 hit at most once per beam: damage 10, blocked chip 4, jump i-frames and being above the band avoid it. Recovery
-20 ticks. Cooldown 720 ticks starts when the beam starts. Events LASER_CHARGE at start, LASER_FIRE at tick 30,
+20 ticks. Cooldown 720 ticks starts when the beam starts. Events LASER_CHARGE at start, LASER_FIRE at tick 180,
 LASER_HIT per target.
 
 ### 4.2 Equip (`09-arsenal/01`)

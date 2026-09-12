@@ -8,8 +8,11 @@ import { P_L, fighting, run } from "./helpers";
 const Q: InputFrame = { ...EMPTY_FRAME, special: true };
 const BLOCK: InputFrame = { ...EMPTY_FRAME, block: true };
 const JUMP: InputFrame = { ...EMPTY_FRAME, jump: true };
-const { LASER_CHARGE, LASER_ACTIVE, LASER_RECOVERY, LASER_COOLDOWN, LASER_DAMAGE, LASER_CHIP } = ARSENAL;
+const { LASER_CHARGE, LASER_ACTIVE, LASER_RECOVERY, LASER_COOLDOWN, LASER_DAMAGE, LASER_CHIP, LASER_SPEED, LASER_BAND_TOP, LASER_BAND_BOTTOM } = ARSENAL;
 const TOTAL = LASER_CHARGE + LASER_ACTIVE + LASER_RECOVERY;
+const BAND_H = LASER_BAND_TOP - LASER_BAND_BOTTOM;
+/** 0-based beam tick on which the front first reaches the near edge of a hurtbox `gap` px away (fighting(300): tick 4). */
+const reachTick = (gap: number) => Math.ceil((gap - WORLD.HURTBOX_W / 2) / LASER_SPEED) - 1;
 
 function laserHits(events: SimEvent[]) {
   return events.filter((e) => e.type === "LASER_HIT");
@@ -29,21 +32,30 @@ describe("laser phases and hitbox", () => {
     f.action = { kind: "punch", arm: "L", elapsed: 0, landed: false, sword: false };
     expect(laserPhase(f)).toBeNull();
   });
-  it("laserHitbox spans from the fighter to the world edge in facing direction, only during the beam", () => {
+  it("laserHitbox grows LASER_SPEED px per beam tick from the fighter's centre to the world edge, in the mid-body band, only during the beam", () => {
     const f = createMatch().fighters[0]!;
     f.x = 280; f.facing = 1;
     expect(laserHitbox(f)).toBeNull();
     f.action = { kind: "laser", elapsed: LASER_CHARGE, hit: [] };
-    expect(laserHitbox(f)).toEqual({ x: 280, y: WORLD.ROOF_Y - 130, w: WORLD.WIDTH - 280, h: 60 });
+    expect(BAND_H).toBe(WORLD.HURTBOX_H / 2); // half the sprite height
+    expect(LASER_BAND_TOP - BAND_H / 2).toBe(WORLD.HURTBOX_H / 2); // centred on the sprite's middle
+    expect(laserHitbox(f)).toEqual({ x: 280, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: LASER_SPEED, h: BAND_H }); // first beam tick
+    f.action.elapsed = LASER_CHARGE + 1;
+    expect(laserHitbox(f)).toEqual({ x: 280, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: 2 * LASER_SPEED, h: BAND_H });
+    f.action.elapsed = LASER_CHARGE + LASER_ACTIVE - 1;
+    expect(laserHitbox(f)).toEqual({ x: 280, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: WORLD.WIDTH - 280, h: BAND_H }); // reached the far edge
+    expect(LASER_SPEED * LASER_ACTIVE).toBeGreaterThanOrEqual(WORLD.WIDTH); // from any x the beam crosses the whole world
     f.facing = -1;
-    expect(laserHitbox(f)).toEqual({ x: 0, y: WORLD.ROOF_Y - 130, w: 280, h: 60 });
+    expect(laserHitbox(f)).toEqual({ x: 0, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: 280, h: BAND_H });
+    f.action.elapsed = LASER_CHARGE;
+    expect(laserHitbox(f)).toEqual({ x: 280 - LASER_SPEED, y: WORLD.ROOF_Y - LASER_BAND_TOP, w: LASER_SPEED, h: BAND_H });
     f.action.elapsed = LASER_CHARGE - 1;
     expect(laserHitbox(f)).toBeNull();
   });
 });
 
-describe("rule 1: edge starts a charge, fires 30 ticks later, sets the cooldown", () => {
-  it("LASER_CHARGE that tick, LASER_FIRE 30 ticks later, cooldown 720", () => {
+describe("rule 1: edge starts a charge, fires LASER_CHARGE (180, 3 s) ticks later, sets the cooldown", () => {
+  it("LASER_CHARGE that tick, LASER_FIRE 180 ticks later, cooldown 720", () => {
     let s = fighting(300);
     const first = step(s, [Q, EMPTY_FRAME]);
     s = first.state;
@@ -75,7 +87,7 @@ describe("rule 1: edge starts a charge, fires 30 ticks later, sets the cooldown"
 });
 
 describe("rule 2: a grounded opponent in front takes 10 once", () => {
-  it("one LASER_HIT for a 12-tick beam, far across the roof", () => {
+  it("one LASER_HIT for a 16-tick beam, far across the roof", () => {
     const s = fighting(); s.fighters[0]!.x = 100; s.fighters[1]!.x = 850;
     const { s: out, events } = run(s, TOTAL + 1, [Q, EMPTY_FRAME]);
     const hits = laserHits(events);
@@ -83,9 +95,12 @@ describe("rule 2: a grounded opponent in front takes 10 once", () => {
     expect(hits[0]).toEqual({ type: "LASER_HIT", attacker: 0, target: 1, damage: LASER_DAMAGE, blocked: false });
     expect(out.fighters[1]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);
   });
-  it("the hit lands on the first beam tick with hitstun and knockback away from the attacker", () => {
+  it("the hit lands on the beam tick whose front reaches the target, not before, with hitstun and knockback away from the attacker", () => {
     let s = fighting(300);
-    s = run(s, LASER_CHARGE, [Q, EMPTY_FRAME]).s;
+    const before = run(s, LASER_CHARGE + reachTick(300), [Q, EMPTY_FRAME]);
+    s = before.s;
+    expect(before.events.filter((e) => e.type === "LASER_FIRE")).toHaveLength(1);
+    expect(laserHits(before.events)).toHaveLength(0); // the front has not reached the target yet
     expect(s.fighters[1]!.hitstun).toBe(0);
     const r = step(s, [Q, EMPTY_FRAME]);
     expect(laserHits(r.events)).toHaveLength(1);
@@ -127,25 +142,29 @@ describe("rule 4: block and shield", () => {
 });
 
 describe("rule 5: jumping over the beam", () => {
-  it("an opponent at jump apex is above the band and takes nothing", () => {
-    // Opponent jumps one tick after the laser edge: on the first beam tick (jumpTicks 30) its feet are ~140 px up, near apex.
+  it("an opponent near jump apex is above the band and takes nothing", () => {
+    // Opponent takes off 30 ticks before the beam: on the first beam tick (jumpTicks 30) its feet are ~149 px up, near the
+    // ~151 px apex, and it is still more than a band height (70 px) up when the front sweeps past over the 16 beam ticks.
     let s = fighting(300);
     s = run(s, 1, [Q, EMPTY_FRAME]).s;
-    const { s: out, events } = run(s, LASER_CHARGE - 1, [Q, JUMP]);
+    s = run(s, LASER_CHARGE - 30, [Q, EMPTY_FRAME]).s;
+    const { s: out, events } = run(s, 29, [Q, JUMP]);
     expect(laserHits(events)).toHaveLength(0);
     expect(out.fighters[1]!.grounded).toBe(false);
     const r = step(out, [Q, JUMP]);
-    expect(r.state.fighters[1]!.jumpTicks).toBe(LASER_CHARGE);
-    expect(Math.abs(r.state.fighters[1]!.y - (WORLD.ROOF_Y - WORLD.HURTBOX_H))).toBeLessThanOrEqual(5); // 140 px up at tick 30, apex 140.8 at tick 33
+    expect(r.state.fighters[1]!.jumpTicks).toBe(30);
+    expect(WORLD.ROOF_Y - r.state.fighters[1]!.y).toBeGreaterThan(BAND_H);
+    expect(Math.abs(r.state.fighters[1]!.y - (WORLD.ROOF_Y - 150))).toBeLessThanOrEqual(5);
     expect(laserHits(r.events)).toHaveLength(0);
     expect(laserHitbox(r.state.fighters[0]!)).not.toBeNull();
     const rest = run(r.state, TOTAL - LASER_CHARGE, [Q, JUMP]);
+    expect(rest.s.fighters[1]!.grounded).toBe(false); // still airborne after the beam is gone
     expect(laserHits(rest.events)).toHaveLength(0);
     expect(rest.s.fighters[1]!.hp).toBe(BALANCE.MAX_HP);
   });
   it("an opponent low in the air during jump i-frames takes nothing; after them, in the band, it hits", () => {
     const s = fighting(300);
-    s.fighters[0]!.action = { kind: "laser", elapsed: LASER_CHARGE, hit: [] };
+    s.fighters[0]!.action = { kind: "laser", elapsed: LASER_CHARGE + LASER_ACTIVE - 1, hit: [] }; // full reach
     const o = s.fighters[1]!;
     o.grounded = false; o.y = WORLD.ROOF_Y - 20;
     for (const jt of [BALANCE.JUMP_IFRAME_START, 7, BALANCE.JUMP_IFRAME_END]) {
@@ -271,11 +290,13 @@ describe("rule 8: many players", () => {
 describe("same-tick trade", () => {
   it("two opposing lasers fired on the same tick both land; the lower index gets no priority", () => {
     let s = fighting(300);
-    s = run(s, LASER_CHARGE, [Q, Q]).s;
+    const before = run(s, LASER_CHARGE + reachTick(300), [Q, Q]);
+    s = before.s;
+    expect(before.events.filter((e) => e.type === "LASER_FIRE").map((e) => e.type === "LASER_FIRE" && e.player).sort()).toEqual([0, 1]);
+    expect(laserHits(before.events)).toHaveLength(0);
     expect(s.fighters[0]!.action?.kind).toBe("laser");
     expect(s.fighters[1]!.action?.kind).toBe("laser");
-    const r = step(s, [Q, Q]);
-    expect(r.events.filter((e) => e.type === "LASER_FIRE").map((e) => e.type === "LASER_FIRE" && e.player).sort()).toEqual([0, 1]);
+    const r = step(s, [Q, Q]); // both fronts reach the other on the same tick
     const hits = laserHits(r.events);
     expect(hits.map((h) => h.type === "LASER_HIT" && h.target).sort()).toEqual([0, 1]);
     expect(r.state.fighters[0]!.hp).toBe(BALANCE.MAX_HP - LASER_DAMAGE);

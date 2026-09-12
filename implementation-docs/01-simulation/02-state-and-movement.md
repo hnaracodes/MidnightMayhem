@@ -31,8 +31,8 @@ Create: `packages/shared/src/sim/types.ts`, `sim/create.ts`, `sim/fighter.ts`, `
 2. `step` deep-clones `prev` (`structuredClone`), never mutates its argument, and always stores the inputs as each fighter's `prev` at the end, in every phase.
 3. Movement only in `FIGHTING`. `vx = (right ? +3 : 0) + (left ? -3 : 0)`; both held cancel.
 4. Walking is disabled while grounded and punching or blocking (`vx = 0`). In the air the punch does not stop horizontal motion.
-5. Jump: rising edge of `jump` while grounded, not punching, not blocking → `vy = -8.8`, `grounded = false`, `jumpTicks = 0`, emit `JUMP`. Holding jump does not re-jump on landing.
-6. Physics per tick: `x += vx`; if airborne `vy += 8/30`, `y += vy`, `jumpTicks++`; landing when `y >= 430` → `y = 430`, `vy = 0`, `grounded = true`, `jumpTicks = 0`. Apex is ~141 px (one fighter height, `HURTBOX_H`) at tick 33; airborne 66 ticks.
+5. Jump: rising edge of `jump` while grounded, not punching, not blocking → `vy = -9.1`, `grounded = false`, `jumpTicks = 0`, emit `JUMP`. Holding jump does not re-jump on landing.
+6. Physics per tick: `x += vx`; if airborne `vy += 8/30`, `y += vy`, `jumpTicks++`; landing when `y >= 430` → `y = 430`, `vy = 0`, `grounded = true`, `jumpTicks = 0`. Apex is ~151 px (the drawn 150 px character height) at tick 34; airborne 68 ticks.
 7. Clamp `x` to `[0, 960]` after physics.
 8. Facing: after physics each tick, a fighter not currently punching faces the opponent (`x` comparison; ties keep current facing).
 9. Hitstun: while `hitstun > 0` the fighter ignores all input, `vx = knockbackVx`, and `hitstun--`; when it reaches 0, `knockbackVx = 0`.
@@ -48,7 +48,7 @@ Create: `packages/shared/src/sim/types.ts`, `sim/create.ts`, `sim/fighter.ts`, `
 - spawn positions, facing, hp
 - walks right 10 ticks = +30 px; left+right cancels
 - no movement during COUNTDOWN
-- jump apex ≈ 140 at tick 33, lands by tick 66, `jumpTicks` resets
+- jump apex ≈ 150 at tick 34, lands by tick 68, `jumpTicks` resets
 - held jump does not re-jump
 - facing flips when fighters cross
 - clamps at 0 and 960

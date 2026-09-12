@@ -167,9 +167,9 @@ describe("Sfx.RECIPES", () => {
     for (let i = 1; i < 4; i++) expect(notes[i]!.started!, `note ${i} later`).toBeGreaterThan(notes[i - 1]!.started!);
   });
 
-  it("laser_charge lasts 0.5 s and fire_loop_start loops", () => {
+  it("laser_charge lasts 3 s (the charge) and fire_loop_start loops", () => {
     const ctx = new FakeContext();
-    expect(Sfx.RECIPES.laser_charge(ctx as unknown as BaseAudioContext, ctx.createGain() as unknown as AudioNode, 0)).toBeCloseTo(0.5, 3);
+    expect(Sfx.RECIPES.laser_charge(ctx as unknown as BaseAudioContext, ctx.createGain() as unknown as AudioNode, 0)).toBeCloseTo(3.0, 3);
     const loopCtx = new FakeContext();
     Sfx.RECIPES.fire_loop_start(loopCtx as unknown as BaseAudioContext, loopCtx.createGain() as unknown as AudioNode, 0);
     expect(loopCtx.sources.some((s) => s.loop)).toBe(true);

@@ -141,7 +141,7 @@ describe("ItemFx materialise", () => {
 });
 
 describe("ItemFx laser", () => {
-  it("charge ring grows r 6 → 22 over 30 frames with 3 orbiting dots, then goes away", () => {
+  it("charge ring grows r 6 → 22 over the LASER_CHARGE frames (180) with 3 orbiting dots, then goes away", () => {
     const { scene, created } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
@@ -153,20 +153,20 @@ describe("ItemFx laser", () => {
     expect(radiusAt()).toBeCloseTo(6, 5);
     expect(ring.count("fillCircle")).toBe(3);
     fx.draw(state, hands, 0);
-    fx.update(DT); // the spawn frame's own update: still frame 0 of 30
-    frames(fx, state, 15);
+    fx.update(DT); // the spawn frame's own update: still frame 0 of 180
+    frames(fx, state, 90);
     const mid = radiusAt();
     expect(mid).toBeGreaterThan(6);
     expect(mid).toBeLessThan(22);
-    frames(fx, state, 14);
-    expect(radiusAt()).toBeCloseTo(22, 5); // frame 29 of 30: the ring reaches r 22 on its last frame
+    frames(fx, state, ARSENAL.LASER_CHARGE - 1 - 90);
+    expect(radiusAt()).toBeCloseTo(22, 5); // frame 179 of 180: the ring reaches r 22 on its last frame
     expect(ring.destroyed).toBe(false);
     frames(fx, state, 1);
     expect(ring.destroyed).toBe(true);
     expect(live(created)).toHaveLength(0);
   });
 
-  it("beam: 12 frames full then a 10-frame fade, moon core + amber edge, shake 4 px for 8 frames", () => {
+  it("beam: front travels LASER_SPEED px per frame from the sprite's middle, band-thick; 16 frames full then a 10-frame fade; shake 4 px for 8 frames", () => {
     const { scene, created, shakes } = stubScene();
     const fx = new ItemFx(scene);
     const state = fighting();
@@ -185,21 +185,35 @@ describe("ItemFx laser", () => {
     const core = styles.find((s) => s.color === P.moon)!;
     expect(edge.alpha).toBeCloseTo(0.6, 5);
     expect(core.alpha).toBeCloseTo(1, 5);
-    // the beam runs from the hand to the right world edge (facing 1)
-    const rect = beam.calls.find((c) => c.m === "fillRect")!.args as number[];
-    expect(rect[0]).toBe(hands(0).x);
-    expect(rect[0]! + rect[2]!).toBe(WORLD.WIDTH);
+    // frame 0: the beam starts at the fighter's centre (facing 1), its front LASER_SPEED px out, filling the 70 px band centred on the sprite's middle
+    const f = state.fighters[0]!;
+    const rectAt = () => beam.calls.find((c) => c.m === "fillRect")!.args as number[];
+    let rect = rectAt();
+    expect(rect[0]).toBe(f.x);
+    expect(rect[2]).toBe(ARSENAL.LASER_SPEED);
+    expect(rect[3]).toBe(ARSENAL.LASER_BAND_TOP - ARSENAL.LASER_BAND_BOTTOM);
+    expect(rect[3]).toBe(WORLD.HURTBOX_H / 2);
+    expect(rect[1]! + rect[3]! / 2).toBe(f.y - WORLD.HURTBOX_H / 2);
+    const muzzle = beam.calls.find((c) => c.m === "fillCircle")!.args as number[];
+    expect(muzzle[0]).toBe(f.x);
+    expect(muzzle[1]).toBe(f.y - WORLD.HURTBOX_H / 2);
 
     fx.draw(state, hands, 0);
     fx.update(DT); // the spawn frame's own update: still frame 0
-    frames(fx, state, 11); // frame 11: last full-strength frame
+    frames(fx, state, 1); // frame 1: the front has moved one more step
+    rect = rectAt();
+    expect(rect[2]).toBe(2 * ARSENAL.LASER_SPEED);
+    frames(fx, state, ARSENAL.LASER_ACTIVE - 2); // frame 15: last full-strength frame, front at the world edge
+    rect = rectAt();
+    expect(rect[0]! + rect[2]!).toBe(WORLD.WIDTH);
     expect(beam.styles().find((s) => s.color === P.moon)!.alpha).toBeCloseTo(1, 5);
-    frames(fx, state, 1); // frame 12: first fade frame
+    frames(fx, state, 1); // frame 16: first fade frame, still full length
+    expect(rectAt()[0]! + rectAt()[2]!).toBe(WORLD.WIDTH);
     expect(beam.destroyed).toBe(false);
     const fading = beam.styles().find((s) => s.color === P.moon)!;
     expect(fading.alpha).toBeLessThan(1);
     expect(fading.alpha).toBeGreaterThan(0);
-    frames(fx, state, 9); // frame 21: last fade frame
+    frames(fx, state, 9); // frame 25: last fade frame
     expect(beam.destroyed).toBe(false);
     frames(fx, state, 1);
     expect(beam.destroyed).toBe(true);

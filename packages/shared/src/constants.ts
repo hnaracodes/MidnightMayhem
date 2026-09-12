@@ -25,7 +25,7 @@ export const BALANCE = {
   HITSTUN_TICKS: 12,
   KNOCKBACK_PX: 144,      // total displacement over the hitstun
   WALK_SPEED: 3,          // px per tick (180 px/s)
-  JUMP_VELOCITY: -8.8,    // px per tick, negative is up; apex ~141 px (one fighter height, HURTBOX_H) at tick 33, airborne 66 ticks
+  JUMP_VELOCITY: -9.1,    // px per tick, negative is up; apex ~151 px (the drawn 150 px character height) at tick 34, airborne 68 ticks
   GRAVITY: 8 / 30,        // px per tick^2, shared with projectiles so throw arcs are unchanged
   JUMP_IFRAME_START: 3,   // inclusive, ticks since takeoff
   JUMP_IFRAME_END: 10,    // inclusive
@@ -63,8 +63,10 @@ export const ARSENAL = {
   FIRE_W: 120, FIRE_TICKS: 240, FIRE_DAMAGE: 2, FIRE_EVERY: 20,
   PEEL_W: 40, PEEL_TICKS: 900, PEEL_OWNER_IMMUNE: 30, SLIP_STUN: 36,
   FLASH_AT: 4, DAZZLE_TICKS: 120,
-  LASER_CHARGE: 30, LASER_ACTIVE: 12, LASER_RECOVERY: 20, LASER_COOLDOWN: 720,
-  LASER_DAMAGE: 10, LASER_CHIP: 4, LASER_BAND_TOP: 130, LASER_BAND_BOTTOM: 70,
+  LASER_CHARGE: 180, LASER_ACTIVE: 16, LASER_RECOVERY: 20, LASER_COOLDOWN: 720, // charge 3 s; active long enough for the front to cross the world
+  LASER_SPEED: 60,        // px per tick the beam front travels (960 px in 16 ticks)
+  LASER_DAMAGE: 10, LASER_CHIP: 4,
+  LASER_BAND_TOP: 105, LASER_BAND_BOTTOM: 35, // 70 px band (half the 140 px hurtbox) centred on the sprite's middle, feet − 70
 } as const;
 
 // ---- Maps (spec §4.4) ----

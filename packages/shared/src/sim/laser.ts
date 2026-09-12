@@ -3,7 +3,7 @@ import { applyDamage, canBeHit, hurtbox, isInvulnerable, opponentsOf, overlaps }
 import { playerIndices } from "./create";
 import type { FighterState, MatchState, PlayerIndex, Rect, SimEvent } from "./types";
 
-const { LASER_CHARGE, LASER_ACTIVE, LASER_RECOVERY, LASER_COOLDOWN, LASER_DAMAGE, LASER_CHIP, LASER_BAND_TOP, LASER_BAND_BOTTOM } = ARSENAL;
+const { LASER_CHARGE, LASER_ACTIVE, LASER_RECOVERY, LASER_COOLDOWN, LASER_DAMAGE, LASER_CHIP, LASER_BAND_TOP, LASER_BAND_BOTTOM, LASER_SPEED } = ARSENAL;
 const BEAM_START = LASER_CHARGE;
 const BEAM_END = LASER_CHARGE + LASER_ACTIVE;            // exclusive
 const LASER_TOTAL = BEAM_END + LASER_RECOVERY;           // exclusive; advancePunches clears the action here
@@ -34,23 +34,32 @@ export function laserPhase(f: FighterState): "charge" | "beam" | "recover" | nul
   return null;
 }
 
-/** The chest band a beam sweeps: `[feet − BAND_TOP, feet − BAND_BOTTOM)` for a fighter with feet at `y`. */
+/** The body band a beam sweeps, centred on the sprite's middle: `[feet − BAND_TOP, feet − BAND_BOTTOM)` for feet at `y`. */
 function bandAt(y: number): { y: number; h: number } {
   return { y: y - LASER_BAND_TOP, h: LASER_BAND_TOP - LASER_BAND_BOTTOM };
 }
 
-/** Beam rectangle: from the fighter to the world edge in the facing direction, in the chest band; null unless in the beam phase. */
+/** How far the beam front has travelled from the fighter on beam tick `k` (0-based): `LASER_SPEED` px per tick, from the first tick. */
+export function laserReach(k: number): number {
+  return LASER_SPEED * (k + 1);
+}
+
+/**
+ * Beam rectangle: from the fighter's centre toward the world edge in the facing direction, in the body band, its front
+ * advancing `LASER_SPEED` px per beam tick until it reaches the edge; null unless in the beam phase.
+ */
 export function laserHitbox(f: FighterState): Rect | null {
   if (laserPhase(f) !== "beam") return null;
-  const x = f.facing === 1 ? f.x : 0;
-  const w = f.facing === 1 ? WORLD.WIDTH - f.x : f.x;
+  const reach = laserReach(f.action!.elapsed - BEAM_START);
+  const w = Math.min(reach, f.facing === 1 ? WORLD.WIDTH - f.x : f.x);
+  const x = f.facing === 1 ? f.x : f.x - w;
   return { x, w, ...bandAt(f.y) };
 }
 
 /**
- * The part of a target the beam can touch: its hurtbox trimmed to its own chest band. A grounded target's band is
- * the beam's band, so it is always inside; a target whose feet have risen more than the band height (60 px) is
- * above it. This is what makes the beam jumpable: the full 140 px hurtbox would still clip the band at a ~141 px apex.
+ * The part of a target the beam can touch: its hurtbox trimmed to its own body band. A grounded target's band is
+ * the beam's band, so it is always inside; a target whose feet have risen more than the band height (70 px) is
+ * above it. This is what makes the beam jumpable: the full 140 px hurtbox would still clip the band at a ~151 px apex.
  */
 function laserHurtbox(f: FighterState): Rect {
   const hb = hurtbox(f);

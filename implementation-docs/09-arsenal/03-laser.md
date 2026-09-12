@@ -1,8 +1,8 @@
 # 9.03 — Laser beam
 
 ## Purpose
-The one ability every fighter always has: a charged, full-width beam on a long cooldown, jumpable and blockable,
-so it is a threat that rewards timing rather than spam.
+The one ability every fighter always has: a long (3 s) charge, then a beam whose front sweeps from the fighter's middle
+to the world edge, on a long cooldown, jumpable and blockable, so it is a threat that rewards timing rather than spam.
 
 ## Files
 Modify: `packages/shared/src/sim/laser.ts` (replace stub).
@@ -19,9 +19,11 @@ Owns nothing else.
 - `laserPhase(f): "charge" | "beam" | "recover" | null` — from `elapsed`: `< LASER_CHARGE` charge; `< CHARGE + ACTIVE` beam;
   `< CHARGE + ACTIVE + RECOVERY` recover; the action is cleared by `advancePunches` at the end (8.01 already clears any
   action whose total elapses; the total for a laser is the sum of the three).
-- `laserHitbox(f): Rect | null` — while `laserPhase === "beam"`: from `f.x` to the world edge in the facing direction
-  (`x = facing === 1 ? f.x : 0`, `w = facing === 1 ? WIDTH − f.x : f.x`), `y = f.y − LASER_BAND_TOP`,
-  `h = LASER_BAND_TOP − LASER_BAND_BOTTOM`.
+- `laserReach(k): number` — how far the front has travelled on 0-based beam tick `k`: `LASER_SPEED · (k + 1)`.
+- `laserHitbox(f): Rect | null` — while `laserPhase === "beam"`: from `f.x` toward the world edge in the facing direction,
+  `w = min(laserReach(elapsed − LASER_CHARGE), facing === 1 ? WIDTH − f.x : f.x)`, `x = facing === 1 ? f.x : f.x − w`,
+  `y = f.y − LASER_BAND_TOP`, `h = LASER_BAND_TOP − LASER_BAND_BOTTOM` (70 px, half the 140 px hurtbox, centred on the
+  sprite's middle at `feet − 70`). `LASER_SPEED · LASER_ACTIVE ≥ WIDTH`, so the front always reaches the far edge.
 - `resolveLaser(s, events): void` — for every fighter in the beam phase: on the first beam tick push `LASER_FIRE`; each
   beam tick, for every `opponentsOf` target not yet in `action.hit`, with `canBeHit`, not `isInvulnerable`, whose
   hurtbox overlaps the beam: push the index into `hit`; if blocking → `applyDamage(LASER_CHIP, "laser")`, else
@@ -32,11 +34,12 @@ Owns nothing else.
   is **not** refunded.
 
 ## Behaviour
-1. `special` edge on a ready fighter → `LASER_CHARGE` that tick, `LASER_FIRE` 30 ticks later, `laserCooldown` 720.
-2. A grounded opponent anywhere in front of the beam within the band takes 10 once, even if the beam lasts 12 ticks.
+1. `special` edge on a ready fighter → `LASER_CHARGE` that tick, `LASER_FIRE` 180 ticks (3 s) later, `laserCooldown` 720.
+2. A grounded opponent anywhere in front of the beam within the band takes 10 once, even if the beam lasts 16 ticks; the
+   hit lands on the beam tick whose front first reaches its hurtbox (60 px per tick), not before.
 3. An opponent behind the attacker takes nothing.
 4. Blocking opponent: chip 4, no hitstun. Shield holder: absorbed (0 damage, `SHIELD_ABSORB`).
-5. An opponent near jump apex (feet at `ROOF_Y − 140`) is above the band and takes nothing; an opponent in jump i-frames
+5. An opponent near jump apex (feet at `ROOF_Y − 150`) is above the band and takes nothing; an opponent in jump i-frames
    (jumpTicks 3–10) takes nothing.
 6. During charge the attacker cannot walk or jump; a punch landing on him during charge cancels the laser, no
    `LASER_FIRE` follows, cooldown stays 720.

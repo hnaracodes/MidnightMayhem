@@ -1,6 +1,6 @@
 import type Phaser from "phaser";
 import {
-  ARSENAL, ITEMS, WORLD, laserHitbox,
+  ARSENAL, ITEMS, WORLD, laserHitbox, laserReach,
   type Facing, type FighterState, type Hazard, type ItemId, type MatchState, type PlayerIndex, type Projectile,
   type SimEvent,
 } from "@midnight/shared";
@@ -29,8 +29,8 @@ const FRAMES = {
   MATERIALISE_IMPLODE: 20,
   MATERIALISE_FLASH: 6,
   MATERIALISE: 26,
-  CHARGE: 30,
-  BEAM: 12,
+  CHARGE: ARSENAL.LASER_CHARGE,
+  BEAM: ARSENAL.LASER_ACTIVE,
   BEAM_FADE: 10,
   BEAM_SHAKE: 8,
   IMPACT: 6,
@@ -53,9 +53,8 @@ const MATERIALISE_DISC_R = 14;
 const CHARGE_R0 = 6;
 const CHARGE_R1 = 22;
 const CHARGE_DOTS = 3;
-const CHARGE_ORBITS = 2; // full turns of the dots over the charge
-const BEAM_CORE = 8;
-const BEAM_EDGE = 16;
+const CHARGE_ORBITS = 6; // full turns of the dots over the 3 s charge (two per second)
+const BEAM_CORE_FRACTION = 0.5; // core thickness as a fraction of the band (the beam fills the band: half the sprite height)
 const BEAM_EDGE_ALPHA = 0.6;
 const BEAM_SHAKE_PX = 4;
 const PARRY_SHAKE_PX = 2;
@@ -93,8 +92,8 @@ const ACCENT: Record<ItemId, number> = {
   flash: P.white,
 };
 
-/** What an anchored effect re-reads every frame: the hand and, for the beam, where the fighter faces. */
-interface Anchor { at: Pt; facing: Facing; band: { top: number; bottom: number } }
+/** What an anchored effect re-reads every frame: the hand, where the fighter faces and, for the beam, the fighter's centre and band. */
+interface Anchor { at: Pt; origin: Pt; facing: Facing; band: { top: number; bottom: number } }
 
 interface Timed {
   g: Graphics;
@@ -297,7 +296,7 @@ export class ItemFx {
     draw(g, 0);
     this.timed.push({
       g, frame: 0, total, draw, fresh: true, player: null, tag: null,
-      anchor: { at: { x: 0, y: 0 }, facing: 1, band: laserBand(undefined) },
+      anchor: { at: { x: 0, y: 0 }, origin: { x: 0, y: 0 }, facing: 1, band: laserBand(undefined) },
     });
   }
 
@@ -394,7 +393,7 @@ export class ItemFx {
 
 /**
  * The beam's y band for a fighter, from 9.03's `laserHitbox`. The fighter is forced into the beam phase so the band
- * is defined during the drawn fade (recover phase) too; only its y/h are used, the drawn beam starts at the hand.
+ * is defined during the drawn fade (recover phase) too; only its y/h are used, the drawn beam starts at the fighter's centre.
  */
 function laserBand(f: FighterState | undefined): { top: number; bottom: number } {
   const rect = f ? laserHitbox({ ...f, action: { kind: "laser", elapsed: ARSENAL.LASER_CHARGE, hit: [] } }) : null;
@@ -403,7 +402,8 @@ function laserBand(f: FighterState | undefined): { top: number; bottom: number }
 }
 
 function anchorFor(hand: HandPoint, f: FighterState | undefined): Anchor {
-  return { at: { x: hand.x, y: hand.y }, facing: f?.facing ?? 1, band: laserBand(f) };
+  const band = laserBand(f);
+  return { at: { x: hand.x, y: hand.y }, origin: { x: f?.x ?? hand.x, y: (band.top + band.bottom) / 2 }, facing: f?.facing ?? 1, band };
 }
 
 function holdsSword(f: FighterState): boolean {
@@ -446,19 +446,24 @@ function drawChargeRing(g: Graphics, hand: Pt, t: number): void {
   }
 }
 
-/** Rule 2: beam from the hand to the world edge; 12 full frames then a 10-frame fade. Y stays inside the band. */
+/**
+ * Rule 2: beam from the fighter's centre toward the world edge, filling the band (half the sprite height); its front
+ * travels `LASER_SPEED` px per frame like the sim hitbox, then holds full length through the 10-frame fade.
+ */
 function drawBeam(g: Graphics, a: Anchor, frame: number): void {
   const band = a.band;
-  const y = clamp(a.at.y, band.top, band.bottom);
-  const x = a.facing === 1 ? a.at.x : 0;
-  const w = a.facing === 1 ? WORLD.WIDTH - a.at.x : a.at.x;
+  const thickness = band.bottom - band.top;
+  const y = a.origin.y;
+  const reach = laserReach(Math.min(frame, FRAMES.BEAM - 1));
+  const w = Math.min(reach, a.facing === 1 ? WORLD.WIDTH - a.origin.x : a.origin.x);
+  const x = a.facing === 1 ? a.origin.x : a.origin.x - w;
   const fade = frame < FRAMES.BEAM ? 1 : (FRAMES.BEAM + FRAMES.BEAM_FADE - frame) / (FRAMES.BEAM_FADE + 1);
   g.clear();
   g.fillStyle(P.amber1, BEAM_EDGE_ALPHA * fade);
-  g.fillRect(x, y - BEAM_EDGE / 2, w, BEAM_EDGE);
+  g.fillRect(x, y - thickness / 2, w, thickness);
   g.fillStyle(P.moon, fade);
-  g.fillRect(x, y - BEAM_CORE / 2, w, BEAM_CORE);
-  g.fillCircle(a.at.x, y, BEAM_EDGE * 0.75);
+  g.fillRect(x, y - (thickness * BEAM_CORE_FRACTION) / 2, w, thickness * BEAM_CORE_FRACTION);
+  g.fillCircle(a.origin.x, y, thickness / 2);
 }
 
 /** `fx_impact` recipe from 4.06 rule 1: 8 radial amber lines plus a moon core, scale 0.6 → 1.3, fading. */

@@ -38,7 +38,7 @@ webcam ───┼─ InputSource.sample() ─ InputFrame ─┤     pure, dete
 
 ## Game rules (locked)
 
-Best of 3, 30 s rounds, 40 HP, first to 2. Punch 4/3/8 ticks, 12 damage, chip 3 on block, hitstun 12, knockback 144 px. Free walk 180 px/s, jump apex ~141 px (one fighter height), block only while grounded and held, punch allowed mid-air. Jump gives invulnerability on ticks 3–10 after takeoff (the evade). Overlap of the active punch hitbox with the opponent hurtbox (72 × 140) deals damage; same-tick trades both land. Off-screen edge: 3 HP per 30 ticks. Round 1 standard car, round 2 tunnel, round 3 final car (visual only). All numbers in one constants file.
+Best of 3, 30 s rounds, 40 HP, first to 2. Punch 4/3/8 ticks, 12 damage, chip 3 on block, hitstun 12, knockback 144 px. Free walk 180 px/s, jump apex ~151 px (the drawn character height), block only while grounded and held, punch allowed mid-air. Jump gives invulnerability on ticks 3–10 after takeoff (the evade). Overlap of the active punch hitbox with the opponent hurtbox (72 × 140) deals damage; same-tick trades both land. Off-screen edge: 3 HP per 30 ticks. Round 1 standard car, round 2 tunnel, round 3 final car (visual only). All numbers in one constants file.
 
 ## Phases
 

@@ -223,7 +223,7 @@ const RECIPES: Record<SfxName, Recipe> = {
 
   // 2. Laser
   laser_charge: (ctx, out, t0) => {
-    const dur = 0.5;
+    const dur = 3.0; // matches ARSENAL.LASER_CHARGE (180 ticks)
     tone(ctx, out, t0, { type: "sine", f0: 200, f1: 900, dur, peak: 0.3, attack: 0.3, hold: 0.15 });
     noise(ctx, out, t0, { dur, peak: 0.25, attack: 0.4, hold: 0.05, filter: "bandpass", f0: 600, f1: 3000, q: 1.5 });
     return dur;
