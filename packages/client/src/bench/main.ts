@@ -135,7 +135,9 @@ async function realFrames(): Promise<Frame[]> {
         probes.push((async () => {
           try {
             const res = await fetch(url);
-            if (!res.ok || !(res.headers.get("content-type") ?? "").startsWith("image/")) return;
+            // vite dev answers a missing file with index.html (200); the server serves images as octet-stream,
+            // so reject HTML and let createImageBitmap reject anything that is not an image.
+            if (!res.ok || (res.headers.get("content-type") ?? "").includes("text/html")) return;
             const bitmap = await createImageBitmap(await res.blob());
             frames.push({ set: "real", label, bitmap });
           } catch { /* not there */ }
