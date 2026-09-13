@@ -1,10 +1,15 @@
 import basicSsl from "@vitejs/plugin-basic-ssl";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 
 // MM_HTTP=1 serves plain http (localhost is a secure context, so the camera still works) for headless
 // screenshot runs; MM_SERVER_PORT points the /ws proxy at a server started with PORT=<n>.
 const http = process.env.MM_HTTP === "1";
 const serverPort = process.env.MM_SERVER_PORT ?? "8080";
+// The server goes https as soon as `pnpm --filter @midnight/server cert` has run (unless MM_HTTP=1, which
+// both packages honour), so the proxy has to speak wss to it; its self-signed cert is not verified.
+const serverTls = !http && existsSync(fileURLToPath(new URL("../server/certs/cert.pem", import.meta.url)));
 
 export default defineConfig({
   plugins: http ? [] : [basicSsl()],
@@ -12,7 +17,7 @@ export default defineConfig({
     host: true,
     strictPort: true,
     headers: { "Cross-Origin-Opener-Policy": "same-origin", "Cross-Origin-Embedder-Policy": "require-corp" },
-    proxy: { "/ws": { target: `ws://localhost:${serverPort}`, ws: true } },
+    proxy: { "/ws": { target: `${serverTls ? "wss" : "ws"}://localhost:${serverPort}`, ws: true, secure: false } },
   },
   build: {
     rollupOptions: {
